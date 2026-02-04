@@ -231,7 +231,7 @@ class TestFatigueDynamics:
         router.fatigue.data = torch.ones(router.num_experts, device=device) * 10.0
 
         # Simulate recovery by updating fatigue with zero usage
-        usage = torch.zeros(router.num_experts, device=device)
+        _ = torch.zeros(router.num_experts, device=device)
         initial_fatigue = router.fatigue.clone()
 
         # Manual fatigue update (recovery only)
@@ -452,7 +452,7 @@ class TestEdgeCases:
 
         alignment = router.compute_alignment(test_input)
         potential_1 = router.compute_routing_potential(alignment, noise_std=0.1)
-        potential_2 = router.compute_routing_potential(alignment, noise_std=0.1)
+        # potential_2 = router.compute_routing_potential(alignment, noise_std=0.1)
 
         # In eval mode, noise should be disabled regardless of noise_std
         # (This depends on the implementation checking self.training)
