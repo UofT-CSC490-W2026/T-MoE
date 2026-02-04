@@ -207,8 +207,9 @@ class RouterMetricsTracker:
         # Expert entropy
         metrics.update(self.compute_expert_entropy(indices, weights))
 
-        # Fatigue statistics
-        metrics.update(self.compute_fatigue_stats())
+        # Fatigue statistics (only for routers that track fatigue, e.g. MetabolicRouter)
+        if hasattr(self.router, "fatigue"):
+            metrics.update(self.compute_fatigue_stats())
 
         # Usage distribution
         metrics.update(self.compute_usage_distribution(indices, weights))
@@ -219,8 +220,9 @@ class RouterMetricsTracker:
         )
         metrics["effective_experts"] = self.compute_effective_experts(indices, weights)
 
-        # Add step counter
-        metrics["num_steps"] = self.router.num_steps.item()
+        # Step counter (only for routers that track steps)
+        if hasattr(self.router, "num_steps"):
+            metrics["num_steps"] = self.router.num_steps.item()
 
         return metrics
 
