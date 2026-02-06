@@ -171,9 +171,9 @@ def test_parallel_vs_sequential_numerical_equivalence(valid_kwargs, hidden_dim):
         output_par, _ = layer_par(x, noise_std=0.0)
 
     # Should be numerically close (allowing for floating point differences)
-    assert torch.allclose(
-        output_seq, output_par, rtol=1e-5, atol=1e-6
-    ), f"Max diff: {(output_seq - output_par).abs().max()}"
+    assert torch.allclose(output_seq, output_par, rtol=1e-5, atol=1e-6), (
+        f"Max diff: {(output_seq - output_par).abs().max()}"
+    )
 
 
 def test_parallel_vs_sequential_gradient_equivalence(valid_kwargs, hidden_dim):
@@ -203,9 +203,9 @@ def test_parallel_vs_sequential_gradient_equivalence(valid_kwargs, hidden_dim):
     loss_par.backward()
 
     # Check input gradients match
-    assert torch.allclose(
-        x_seq.grad, x_par.grad, rtol=1e-4, atol=1e-5
-    ), f"Input grad max diff: {(x_seq.grad - x_par.grad).abs().max()}"
+    assert torch.allclose(x_seq.grad, x_par.grad, rtol=1e-4, atol=1e-5), (
+        f"Input grad max diff: {(x_seq.grad - x_par.grad).abs().max()}"
+    )
 
     # Check expert parameter gradients match
     for (name_seq, param_seq), (name_par, param_par) in zip(
@@ -215,7 +215,9 @@ def test_parallel_vs_sequential_gradient_equivalence(valid_kwargs, hidden_dim):
         if param_seq.grad is not None and param_par.grad is not None:
             assert torch.allclose(
                 param_seq.grad, param_par.grad, rtol=1e-4, atol=1e-5
-            ), f"Param {name_seq} grad max diff: {(param_seq.grad - param_par.grad).abs().max()}"
+            ), (
+                f"Param {name_seq} grad max diff: {(param_seq.grad - param_par.grad).abs().max()}"
+            )
 
 
 def test_non_contiguous_input_sequential(tmoe_layer, hidden_dim):
