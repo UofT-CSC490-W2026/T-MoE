@@ -1,4 +1,4 @@
-numpy==2.4.1
+numpy==2.2.6
 pytest==8.4.2
 torch==2.10.0
 wandb==0.24.1
