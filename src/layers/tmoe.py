@@ -327,7 +327,6 @@ class TMoELayer(BaseMoELayer):
 
             # Forward through expert (batched)
             out = self.experts[expert_idx](expert_tokens)  # [count, hidden]
-            # Apply weights
             weighted_out = out * expert_weights.unsqueeze(-1)
             expert_outputs.append(weighted_out)
 
