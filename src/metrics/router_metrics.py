@@ -1,9 +1,3 @@
-"""
-Metrics tracking infrastructure for T-MoE routers.
-
-This module provides comprehensive metrics computation and logging utilities
-for monitoring expert routing behavior, fatigue dynamics, and load balancing.
-"""
 import torch
 import numpy as np
 from typing import Dict, Any
