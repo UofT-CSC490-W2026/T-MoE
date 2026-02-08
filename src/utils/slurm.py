@@ -107,32 +107,3 @@ def submit_sbatch_script(script_path: str) -> bool:
     except Exception as e:
         print(f"❌ Error submitting job: {e}")
         return False
-
-
-def prompt_sbatch_submission(script_path: str) -> bool:
-    """
-    Prompt user to submit the generated SBATCH script.
-    Automatically skips prompting if stdin is not available (non-interactive).
-    """
-    import sys
-
-    # Check if stdin is available (interactive terminal)
-    if not sys.stdin.isatty():
-        print(
-            "Non-interactive environment detected. Skipping SBATCH submission prompt."
-        )
-        print("To submit the job, run: sbatch " + script_path)
-        return False
-
-    try:
-        response = input("\nSBATCH script generated. Submit to SLURM? (y/n): ")
-
-        if response.lower() == "y":
-            return submit_sbatch_script(script_path)
-        else:
-            print("Continuing with local interactive execution...")
-            return False
-    except EOFError:
-        print("\nNo input available. Skipping SBATCH submission.")
-        print("To submit the job, run: sbatch " + script_path)
-        return False
