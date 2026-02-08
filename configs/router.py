@@ -77,3 +77,13 @@ class SwitchRouterConfig(StandardRouterConfig):
 
     router_type: str = "switch"
     top_k: int = 1
+
+
+@dataclass
+class DynMoERouterConfig(RouterConfig):
+    """DynMoE-style top-any router with sigmoid gating."""
+
+    router_type: str = "dynmoe"
+    gate_threshold: float = 0.5
+    use_aux_loss: bool = False
+    aux_loss_coef: float = 0.0

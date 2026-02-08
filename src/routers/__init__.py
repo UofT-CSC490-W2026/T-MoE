@@ -3,6 +3,7 @@
 from src.routers.base import BaseRouter
 from src.routers.metabolic import MetabolicRouter
 from src.routers.standard import StandardRouter, TopKRouter, SwitchRouter
+from src.routers.dynmoe import DynMoERouter
 
 __all__ = [
     "BaseRouter",
@@ -10,4 +11,5 @@ __all__ = [
     "StandardRouter",
     "TopKRouter",
     "SwitchRouter",
+    "DynMoERouter",
 ]

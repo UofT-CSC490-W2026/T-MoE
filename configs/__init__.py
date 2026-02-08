@@ -5,6 +5,7 @@ from .router import (
     StandardRouterConfig,
     TopKRouterConfig,
     SwitchRouterConfig,
+    DynMoERouterConfig,
 )
 from .dataset import DatasetConfig
 
@@ -16,4 +17,5 @@ __all__ = [
     "StandardRouterConfig",
     "TopKRouterConfig",
     "SwitchRouterConfig",
+    "DynMoERouterConfig",
 ]
