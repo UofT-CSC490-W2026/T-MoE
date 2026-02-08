@@ -1,0 +1,44 @@
+# ============================================================================
+# GPT-Neo 125M / LoRA MoE Experiment
+# ============================================================================
+# This configuration overrides the base config.yaml for a specific experiment.
+
+# Experiment Metadata
+experiment_name: gptneo_125m_lora_moe
+seed: 42
+
+# Model Configuration
+model:
+  model_key: gpt-neo-125m
+  freeze_backbone: true
+  moe_layer_indices: [-1]  # Injection index
+
+# Router Configuration
+router:
+  type: TopKRouter
+  num_experts: 4
+  top_k: 1
+  temperature: 1.0
+
+# Expert Configuration
+expert:
+  type: LoRA
+  count: 4
+  lora:
+    rank: 16
+    alpha: 16
+    dropout: 0.1
+
+# Training Configuration
+training:
+  batch_size: 16
+  lr: 5.0e-4
+  steps: 2000
+  warmup_steps: 200
+  save_interval: 500
+  eval_interval: 200
+
+# Dataset Configuration
+dataset:
+  dataset_key: wikitext-2
+  max_seq_len: 512
