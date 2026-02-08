@@ -18,7 +18,9 @@ def test_dynmoe_router_shapes(device):
 
 
 def test_dynmoe_router_threshold_masks(device):
-    config = DynMoERouterConfig(hidden_dim=4, num_experts=4, top_k=2, gate_threshold=0.9)
+    config = DynMoERouterConfig(
+        hidden_dim=4, num_experts=4, top_k=2, gate_threshold=0.9
+    )
     router = DynMoERouter(config).to(device)
     router.eval()
 
@@ -37,7 +39,11 @@ def test_dynmoe_router_threshold_masks(device):
 
 def test_dynmoe_router_aux_loss_optional(device):
     config = DynMoERouterConfig(
-        hidden_dim=8, num_experts=4, top_k=2, use_aux_loss=True, aux_loss_coef=0.01
+        hidden_dim=8,
+        num_experts=4,
+        top_k=2,
+        use_aux_loss=True,
+        aux_loss_coef=0.01,
     )
     router = DynMoERouter(config).to(device)
     router.train()
