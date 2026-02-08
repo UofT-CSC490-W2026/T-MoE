@@ -5,7 +5,6 @@ from typing import Tuple, Dict, Any, Optional
 
 import torch
 from torch import nn
-import torch.nn.functional as F
 
 from configs import DynMoERouterConfig
 from src.core import RouterRegistry
