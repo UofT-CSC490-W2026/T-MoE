@@ -30,7 +30,7 @@ For a deep dive into the mathematical foundations, routing potentials, and fatig
 
    **Using conda:**
    ```bash
-   conda create -n tmoe python=3.10
+   conda create -n tmoe python=3.11
    conda activate tmoe
    ```
 
