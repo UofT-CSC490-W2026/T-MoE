@@ -2,6 +2,7 @@
 Standard / Top-K router: linear gate -> softmax -> top-k selection.
 Uses optional load-balancing auxiliary loss (Switch Transformer style).
 """
+
 from typing import Tuple, Dict, Any, Optional
 
 import torch

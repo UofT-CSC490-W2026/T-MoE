@@ -1,6 +1,7 @@
 """
 DynMoE-style top-any router: sigmoid gate with thresholded selection.
 """
+
 from typing import Tuple, Dict, Any, Optional
 
 import torch

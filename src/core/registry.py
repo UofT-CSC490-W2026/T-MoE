@@ -38,8 +38,7 @@ class Registry:
         if name not in self._registry:
             available = list(self._registry.keys())
             raise KeyError(
-                f"'{name}' not found in {self.name} registry. "
-                f"Available: {available}"
+                f"'{name}' not found in {self.name} registry. Available: {available}"
             )
         return self._registry[name]
 

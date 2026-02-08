@@ -51,8 +51,7 @@ class DatasetConfig(BaseConfig):
             if not validate_dataset_key(self.dataset_key):
                 available = ", ".join(get_available_datasets())
                 raise ValueError(
-                    f"Invalid dataset_key '{self.dataset_key}'. "
-                    f"Available: {available}"
+                    f"Invalid dataset_key '{self.dataset_key}'. Available: {available}"
                 )
 
     @property
