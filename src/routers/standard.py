@@ -5,8 +5,8 @@ Uses optional load-balancing auxiliary loss (Switch Transformer style).
 from typing import Any, Dict, Optional, Tuple
 
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 
 from configs import StandardRouterConfig, TopKRouterConfig, SwitchRouterConfig
 from src.core import RouterRegistry
