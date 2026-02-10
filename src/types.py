@@ -18,20 +18,23 @@ class ExecutionEnv(str, Enum):
 class RouterType(str, Enum):
     """Router types for MoE layers."""
 
-    TOPK = "TopKRouter"
-    STANDARD = "StandardRouter"
-    METABOLIC = "MetabolicRouter"
+    METABOLIC = "metabolic"
+    STANDARD = "standard"
+    TOPK_ROUTER = "TopKRouter"
 
 
 class ExpertType(str, Enum):
     """Expert types for MoE layers."""
 
-    LORA = "LoRA"
+    GPTNEO_LORA = "gpt_neo_lora"
+    # Future expert types can be added here
+    # GPT2_LORA = "gpt2_lora"
+    # LLAMA_LORA = "llama_lora"
 
 
 class ModelType(str, Enum):
     """Supported model architectures."""
 
-    GPTNEO = "GPTNeo"
-    GPT2 = "GPT2"
-    LLAMA = "Llama"
+    GPTNEO = "gpt_neo"
+    GPT2 = "gpt2"
+    LLAMA = "llama"
