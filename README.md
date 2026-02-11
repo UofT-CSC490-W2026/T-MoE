@@ -47,8 +47,8 @@ For a deep dive into the mathematical foundations, routing potentials, and fatig
    **Using venv:**
    ```bash
    python3 -m venv tmoe-env
-   source tmoe-env/bin/activate  # On macOS/Linux
-   # tmoe-env\Scripts\activate  # On Windows
+   source tmoe-env/bin/activate        # On macOS/Linux
+   tmoe-env\Scripts\activate           # On Windows
    ```
 
 3. **Install dependencies:**
