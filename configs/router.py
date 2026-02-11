@@ -62,4 +62,28 @@ class MetabolicRouterConfig(RouterConfig):
     # Equation 3: Adaptive Cost Scaling (n_start auto-set to num_experts at init)
 
 
-# TODO: Add config for TopK Router Config and other industry standard config
+@dataclass
+class TopKRouterConfig(RouterConfig):
+    """Top-K router: standard softmax + top-k selection, no aux loss."""
+
+    router_type: str = "topk"
+    use_aux_loss: bool = False
+    aux_loss_coef: float = 0.0
+
+
+@dataclass
+class SwitchRouterConfig(StandardRouterConfig):
+    """Switch (Top-1) router: standard router with top_k=1."""
+
+    router_type: str = "switch"
+    top_k: int = 1
+
+
+@dataclass
+class DynMoERouterConfig(RouterConfig):
+    """DynMoE-style top-any router with sigmoid gating."""
+
+    router_type: str = "dynmoe"
+    gate_threshold: float = 0.5
+    use_aux_loss: bool = False
+    aux_loss_coef: float = 0.0
