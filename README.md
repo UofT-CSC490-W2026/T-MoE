@@ -7,11 +7,14 @@ T-MoE is a research project implementing biological-inspired **Metabolic Routing
 
 ## 🌟 Key Features
 
+- **Complete T-MoE Layer**: Ready-to-use MoE layer combining routers and experts for transformer integration
 - **Metabolic Routing**: Biological-inspired routing with fatigue dynamics and homeostatic recovery
 - **Multiple Router Architectures**: 5 different router implementations (Metabolic, Standard, Top-K, Switch, DynMoE)
+- **Flexible Expert System**: Pluggable expert architecture with abstract base classes
 - **Advanced Metrics Tracking**: Comprehensive monitoring of routing entropy, load balancing (Gini coefficient), fatigue statistics
 - **Hardware-Aware**: Distance penalties for expert placement and silicon tax calculations
 - **Age-Aware Dynamics**: Newborn expert warmup and adaptive cost scaling
+- **Parallel Expert Processing**: Efficient batched computation for production use
 - **Elastic Architecture**: Support for dynamic expert pools with living expert mechanics
 - **Weights & Biases Integration**: Built-in logging for experiment tracking
 
@@ -109,6 +112,48 @@ router.metrics_tracker.log_to_wandb(all_metrics, step=100)
 # - fatigue_mean, fatigue_std (for MetabolicRouter)
 ```
 
+### Using the Complete T-MoE Layer
+
+The `TMoELayer` provides a complete MoE layer that combines routing and experts for easy integration into transformer models:
+
+```python
+import torch
+from src.layers.tmoe import TMoELayer
+
+# Create a complete MoE layer with metabolic routing
+moe_layer = TMoELayer(
+    hidden_dim=768,
+    num_experts=16,
+    top_k=2,
+    router_type="metabolic",
+    router_kwargs={
+        "lambda_metabolic": 0.1,
+        "gamma_recovery": 0.01,
+        "beta_cost": 0.04,
+    },
+    use_parallel=True,  # Use efficient parallel expert computation
+)
+
+# Forward pass (returns output and optional metrics)
+x = torch.randn(8, 128, 768, device='cuda')  # [batch, seq_len, hidden_dim]
+output, metrics = moe_layer(x, return_metrics=True)
+
+# output: [8, 128, 768] - processed through experts
+# metrics: dict with routing statistics
+
+# Get routing metrics without full forward pass
+metrics = moe_layer.get_routing_metrics(x)
+
+# Reset router state (e.g., fatigue accumulation)
+moe_layer.reset_router_state()
+```
+
+**Key Features:**
+- **Pluggable Routers**: Choose any router type ("metabolic", "standard", etc.)
+- **Flexible Expert Architecture**: Provide custom expert classes or use default implementations
+- **Parallel Processing**: Efficient batched expert computation with `use_parallel=True`
+- **Easy Integration**: Drop-in replacement for transformer FFN layers
+
 ## 📦 Available Router Types
 
 | Router | Description | Key Parameters | Use Case |
@@ -183,6 +228,10 @@ pytest --cov=src tests/
 ```
 
 ### Test Structure
+- `tests/layers/` - MoE layer tests
+  - TMoELayer integration tests
+  - Parallel vs sequential expert processing
+  - Expert routing and aggregation
 - `tests/routers/` - Router implementation tests (40+ tests)
   - Shape validation
   - Weight normalization
@@ -196,6 +245,11 @@ pytest --cov=src tests/
 ```
 T-MoE/
 ├── src/
+│   ├── layers/           # MoE layer implementations
+│   │   ├── base.py       # BaseMoELayer abstract class
+│   │   └── tmoe.py       # TMoELayer - complete MoE layer
+│   ├── experts/          # Expert network abstractions
+│   │   └── base.py       # BaseExpert abstract class
 │   ├── routers/          # Router implementations
 │   │   ├── base.py       # BaseRouter abstract class
 │   │   ├── metabolic.py  # MetabolicRouter with fatigue
@@ -211,6 +265,7 @@ T-MoE/
 │   ├── dataset.py        # Dataset configs
 │   └── base.py           # Base config classes
 ├── tests/                # Comprehensive test suite
+│   ├── layers/           # MoE layer tests
 │   ├── routers/          # Router-specific tests
 │   └── conftest.py       # Shared fixtures
 ├── catalog/              # Dataset catalog
