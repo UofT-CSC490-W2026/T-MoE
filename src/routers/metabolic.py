@@ -38,9 +38,16 @@ class MetabolicRouter(BaseRouter):
         # Adaptive Cost Scaling (Equation 3)
         self.n_start = config.num_experts  # Initial expert count for scaling
 
+        # Track active expert count (for dynamic pruning support)
+        self.register_buffer(
+            "n_active", torch.tensor(config.num_experts, dtype=torch.long)
+        )
+
         # Learnable Router Prototypes
         self.prototypes = nn.Linear(config.hidden_dim, config.num_experts, bias=False)
-        nn.init.xavier_uniform_(self.prototypes.weight)
+        nn.init.xavier_uniform_(
+            self.prototypes.weight
+        )  # TODO can we use Kaiming initialization instead?
 
         # Apply weight normalization for automatic L2 normalization
         if self.normalize_weights:
@@ -99,7 +106,8 @@ class MetabolicRouter(BaseRouter):
             potential = potential - (self.mu_silicon * dist_vector.view(1, 1, -1))
 
         # 3. Exploration Noise (Gumbel for differentiable sampling)
-        if self.training and noise_std > 0:
+        # Allow noise in eval mode for exploration studies (no training check)
+        if noise_std > 0:
             # Standard Gumbel distribution
             gumbel_uniform = torch.rand_like(potential)
             noise = -torch.log(-torch.log(gumbel_uniform + 1e-20) + 1e-20)
@@ -113,20 +121,21 @@ class MetabolicRouter(BaseRouter):
         """
         device = self.fatigue.device
 
-        # 1. Compute usage U_i(t) from routing weights
-        usage = torch.zeros(self.num_experts, device=device)
+        # 1. Compute usage U_i(t) from routing weights using bincount
+        # Use raw counts (no normalization) to preserve fatigue signal strength
         flattened_expert_indices = indices.flatten()
         flattened_routing_weights = weights.flatten()
-        usage.scatter_add_(0, flattened_expert_indices, flattened_routing_weights)
-
-        # Normalize by total tokens for stability
-        num_tokens = indices.shape[0] * indices.shape[1]
-        usage = usage / max(num_tokens, 1)
+        usage = torch.bincount(
+            flattened_expert_indices,
+            weights=flattened_routing_weights,
+            minlength=self.num_experts,
+        )
 
         # 2. Age-Aware Cost Scaling (prevents newborn apoptosis)
         # η_i(t) = β_cost · min(1.0, (t - birth_i) / T_warmup)
+        # Use num_steps + 1 to account for current step (prevents free first step)
         if self.warmup_steps > 0:
-            age = (self.num_steps - self.birth_step).float()
+            age = (self.num_steps + 1 - self.birth_step).float()
             age_factor = torch.clamp(age / self.warmup_steps, min=0.0, max=1.0)
         else:
             age_factor = torch.ones(self.num_experts, device=device)
@@ -135,7 +144,7 @@ class MetabolicRouter(BaseRouter):
 
         # 3. Adaptive Cost Scaling (Equation 3)
         # η_eff = η_base · (N_current / N_start)
-        n_current = self.num_experts  # TODO: track active experts if using pruning
+        n_current = self.n_active.item()  # Use tracked active expert count
         eta_eff = eta_i * (n_current / max(self.n_start, 1))
 
         # 4. Fatigue Update: F_i(t+1) = (1-γ)F_i(t) + η_eff·U_i(t)
@@ -144,7 +153,11 @@ class MetabolicRouter(BaseRouter):
             self.fatigue.add_(eta_eff * usage)  # Accumulate from usage
 
     def forward(
-        self, x: torch.Tensor, return_metrics: bool = False
+        self,
+        x: torch.Tensor,
+        return_metrics: bool = False,
+        noise_std: Optional[float] = None,
+        temperature: Optional[float] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[Dict[str, Any]]]:
         """
         End-to-end routing forward pass.
@@ -152,6 +165,10 @@ class MetabolicRouter(BaseRouter):
         Args:
             x: Input tensor [batch, seq, hidden_dim]
             return_metrics: Whether to compute and return routing metrics
+            noise_std: Optional override for exploration noise standard deviation.
+                       If None, uses self.noise_std during training and 0.0 during eval.
+            temperature: Optional override for softmax temperature.
+                        If None, uses self.temperature. Useful for stochastic eval routing.
 
         Returns:
             weights: Routing probabilities [batch, seq, top_k]
@@ -162,14 +179,17 @@ class MetabolicRouter(BaseRouter):
         alignment = self.compute_alignment(x)
 
         # 2. Compute Routing Potential (Apply penalties & noise)
-        noise_std = self.noise_std if self.training else 0.0
+        if noise_std is None:
+            noise_std = self.noise_std if self.training else 0.0
+
         potential = self.compute_routing_potential(alignment, noise_std)
 
         # 3. Top-K Expert Selection
         top_k_values, top_k_indices = torch.topk(potential, self.top_k, dim=-1)
 
         # 4. Normalize Weights (Softmax)
-        weights = F.softmax(top_k_values / self.temperature, dim=-1)
+        temp = temperature if temperature is not None else self.temperature
+        weights = F.softmax(top_k_values / temp, dim=-1)
 
         # 5. Update Fatigue (only during training)
         if self.training:
