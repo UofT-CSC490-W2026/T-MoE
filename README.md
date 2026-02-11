@@ -8,14 +8,14 @@ T-MoE is a research project implementing biological-inspired **Metabolic Routing
 ## 📚 Core Concepts
 
 For a deep dive into the mathematical foundations, routing potentials, and fatigue dynamics, see:
-- **[Equations.md](./Equations.md)** - Comprehensive technical documentation with all mathematical formulas
+- **[Equations.md](docs/EQUATIONS.md)** - Comprehensive technical documentation with all mathematical formulas
 - **Topics covered**: Homeostatic routing potential, age-aware fatigue dynamics, elastic architecture, GRPO optimization, and more
 
 ## 🛠️ Setup & Installation
 
 ### Prerequisites
-- Python 3.9+ (tested with 3.10)
-- [PyTorch](https://pytorch.org/) 2.10+
+- Python 3.10+
+- [PyTorch](https://pytorch.org/) 2.0+
 - [Weights & Biases](https://wandb.ai/) (for logging)
 
 ### Installation
@@ -36,7 +36,7 @@ For a deep dive into the mathematical foundations, routing potentials, and fatig
 
    **Using venv:**
    ```bash
-   python3 -m venv tmoe-env
+   python -m venv tmoe-env
    source tmoe-env/bin/activate        # On macOS/Linux
    tmoe-env\Scripts\activate           # On Windows
    ```
@@ -173,7 +173,7 @@ config = MetabolicRouterConfig(
     top_k=2,
     temperature=1.0,
     noise_std=0.0,
-    
+
     # Metabolic-specific
     lambda_metabolic=0.5,      # Fatigue penalty weight
     mu_silicon=0.1,            # Distance penalty weight
@@ -305,7 +305,7 @@ pre-commit run --all-files
 
 ## 📖 Documentation
 
-- **[Equations.md](./Equations.md)** - Complete mathematical foundations including:
+- **[Equations.md](docs/EQUATIONS.md)** - Complete mathematical foundations including:
   - Homeostatic routing potential (Eq. 1)
   - Age-aware fatigue dynamics (Eq. 2)
   - Adaptive cost scaling (Eq. 3)
