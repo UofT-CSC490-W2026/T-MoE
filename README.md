@@ -5,19 +5,6 @@
 
 T-MoE is a research project implementing biological-inspired **Metabolic Routing** for Mixture-of-Experts (MoE) models. Instead of traditional auxiliary load-balancing losses, it uses fatigue mechanics and homeostatic dynamics to manage expert usage and architectural evolution.
 
-## 🌟 Key Features
-
-- **Complete T-MoE Layer**: Ready-to-use MoE layer combining routers and experts for transformer integration
-- **Metabolic Routing**: Biological-inspired routing with fatigue dynamics and homeostatic recovery
-- **Multiple Router Architectures**: 5 different router implementations (Metabolic, Standard, Top-K, Switch, DynMoE)
-- **Flexible Expert System**: Pluggable expert architecture with abstract base classes
-- **Advanced Metrics Tracking**: Comprehensive monitoring of routing entropy, load balancing (Gini coefficient), fatigue statistics
-- **Hardware-Aware**: Distance penalties for expert placement and silicon tax calculations
-- **Age-Aware Dynamics**: Newborn expert warmup and adaptive cost scaling
-- **Parallel Expert Processing**: Efficient batched computation for production use
-- **Elastic Architecture**: Support for dynamic expert pools with living expert mechanics
-- **Weights & Biases Integration**: Built-in logging for experiment tracking
-
 ## 📚 Core Concepts
 
 For a deep dive into the mathematical foundations, routing potentials, and fatigue dynamics, see:
