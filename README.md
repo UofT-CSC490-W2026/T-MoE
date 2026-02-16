@@ -270,10 +270,42 @@ T-MoE/
 │   └── conftest.py       # Shared fixtures
 ├── catalog/              # Dataset catalog
 │   └── dataset_catalog.py
+├── infra/                # AWS Infrastructure & Data Ingestion
+│   ├── terraform/        # Terraform IaC (S3, IAM, SageMaker)
+│   ├── data_ingestion/   # SageMaker processing scripts
+│   ├── s3client/         # S3 client utilities
+│   └── config/           # Infrastructure config
 ├── Equations.md          # Mathematical documentation
 ├── requirements.txt      # Python dependencies
 └── README.md            # This file
 ```
+
+## 🔄 Data Ingestion Pipeline
+
+T-MoE includes a production-ready AWS SageMaker data ingestion pipeline using HuggingFace datasets.
+
+### Quick Start
+
+```bash
+# 1. Deploy AWS infrastructure
+cd infra/terraform
+terraform init && terraform apply
+
+# 2. Configure environment
+cp .env.example .env
+# Populate with terraform output values
+
+# 3. Run data ingestion
+python infra/data_ingestion/run_processing.py
+```
+
+### Features
+- **Terraform IaC**: S3 bucket (encrypted, versioned), IAM roles (least privilege), CloudWatch logging
+- **SageMaker HuggingFaceProcessor**: Managed container for dataset ingestion
+- **Security**: No hardcoded credentials, IAM roles only, S3 encryption, public access blocked
+- **Extensible**: Ready for Step Functions, EventBridge, and SageMaker Pipelines integration
+
+See [infra/README.md](infra/README.md) for detailed documentation.
 
 ## 📊 Metrics & Monitoring
 
