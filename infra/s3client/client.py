@@ -311,6 +311,38 @@ class S3Client:
             return None
 
     # ------------------------------------------------------------------
+    # Dataset existence check
+    # ------------------------------------------------------------------
+    def dataset_exists(self, bucket: str, prefix: str) -> bool:
+        """
+        Return True if at least one data file exists under the given S3 prefix.
+
+        Checks for common data file extensions (.jsonl, .parquet, .txt).
+        Uses list_objects with a small max_keys for efficiency.
+
+        Args:
+            bucket: S3 bucket name.
+            prefix: S3 key prefix to search under.
+
+        Returns:
+            True if data files are found, False otherwise.
+        """
+        data_extensions = (".jsonl", ".parquet", ".txt")
+        objects = self.list_objects(bucket, prefix, max_keys=20)
+        found = any(obj["Key"].endswith(data_extensions) for obj in objects)
+        if found:
+            logger.info(
+                "Dataset found in s3://%s/%s (%d objects checked)",
+                bucket, prefix, len(objects),
+            )
+        else:
+            logger.info(
+                "No dataset files found in s3://%s/%s (%d objects checked)",
+                bucket, prefix, len(objects),
+            )
+        return found
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
     @staticmethod
