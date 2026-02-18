@@ -1,10 +1,3 @@
-"""
-LoRA primitives: config, single-layer adapter, and abstract MLP expert base.
-
-This module contains the building blocks. Concrete architecture-specific
-experts (GPT-2, GPT-Neo, etc.) live in their own files.
-"""
-
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Optional

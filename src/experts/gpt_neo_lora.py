@@ -1,9 +1,3 @@
-"""
-Concrete LoRA MLP expert for GPT-Neo family architectures.
-
-MLP structure:  x → c_fc → GELU → c_proj → dropout → out
-"""
-
 import torch
 from torch import nn
 
@@ -11,7 +5,9 @@ from src.core.registry import ExpertRegistry
 from src.experts.lora import LoRAConfig, LoRALayer, LoRAMLPExpert
 
 
-def _extract_linear_weight(layer: nn.Module) -> tuple[torch.Tensor, torch.Tensor | None]:
+def _extract_linear_weight(
+    layer: nn.Module,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
     """
     Extract weight (in Linear convention [out, in]) and optional bias from a
     pretrained layer.  Handles both ``nn.Linear`` and HuggingFace ``Conv1D``
@@ -39,14 +35,20 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
         super().__init__(config)
 
         self.c_fc = LoRALayer(
-            config.hidden_dim, config.intermediate_dim,
-            rank=config.rank, alpha=config.alpha,
-            dropout=config.dropout, init_scale=config.init_scale,
+            config.hidden_dim,
+            config.intermediate_dim,
+            rank=config.rank,
+            alpha=config.alpha,
+            dropout=config.dropout,
+            init_scale=config.init_scale,
         )
         self.c_proj = LoRALayer(
-            config.intermediate_dim, config.hidden_dim,
-            rank=config.rank, alpha=config.alpha,
-            dropout=config.dropout, init_scale=config.init_scale,
+            config.intermediate_dim,
+            config.hidden_dim,
+            rank=config.rank,
+            alpha=config.alpha,
+            dropout=config.dropout,
+            init_scale=config.init_scale,
         )
         self.act = nn.GELU(approximate="tanh")
         self.dropout = nn.Dropout(config.dropout)

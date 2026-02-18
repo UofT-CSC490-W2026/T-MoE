@@ -1,12 +1,3 @@
-"""
-LoRA Mixture-of-Experts layer.
-
-Wraps a frozen backbone MLP and adds a parallel branch of LoRA experts
-selected by a Router.
-
-    output = frozen_backbone(x) + Σ_i  weight_i · expert_i(x)
-"""
-
 from typing import Dict, Any, Optional, Tuple
 
 import torch
@@ -72,10 +63,10 @@ class LoRAMoELayer(nn.Module):
         weights, indices, metrics = self.router(x, return_metrics=return_metrics)
 
         # 3. Expert dispatch — loop over *active* experts only
-        x_flat = x.view(-1, hidden)                     # [N, H]
-        w_flat = weights.view(-1, weights.shape[-1])     # [N, K]
-        idx_flat = indices.view(-1, indices.shape[-1])   # [N, K]
-        lora_delta = torch.zeros_like(x_flat)            # accumulator
+        x_flat = x.view(-1, hidden)  # [N, H]
+        w_flat = weights.view(-1, weights.shape[-1])  # [N, K]
+        idx_flat = indices.view(-1, indices.shape[-1])  # [N, K]
+        lora_delta = torch.zeros_like(x_flat)  # accumulator
 
         for eid in idx_flat.unique().tolist():
             expert = self.expert_pool[eid]
@@ -87,11 +78,13 @@ class LoRAMoELayer(nn.Module):
                 continue
 
             # Run expert on selected tokens
-            delta = expert(x_flat[token_ids])            # [n, H]
+            delta = expert(x_flat[token_ids])  # [n, H]
 
             # Sum the routing weights across the K slots for this expert
             # (a token might select the same expert in >1 slot, rare but valid)
-            expert_w = (w_flat * mask.float())[token_ids].sum(dim=1, keepdim=True)  # [n, 1]
+            expert_w = (w_flat * mask.float())[token_ids].sum(
+                dim=1, keepdim=True
+            )  # [n, 1]
 
             lora_delta[token_ids] += delta * expert_w
 

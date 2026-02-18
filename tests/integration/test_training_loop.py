@@ -1,5 +1,3 @@
-"""Integration test: verify training dynamics with frozen backbone + LoRA MoE."""
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -21,7 +19,13 @@ def test_training_integration():
     )
 
     # Configs
-    lora_cfg = LoRAConfig(hidden_dim=hidden_dim, intermediate_dim=intermediate_dim, rank=4, alpha=16, dropout=0.1)
+    lora_cfg = LoRAConfig(
+        hidden_dim=hidden_dim,
+        intermediate_dim=intermediate_dim,
+        rank=4,
+        alpha=16,
+        dropout=0.1,
+    )
     router_cfg = MetabolicRouterConfig(hidden_dim=hidden_dim, num_experts=4, top_k=2)
 
     # Build MoE layer
@@ -34,8 +38,12 @@ def test_training_integration():
 
     # ── verify freeze ──
     assert not backbone[0].weight.requires_grad, "Backbone should be frozen"
-    assert any(p.requires_grad for p in moe.router.parameters()), "Router should be trainable"
-    assert any(p.requires_grad for p in moe.expert_pool.parameters()), "Experts should be trainable"
+    assert any(p.requires_grad for p in moe.router.parameters()), (
+        "Router should be trainable"
+    )
+    assert any(p.requires_grad for p in moe.expert_pool.parameters()), (
+        "Experts should be trainable"
+    )
 
     # ── one training step ──
     opt = optim.AdamW((p for p in moe.parameters() if p.requires_grad), lr=1e-3)

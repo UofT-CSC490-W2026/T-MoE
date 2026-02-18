@@ -1,5 +1,3 @@
-"""Unit tests for LoRA components: LoRALayer, GPTNeoLoRAMLP, ExpertPool, LoRAMoELayer."""
-
 import pytest
 import torch
 import torch.nn as nn
@@ -48,7 +46,9 @@ def test_lora_layer_init():
     assert layer.lora_A.weight.shape == (4, 32)
     assert layer.lora_B.weight.shape == (64, 4)
     assert torch.all(layer.lora_B.weight == 0), "B should be zero-init"
-    assert not torch.all(layer.lora_A.weight == 0), "A should be Kaiming-init (non-zero)"
+    assert not torch.all(layer.lora_A.weight == 0), (
+        "A should be Kaiming-init (non-zero)"
+    )
     assert layer.base_weight is None
 
 
