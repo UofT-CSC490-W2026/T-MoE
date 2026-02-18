@@ -53,7 +53,7 @@ class GPTNeoLoRAExpert(LoRAMLPExpert):
             # Fallback to standard GELU
             return nn.GELU()
 
-    def load_from_mlp(self, mlp: nn.Module) -> None:
+    def load_from_mlp(self, mlp: nn.Module, share_weights: bool = True) -> None:
         """
         Load frozen weights from GPT-Neo MLP.
 
@@ -63,6 +63,7 @@ class GPTNeoLoRAExpert(LoRAMLPExpert):
 
         Args:
             mlp: GPT-Neo MLP module
+            share_weights: Whether to share base weights to save memory.
 
         Raises:
             ValueError: If MLP structure doesn't match GPT-Neo
@@ -72,8 +73,8 @@ class GPTNeoLoRAExpert(LoRAMLPExpert):
                 "MLP must have 'c_fc' and 'c_proj' attributes (GPT-Neo structure)"
             )
 
-        self.fc1.load_from_linear(mlp.c_fc)
-        self.fc2.load_from_linear(mlp.c_proj)
+        self.fc1.load_from_linear(mlp.c_fc, share_weights=share_weights)
+        self.fc2.load_from_linear(mlp.c_proj, share_weights=share_weights)
         self.freeze_base_weights()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

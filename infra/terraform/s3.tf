@@ -14,6 +14,9 @@ resource "random_id" "bucket_suffix" {
 resource "aws_s3_bucket" "raw_data" {
   bucket = "${var.project_name}-${var.environment}-${var.raw_bucket_prefix}-${random_id.bucket_suffix.hex}"
 
+  # Allow deletion even if non-empty (required for dev environments with managed data)
+  force_destroy = true
+
   tags = {
     Name        = "T-MoE Raw Data Landing Zone"
     DataStage   = "raw"

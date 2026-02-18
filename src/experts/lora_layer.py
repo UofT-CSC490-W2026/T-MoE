@@ -54,12 +54,14 @@ class LoRALayer(nn.Module):
         self.base_weight: Optional[nn.Parameter] = None
         self.base_bias: Optional[nn.Parameter] = None
 
-    def load_from_linear(self, linear: nn.Linear) -> None:
+    def load_from_linear(self, linear: nn.Linear, share_weights: bool = True) -> None:
         """
         Load frozen base weights from a pretrained linear layer.
 
         Args:
             linear: Pretrained linear layer to wrap
+            share_weights: If True, share the underlying data with the source
+                          layer to save memory. Default: True.
 
         Raises:
             ValueError: If dimensions don't match
@@ -73,10 +75,15 @@ class LoRALayer(nn.Module):
                 f"Output dim mismatch: {linear.out_features} != {self.out_features}"
             )
 
-        # Clone and freeze
-        self.base_weight = nn.Parameter(linear.weight.data.clone(), requires_grad=False)
-        if linear.bias is not None:
-            self.base_bias = nn.Parameter(linear.bias.data.clone(), requires_grad=False)
+        # Use shared data or clone
+        if share_weights:
+            self.base_weight = nn.Parameter(linear.weight.data, requires_grad=False)
+            if linear.bias is not None:
+                self.base_bias = nn.Parameter(linear.bias.data, requires_grad=False)
+        else:
+            self.base_weight = nn.Parameter(linear.weight.data.clone(), requires_grad=False)
+            if linear.bias is not None:
+                self.base_bias = nn.Parameter(linear.bias.data.clone(), requires_grad=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """

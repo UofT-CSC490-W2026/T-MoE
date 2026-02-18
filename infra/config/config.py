@@ -76,6 +76,15 @@ class PipelineConfig:
     transformers_version: Optional[str] = None
     pytorch_version: Optional[str] = None
     python_version: Optional[str] = None
+    
+    # Backend selection (NEW)
+    compute_backend: str = "aws"  # Options: "aws", "modal"
+    
+    # Modal-specific fields (NEW)
+    modal_gpu: Optional[str] = None
+    modal_cpu: Optional[int] = None
+    modal_timeout: Optional[int] = None
+    modal_volume_name: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +142,41 @@ def _flatten_yaml(yaml: dict) -> dict:
     return {k: v for k, v in flat.items() if v is not None}
 
 
+def _load_compute_config() -> dict:
+    """Load compute configuration from config.yaml for backend selection and Modal settings."""
+    try:
+        from omegaconf import OmegaConf
+    except ImportError:
+        return {}
+    
+    if not CONFIG_YAML_PATH.is_file():
+        return {}
+    
+    try:
+        cfg = OmegaConf.load(CONFIG_YAML_PATH)
+        compute = cfg.get("compute")
+        if compute is None:
+            return {}
+        
+        flat: dict = {}
+        
+        # Backend selection
+        flat["compute_backend"] = compute.get("backend", "aws")
+        
+        # Modal-specific configuration
+        modal = compute.get("modal", {})
+        if modal:
+            flat["modal_gpu"] = modal.get("gpu")
+            flat["modal_cpu"] = modal.get("cpu")
+            flat["modal_timeout"] = modal.get("timeout")
+            flat["modal_volume_name"] = modal.get("volume_name")
+        
+        return {k: v for k, v in flat.items() if v is not None}
+    except Exception:
+        logger.debug("Failed to parse compute config from config.yaml", exc_info=True)
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # .env loader (best-effort)
 # ---------------------------------------------------------------------------
@@ -162,6 +206,11 @@ _ENV_MAP = {
     "LOG_LEVEL": "log_level",
     "USE_SAGEMAKER": "use_sagemaker",
     "DATASET_CONFIG": "dataset_config",
+    "COMPUTE_BACKEND": "compute_backend",
+    "MODAL_GPU": "modal_gpu",
+    "MODAL_CPU": "modal_cpu",
+    "MODAL_TIMEOUT": "modal_timeout",
+    "MODAL_VOLUME_NAME": "modal_volume_name",
 }
 
 
@@ -174,6 +223,12 @@ def _load_env_overrides() -> dict:
             # Convert boolean strings
             if config_key == "use_sagemaker":
                 overrides[config_key] = val.lower() in ("true", "1", "yes")
+            # Convert integer strings for Modal config
+            elif config_key in ("modal_cpu", "modal_timeout"):
+                try:
+                    overrides[config_key] = int(val)
+                except ValueError:
+                    logger.warning("Invalid integer value for %s: %s", env_key, val)
             else:
                 overrides[config_key] = val
     return overrides
@@ -234,9 +289,33 @@ def _validate(merged: dict) -> PipelineConfig:
     # Coerce numeric fields
     merged["max_retries"] = int(merged.get("max_retries", 3))
     if use_sagemaker and "instance_count" in merged:
-        merged["instance_count"] = int(merged["instance_count"])
+        try:
+            merged["instance_count"] = int(merged["instance_count"])
+        except (ValueError, TypeError):
+            pass
     if use_sagemaker and "max_runtime_seconds" in merged:
-        merged["max_runtime_seconds"] = int(merged["max_runtime_seconds"])
+        try:
+            merged["max_runtime_seconds"] = int(merged["max_runtime_seconds"])
+        except (ValueError, TypeError):
+            pass
+    
+    # Coerce Modal numeric fields
+    if "modal_cpu" in merged and merged["modal_cpu"] is not None:
+        try:
+            merged["modal_cpu"] = int(merged["modal_cpu"])
+        except (ValueError, TypeError):
+            pass
+    if "modal_timeout" in merged and merged["modal_timeout"] is not None:
+        try:
+            merged["modal_timeout"] = int(merged["modal_timeout"])
+        except (ValueError, TypeError):
+            pass
+    
+    # Validate backend selection
+    backend = merged.get("compute_backend", "aws")
+    if backend not in ("aws", "modal"):
+        raise ValueError(f"compute_backend must be 'aws' or 'modal' — got: {backend!r}")
+    merged["compute_backend"] = backend
 
     # Build config with only the fields that exist in the dataclass
     config_dict = {}
@@ -245,7 +324,8 @@ def _validate(merged: dict) -> PipelineConfig:
                        "use_sagemaker", "dataset_config", "dataset_splits",
                        "sagemaker_role_arn", "instance_type", "instance_count",
                        "max_runtime_seconds", "transformers_version", "pytorch_version",
-                       "python_version"]:
+                       "python_version", "compute_backend", "modal_gpu", "modal_cpu",
+                       "modal_timeout", "modal_volume_name"]:
         if field_name in merged:
             config_dict[field_name] = merged[field_name]
     
@@ -272,10 +352,14 @@ def load_pipeline_config() -> PipelineConfig:
     # Start with defaults
     merged: dict = dict(_DEFAULTS)
 
-    # Layer 2: YAML overrides
+    # Layer 2a: YAML data_ingestion overrides
     yaml_section = _load_yaml_section()
     yaml_flat = _flatten_yaml(yaml_section)
     merged.update(yaml_flat)
+    
+    # Layer 2b: YAML compute overrides (for backend selection and Modal config)
+    compute_config = _load_compute_config()
+    merged.update(compute_config)
 
     # Layer 3: env var overrides (highest priority)
     env_overrides = _load_env_overrides()
@@ -283,10 +367,10 @@ def load_pipeline_config() -> PipelineConfig:
 
     config = _validate(merged)
     logger.info(
-        "Pipeline config loaded: region=%s bucket=%s dataset=%s instance=%s",
+        "Pipeline config loaded: region=%s bucket=%s dataset=%s backend=%s",
         config.aws_region,
         config.raw_data_bucket,
         config.dataset_name,
-        config.instance_type,
+        config.compute_backend,
     )
     return config

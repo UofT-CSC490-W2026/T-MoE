@@ -327,7 +327,7 @@ class S3Client:
         Returns:
             True if data files are found, False otherwise.
         """
-        data_extensions = (".jsonl", ".parquet", ".txt")
+        data_extensions = (".jsonl", ".parquet")
         objects = self.list_objects(bucket, prefix, max_keys=20)
         found = any(obj["Key"].endswith(data_extensions) for obj in objects)
         if found:

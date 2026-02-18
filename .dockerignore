@@ -1,0 +1,53 @@
+# ==============================================================================
+# T-MoE — Docker Build Ignore
+# ==============================================================================
+
+# Version control
+.git
+.gitignore
+
+# Python caches
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+
+# Virtual environments
+.venv
+venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment files (secrets!)
+.env
+.env.*
+
+# Terraform state (secrets!)
+infra/terraform/.terraform
+infra/terraform/terraform.tfstate
+infra/terraform/terraform.tfstate.backup
+infra/terraform/.terraform.lock.hcl
+
+# Training outputs (large files)
+outputs/
+experiments/*
+!experiments/*.yaml
+wandb/
+
+# Testing artifacts
+.pytest_cache
+.coverage
+htmlcov
+
+# Documentation & misc
+*.md
+LICENSE
+.pre-commit-config.yaml
+.ruff_cache
+.gemini

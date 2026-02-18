@@ -48,3 +48,37 @@ variable "raw_bucket_prefix" {
   type        = string
   default     = "raw-data"
 }
+
+# ==============================================================================
+# AWS Batch Variables
+# ==============================================================================
+
+variable "batch_instance_types" {
+  description = "GPU instance types for Batch compute environment"
+  type        = list(string)
+  default     = ["g4dn.xlarge"]
+}
+
+variable "batch_max_vcpus" {
+  description = "Maximum vCPUs for Batch compute environment (cost control)"
+  type        = number
+  default     = 8
+}
+
+variable "batch_min_vcpus" {
+  description = "Minimum vCPUs for Batch compute environment (0 = scale to zero)"
+  type        = number
+  default     = 0
+}
+
+variable "batch_job_vcpus" {
+  description = "vCPUs per training job"
+  type        = number
+  default     = 4
+}
+
+variable "batch_job_memory" {
+  description = "Memory (MiB) per training job"
+  type        = number
+  default     = 15000
+}

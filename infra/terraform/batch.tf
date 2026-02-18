@@ -30,28 +30,32 @@ resource "aws_launch_template" "batch_gpu" {
   }
 }
 
-# --- Batch Compute Environment (GPU Spot Instances) ---
+# --- Batch Compute Environment (On-Demand CPU Instances for Testing) ---
 resource "aws_batch_compute_environment" "gpu_spot" {
-  compute_environment_name = "${var.project_name}-${var.environment}-gpu-spot"
+  compute_environment_name = "${var.project_name}-${var.environment}-cpu-verify-v2"
   type                     = "MANAGED"
   state                    = "ENABLED"
   service_role             = aws_iam_role.batch_service.arn
 
   compute_resources {
-    type                = "SPOT"
-    bid_percentage      = 100 # Up to On-Demand price
-    spot_iam_fleet_role = aws_iam_role.batch_spot_fleet.arn
-    allocation_strategy = "SPOT_CAPACITY_OPTIMIZED"
+    type                = "EC2"
+    allocation_strategy = "BEST_FIT_PROGRESSIVE"
 
     min_vcpus = var.batch_min_vcpus
     max_vcpus = var.batch_max_vcpus
 
-    instance_type = var.batch_instance_types
+    # Changed to m5.xlarge for CPU mode
+    instance_type = ["m5.xlarge"]
 
     subnets            = aws_subnet.batch_public[*].id
     security_group_ids = [aws_security_group.batch.id]
 
     instance_role = aws_iam_instance_profile.batch_ecs.arn
+
+    # Use standard ECS-optimized AMI for CPU testing
+    ec2_configuration {
+      image_type = "ECS_AL2023"
+    }
 
     launch_template {
       launch_template_id = aws_launch_template.batch_gpu.id
@@ -64,10 +68,18 @@ resource "aws_batch_compute_environment" "gpu_spot" {
   }
 
   tags = {
-    Name = "${var.project_name}-${var.environment}-gpu-spot-ce"
+    Name = "${var.project_name}-${var.environment}-gpu-on-demand-ce"
   }
 
-  depends_on = [aws_iam_role.batch_service]
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  depends_on = [
+    aws_iam_role.batch_service,
+    aws_iam_role_policy_attachment.batch_service,
+    aws_iam_role_policy.batch_service_extras
+  ]
 }
 
 # --- Job Queue ---
@@ -84,6 +96,9 @@ resource "aws_batch_job_queue" "training" {
   tags = {
     Name = "${var.project_name}-${var.environment}-training-queue"
   }
+
+  # Ensure the queue is updated/created after the compute environment is ready
+  depends_on = [aws_batch_compute_environment.gpu_spot]
 }
 
 # --- CloudWatch Log Group for Batch Jobs ---
@@ -124,10 +139,6 @@ resource "aws_batch_job_definition" "training" {
       {
         type  = "MEMORY"
         value = tostring(var.batch_job_memory)
-      },
-      {
-        type  = "GPU"
-        value = "1"
       }
     ]
 

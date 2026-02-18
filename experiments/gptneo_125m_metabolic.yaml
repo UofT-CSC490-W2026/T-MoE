@@ -53,11 +53,11 @@ expert:
 training:
   batch_size: 16
   lr: 5.0e-4
-  steps: 3000
-  warmup_steps: 200
-  save_interval: 500
-  eval_interval: 200
-  log_interval: 50
+  steps: 50          # smoke-test: change back to 3000 for a real run
+  warmup_steps: 10
+  save_interval: 50
+  eval_interval: 25
+  log_interval: 10
   optimizer: adamw
 
 # Dataset Configuration
@@ -69,4 +69,4 @@ dataset:
 logging:
   enabled: true
   log_gradients: false
-  log_interval: 50
+  log_interval: 10
