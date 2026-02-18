@@ -1,5 +1,4 @@
 import sys
-import os
 import random
 from pathlib import Path
 
@@ -11,7 +10,6 @@ from src.utils.config_loader import (
     load_experiment_config,
     list_available_experiments,
 )
-from src.utils.slurm import generate_sbatch_script, submit_sbatch_script
 from src.utils.logging import initialize_wandb, finalize_wandb
 from src.utils.experiment import (
     setup_experiment,
@@ -56,18 +54,6 @@ def train_main(args, overrides) -> None:
     print("=" * 80)
     print(OmegaConf.to_yaml(config))
     print("=" * 80)
-
-    # Generate SBATCH script if applicable (but only if not already running in SLURM)
-    # Check for SLURM_JOB_ID to detect if we're already inside a submitted job
-    running_in_slurm = os.getenv("SLURM_JOB_ID") is not None
-
-    if not running_in_slurm:
-        sbatch_script = generate_sbatch_script(config, config_name=args.config)
-        if sbatch_script and config.compute.local.slurm.enabled:
-            # Auto-submit to SLURM
-            if submit_sbatch_script(sbatch_script):
-                print("✅ Job submitted to SLURM. Exiting local process.")
-                return  # Job submitted, exit
 
     # Set random seed
     set_seed(config.seed)

@@ -19,7 +19,7 @@ export WANDB_PROJECT="your_project_name"
 ## 🔧 Configuration
 
 T-MoE uses a two-tier configuration system:
-1. **Base Config (`config.yaml`)**: Contains global defaults (resource paths, SLURM partitions, etc.). **Do not modify this file for specific experiments.**
+1. **Base Config (`config.yaml`)**: Contains global defaults (resource paths, partitions, etc.). **Do not modify this file for specific experiments.**
 2. **Experiment Config (`experiments/*.yaml`)**: Overwrites base settings for specific runs.
 
 ### Model Catalog
@@ -45,11 +45,6 @@ All experiment settings are in one file with these sections:
 5. **Training** - batch size, learning rate, checkpointing
 6. **Dataset** - uses `catalog/dataset_catalog.py` for dataset selection
 7. **Logging** - WandB configuration
-8. **Compute** - local (SLURM) vs AWS (S3) settings
-
-### Existing Python Configs (Still Used)
-- `configs/base.py` - BaseConfig, DeviceConfig
-- `configs/router.py` - RouterConfig, MetabolicRouterConfig
 - `configs/dataset.py` - DatasetConfig (uses datacatalog)
 - `catalog/dataset_catalog.py` - Dataset catalog (wikitext-2, c4, etc.)
 
@@ -66,23 +61,6 @@ python train.py -c gptneo_125m_lora
 # Or using long flag --config
 python train.py --config gptneo_125m_lora
 ```
-
-### Local Execution (SLURM)
-
-The system automatically generates SBATCH scripts that include the correct `--config` flag:
-
-1. **Create/Select an experiment config** in `experiments/` (e.g. `experiments/my_heavy_run.yaml`).
-2. **Ensure SLURM is enabled** in your experiment config or base `config.yaml`.
-3. **Run train.py:**
-   ```bash
-   python train.py --config my_heavy_run
-   ```
-
-4. **SBATCH script is auto-generated** in `scripts/<experiment_name>_<timestamp>.sh`
-
-5. **Submit or run interactively:**
-   - Script prompts: "Submit to SLURM? (y/n)"
-   - Choose 'y' to submit, 'n' to run locally
 
 ### AWS Execution
 
@@ -160,11 +138,10 @@ dataset:
 ### Local Pipeline
 
 1. **Config** → Read `config.yaml`
-2. **SBATCH** → Auto-generate if `slurm.auto_generate_script=true`
-3. **Datacatalog** → Resolve dataset from `catalog/dataset_catalog.py`
-4. **Model** → Build with LoRA experts + router (using `configs/router.py`)
-5. **Train** → Run with AMP, checkpointing, WandB
-6. **Output** → Save to `./outputs/experiments/<name>_<timestamp>/`
+2. **Datacatalog** → Resolve dataset from `catalog/dataset_catalog.py`
+3. **Model** → Build with LoRA experts + router (using `configs/router.py`)
+4. **Train** → Run with AMP, checkpointing, WandB
+5. **Output** → Save to `./outputs/experiments/<name>_<timestamp>/`
 
 ### AWS Pipeline
 
@@ -186,7 +163,6 @@ https://wandb.ai/<your_username>/<your_project_name>
 **Logs:**
 - Local: `./outputs/experiments/<name>_*/logs/`
 - AWS: `s3://bucket/outputs/experiments/<name>_*/logs/`
-- SLURM: `./outputs/logs/<experiment_name>/*.out`
 
 **Checkpoints:**
 - Best model: `checkpoints/best_model.pt`
@@ -277,20 +253,14 @@ DATASET_CATALOG["my-dataset"] = {
 }
 ```
 
-**Q: How do I change SLURM settings?**
+**Q: How do I change data paths?**
 A: Edit `config.yaml`:
 ```yaml
 compute:
   local:
-    slurm:
-      partition: csc420
-      gres: gpu:2
-      mem: 64G
-      time: "6:00:00"
+    data_root: ./data
+    output_root: ./outputs
 ```
 
-**Q: How do I disable auto-SBATCH generation?**
-A: Set `compute.local.slurm.auto_generate_script: false`
-
-**Q: Where are checkpoints saved on AWS?**
-A: `s3://your-bucket/outputs/experiments/<name>_<timestamp>/checkpoints/`
+**Q: How do I disable AWS?**
+A: Set `execution_env: local` in `config.yaml`.

@@ -2,7 +2,7 @@
 # T-MoE Experiment Configuration
 # ============================================================================
 # Comprehensive configuration for T-MoE experiments
-# Supports both local (SLURM) and AWS execution environments
+# Supports both local and AWS execution environments
 #
 # Usage:
 #   python train.py --config config.yaml
@@ -179,17 +179,6 @@ compute:
     data_root: ./data
     output_root: ./outputs
     cache_dir: ./cache
-
-    # SLURM configuration (auto-generates SBATCH script)
-    slurm:
-      enabled: true
-      partition: csc420
-      gres: gpu:1
-      cpus_per_task: 4
-      mem: 32G
-      time: "3:00:00"
-      # Auto-generate logs based on experiment_name
-      auto_generate_script: true
 
   # ========================================
   # AWS EXECUTION (EC2 + S3)
