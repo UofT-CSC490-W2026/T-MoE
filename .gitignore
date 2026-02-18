@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# IDEs
+.idea/
+.vscode/
+.cadence/
+
+# Testing
+.pytest_cache/
+.ruff_cache/
+
+# Logging & Research
+wandb/
+outputs/
+logs/
+*.log
+runs/
+scripts/
+
+# System
+.DS_Store
+Thumbs.db
