@@ -69,3 +69,37 @@ class DeviceConfig(BaseConfig):
                 f"Invalid dtype: {self.dtype!r}. Valid options are: {list(dtype_map.keys())}"
             )
         return dtype_map[self.dtype]
+
+
+@dataclass
+class LoggingConfig(BaseConfig):
+    """Configuration for WandB and local logging."""
+
+    enabled: bool = True
+    project: Optional[str] = None
+    entity: Optional[str] = None
+    group: Optional[str] = None
+    tags: list = None
+    mode: str = "online"  # online, offline, disabled
+    log_model: bool = True
+    log_gradients: bool = False
+    log_interval: int = 10
+    notes: Optional[str] = None
+
+
+@dataclass
+class TrainingConfig(BaseConfig):
+    """Configuration for the training loop and optimizer."""
+
+    batch_size: int = 8
+    lr: float = 1.0e-3
+    steps: int = 1000
+    warmup_steps: int = 100
+    optimizer: str = "adamw"
+    weight_decay: float = 0.01
+    gradient_accumulation_steps: int = 1
+    clip_grad_norm: float = 1.0
+    use_amp: bool = True
+    save_interval: int = 500
+    eval_interval: int = 100
+    early_stopping_patience: Optional[int] = None

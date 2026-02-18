@@ -1,7 +1,8 @@
 """Utility functions for T-MoE."""
 
-from src.utils.checkpointing import CheckpointManager
+from src.utils.logging import initialize_wandb, finalize_wandb
 
 __all__ = [
-    "CheckpointManager",
+    "initialize_wandb",
+    "finalize_wandb",
 ]

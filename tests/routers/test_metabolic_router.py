@@ -218,9 +218,11 @@ class TestFatigueDynamics:
 
         initial_fatigue = router.fatigue.clone()
 
-        # Run forward pass multiple times
+        # Run forward pass multiple times (simulating training steps)
         for _ in range(10):
             router(test_input, return_metrics=False)
+            # Call step() to apply deferred fatigue update (as required after optimizer.step())
+            router.step()
 
         # Some experts should have accumulated fatigue
         assert (router.fatigue > initial_fatigue).any()
@@ -344,15 +346,17 @@ class TestForwardPass:
         assert 1.0 <= metrics["effective_experts"] <= router.num_experts
 
     def test_forward_step_increment(self, zero_fatigue_router, test_input):
-        """Verify global step counter increments."""
+        """Verify global step counter increments when step() is called."""
         router = zero_fatigue_router
 
         assert router.num_steps.item() == 0
 
         router(test_input, return_metrics=False)
+        router.step()
         assert router.num_steps.item() == 1
 
         router(test_input, return_metrics=False)
+        router.step()
         assert router.num_steps.item() == 2
 
     @pytest.mark.parametrize(
@@ -383,6 +387,7 @@ class TestStateManagement:
         # Accumulate some fatigue
         for _ in range(5):
             router(test_input, return_metrics=False)
+            router.step()
 
         assert router.num_steps.item() > 0
         assert (router.fatigue > 0).any()
@@ -398,6 +403,7 @@ class TestStateManagement:
         """Verify get_state returns comprehensive state dict."""
         router.train()
         router(test_input, return_metrics=False)
+        router.step()
 
         state = router.get_state()
 
@@ -500,8 +506,8 @@ class TestDeviceCompatibility:
 
         weights, indices, _ = router(x, return_metrics=True)
 
-        assert weights.device == device
-        assert indices.device == device
+        assert weights.device == x.device
+        assert indices.device == x.device
 
     def test_cpu_compatibility(self, standard_config):
         """Test router works on CPU."""
@@ -511,8 +517,8 @@ class TestDeviceCompatibility:
 
         weights, indices, _ = router(x, return_metrics=True)
 
-        assert weights.device == device
-        assert indices.device == device
+        assert weights.device == x.device
+        assert indices.device == x.device
 
 
 class TestRouterRefinements:
@@ -527,6 +533,7 @@ class TestRouterRefinements:
 
         # First routing step
         router(test_input)
+        router.step()
 
         # Age should be calculated as (num_steps + 1 - birth_step)
         # At step 0, age should be 1, not 0

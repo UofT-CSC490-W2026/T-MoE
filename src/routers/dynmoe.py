@@ -41,7 +41,7 @@ class DynMoERouter(BaseRouter):
         self._last_weights: Optional[torch.Tensor] = None
 
     def forward(
-        self, x: torch.Tensor, return_metrics: bool = False
+        self, x: torch.Tensor, return_metrics: bool = False, **kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[Dict[str, Any]]]:
         # logits: [batch, seq, num_experts]
         logits = self.gate(x) / self.temperature
@@ -60,9 +60,9 @@ class DynMoERouter(BaseRouter):
         weights = weights / denom
 
         if self.training and self.use_aux_loss:
-            self._last_probs = probs.detach()
-            self._last_indices = topk_indices.detach()
-            self._last_weights = weights.detach()
+            self._last_probs = probs
+            self._last_indices = topk_indices
+            self._last_weights = weights
 
         metrics = None
         if return_metrics:
@@ -102,3 +102,9 @@ class DynMoERouter(BaseRouter):
 
     def get_state(self) -> Dict[str, Any]:
         return {}
+
+    def clear_aux_state(self) -> None:
+        """Clear temporary tensors to release memory and avoid stale grads."""
+        self._last_probs = None
+        self._last_indices = None
+        self._last_weights = None

@@ -1,13 +1,11 @@
-from typing import Optional, Type, Dict, Any, Tuple
+from typing import Optional, Type, Dict, Any, Tuple, Union
 
 import torch
 from torch import nn
 
-from src.core import RouterRegistry
 from src.experts import BaseExpert
 from src.layers import BaseMoELayer
-from src.routers import BaseRouter
-from configs.router import MetabolicRouterConfig, StandardRouterConfig
+from src.routers import BaseRouter, create_router
 
 
 class TMoELayer(BaseMoELayer):
@@ -79,41 +77,36 @@ class TMoELayer(BaseMoELayer):
         hidden_dim: int,
         num_experts: int,
         top_k: int,
-        router_type: str,
+        router_type: Optional[str],
         router_kwargs: Dict[str, Any],
-    ) -> BaseRouter:
+    ) -> Optional[BaseRouter]:
         """
-        Create router from registry.
+        Create router using the factory.
 
         Args:
             hidden_dim: Dimension of input embeddings
             num_experts: Number of experts to route to
             top_k: Number of top experts per token
-            router_type: Type of router ("metabolic" or "standard")
+            router_type: Type of router ("metabolic" or "standard"), or None to skip
             router_kwargs: Additional router configuration
 
         Returns:
-            Configured router instance
+            Configured router instance, or None if router_type is None
 
         Raises:
             ValueError: If router_type is not recognized
         """
-        config_classes = {
-            "metabolic": MetabolicRouterConfig,
-            "standard": StandardRouterConfig,
-        }
+        # Allow external router injection by passing router_type=None
+        if router_type is None:
+            return None
 
-        if router_type not in config_classes:
-            raise ValueError(
-                f"Unknown router type: {router_type}. Available: {list(config_classes.keys())}"
-            )
-
-        config = config_classes[router_type](
-            hidden_dim=hidden_dim, num_experts=num_experts, top_k=top_k, **router_kwargs
+        return create_router(
+            router_type=router_type,
+            hidden_dim=hidden_dim,
+            num_experts=num_experts,
+            top_k=top_k,
+            **router_kwargs,
         )
-
-        router_cls = RouterRegistry.get(router_type)
-        return router_cls(config)
 
     def set_experts(self, experts: nn.ModuleList) -> None:
         """
@@ -129,25 +122,42 @@ class TMoELayer(BaseMoELayer):
             raise ValueError(f"Expected {self.num_experts} experts, got {len(experts)}")
         self.experts = experts
 
-    def forward(
-        self, x: torch.Tensor, return_metrics: bool = False, **router_kwargs
-    ) -> Tuple[torch.Tensor, Optional[Dict[str, Any]]]:
+    def step(self) -> None:
         """
-        Forward pass through the TMoE layer.
+        Delegate to router's step method for convenience.
+
+        This allows calling layer.step() instead of layer.router.step(),
+        which is more ergonomic when managing multiple MoE layers.
+        """
+        if hasattr(self.router, "step"):
+            self.router.step()
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        return_metrics: bool = False,
+        record_usage: bool = True,
+        **kwargs,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[Dict[str, Any]]]]:
+        """
+        Forward pass through the MoE layer.
+
+        Compatible with both standalone usage and GPT-Neo MLP replacement.
 
         Args:
-            x: Input tensor [batch_size, seq_len, hidden_dim]
+            hidden_states: Input tensor [batch, seq, hidden_dim]
             return_metrics: Whether to return routing metrics
-            **router_kwargs: Additional arguments passed to router (e.g., noise_std)
+            record_usage: Whether to record usage for fatigue updates. Set to False
+                         when collecting metrics from a separate forward pass.
+            **kwargs: Additional arguments (for compatibility with transformer blocks)
 
         Returns:
-            output: Processed tensor [batch_size, seq_len, hidden_dim]
-            metrics: Optional routing metrics dict (None if return_metrics=False)
-
-        Raises:
-            RuntimeError: If experts are not set
-            ValueError: If input shape is invalid
+            If return_metrics=False: output tensor [batch, seq, hidden_dim]
+                (HuggingFace compatible - GPT-Neo block expects tensor)
+            If return_metrics=True: tuple of (output, metrics dict)
         """
+        x = hidden_states  # Rename for internal consistency
+
         # Validate inputs
         if self.experts is None:
             raise RuntimeError(
@@ -165,21 +175,50 @@ class TMoELayer(BaseMoELayer):
                 f"Input hidden_dim mismatch: expected {self.hidden_dim}, got {x.shape[-1]}"
             )
 
-        # Get routing weights and indices
+        batch_size, seq_len, hidden_dim = x.shape
+
+        # Get routing weights and indices (router expects 3D input)
         weights, indices, metrics = self.router(
-            x, return_metrics=return_metrics, **router_kwargs
+            x, return_metrics=return_metrics, record_usage=record_usage, **kwargs
         )
         # weights: [batch, seq, top_k]
         # indices: [batch, seq, top_k]
 
+        # Flatten to 2D for efficient expert processing
+        x_flat = x.reshape(-1, hidden_dim)  # [batch*seq, hidden]
+        weights_flat = weights.reshape(-1, self.top_k)  # [batch*seq, top_k]
+        indices_flat = indices.reshape(-1, self.top_k)  # [batch*seq, top_k]
+
         # Process through experts (use parallel or sequential implementation)
         if self.use_parallel:
-            output = self._forward_experts_parallel(x, weights, indices)
+            expert_output_flat = self._forward_experts_parallel(
+                x_flat, weights_flat, indices_flat
+            )
         else:
-            output = self._forward_experts(x, weights, indices)
+            expert_output_flat = self._forward_experts(
+                x_flat, weights_flat, indices_flat
+            )
+        # expert_output_flat: [batch*seq, hidden]
 
-        # Return output and metrics (following base class contract)
-        return output, metrics if return_metrics else None
+        # Reshape back to 3D: [batch, seq, hidden]
+        output = expert_output_flat.reshape(batch_size, seq_len, hidden_dim)
+
+        # Collect metrics if requested
+        result_metrics = None
+        if return_metrics and metrics is not None:
+            result_metrics = {
+                "weights": weights,  # Already [batch, seq, top_k]
+                "indices": indices,  # Already [batch, seq, top_k]
+                **metrics,  # Add router-specific metrics
+            }
+
+        # Return type depends on return_metrics flag:
+        # - return_metrics=True: return (output, metrics) tuple for explicit metric collection
+        # - return_metrics=False: return just output tensor for HuggingFace compatibility
+        #   (GPT-Neo block expects MLP to return a tensor, not a tuple)
+        if return_metrics:
+            return output, result_metrics
+        return output
 
     def _forward_experts(
         self,
@@ -191,27 +230,23 @@ class TMoELayer(BaseMoELayer):
         Route tokens through selected experts and aggregate outputs.
         This implementation uses a loop over experts for clarity.
         For large-scale production, consider batched scatter/gather operations.
+
         Args:
-            x: Input [batch, seq, hidden]
-            weights: Routing weights [batch, seq, top_k]
-            indices: Expert indices [batch, seq, top_k]
+            x: Flattened input [num_tokens, hidden]
+            weights: Routing weights [num_tokens, top_k]
+            indices: Expert indices [num_tokens, top_k]
 
         Returns:
-            Aggregated output [batch, seq, hidden]
+            Aggregated output [num_tokens, hidden]
         """
-        batch_size, seq_len, h_dim = x.shape
-
-        # Flatten batch and sequence dimensions for easier indexing
-        x_flat = x.reshape(-1, h_dim)  # [batch*seq, hidden]
-        weights_flat = weights.reshape(-1, self.top_k)  # [batch*seq, top_k]
-        indices_flat = indices.reshape(-1, self.top_k)  # [batch*seq, top_k]
-        output_flat = torch.zeros_like(x_flat)
+        num_tokens, h_dim = x.shape
+        output = torch.zeros_like(x)
 
         # Process each expert
         for expert_idx in range(self.num_experts):
             # Find which tokens are routed to this expert (for any of the top_k slots)
-            # mask: [batch*seq, top_k] - True where this expert is selected
-            expert_mask = indices_flat == expert_idx
+            # mask: [num_tokens, top_k] - True where this expert is selected
+            expert_mask = indices == expert_idx
 
             if not expert_mask.any():
                 continue
@@ -224,7 +259,7 @@ class TMoELayer(BaseMoELayer):
             unique_token_indices, inverse_indices = torch.unique(
                 token_indices, return_inverse=True
             )
-            expert_input = x_flat[unique_token_indices]  # [num_unique_tokens, hidden]
+            expert_input = x[unique_token_indices]  # [num_unique_tokens, hidden]
 
             # Process through expert
             expert_output = self.experts[expert_idx](
@@ -237,16 +272,13 @@ class TMoELayer(BaseMoELayer):
             ]  # [num_tokens, hidden]
 
             # Get weights for these tokens at these slots
-            expert_weights = weights_flat[token_indices, slot_indices]  # [num_tokens]
+            expert_weights = weights[token_indices, slot_indices]  # [num_tokens]
 
             # Weight the outputs
             weighted_output = expert_output_expanded * expert_weights.unsqueeze(-1)
 
             # Accumulate into output
-            output_flat.index_add_(0, token_indices, weighted_output)
-
-        # Reshape back
-        output = output_flat.reshape(batch_size, seq_len, h_dim)
+            output.index_add_(0, token_indices, weighted_output)
 
         return output
 
@@ -266,31 +298,25 @@ class TMoELayer(BaseMoELayer):
         4. Aggregating outputs via reshape and sum operations
 
         This is more efficient than _forward_experts for large num_experts
-        and production use cases.
+        and production use cases, computing only the required expert outputs.
 
         Args:
-            x: Input [batch, seq, hidden]
-            weights: Routing weights [batch, seq, top_k]
-            indices: Expert indices [batch, seq, top_k]
+            x: Flattened input [num_tokens, hidden]
+            weights: Routing weights [num_tokens, top_k]
+            indices: Expert indices [num_tokens, top_k]
 
         Returns:
-            Aggregated output [batch, seq, hidden]
+            Aggregated output [num_tokens, hidden]
         """
-        batch_size, seq_len, h_dim = x.shape
-        num_tokens = batch_size * seq_len
-
-        # Flatten batch and sequence dimensions
-        x_flat = x.reshape(-1, h_dim)  # [num_tokens, hidden]
-        weights_flat = weights.reshape(-1, self.top_k)  # [num_tokens, top_k]
-        indices_flat = indices.reshape(-1, self.top_k)  # [num_tokens, top_k]
+        num_tokens, h_dim = x.shape
 
         # Expand tokens for each top_k selection
         # [num_tokens, top_k, hidden] -> [num_tokens * top_k, hidden]
-        x_expanded = x_flat.unsqueeze(1).expand(-1, self.top_k, -1).reshape(-1, h_dim)
+        x_expanded = x.unsqueeze(1).expand(-1, self.top_k, -1).reshape(-1, h_dim)
 
         # Flatten indices and weights: [num_tokens * top_k]
-        flat_indices = indices_flat.view(-1)
-        flat_weights = weights_flat.view(-1)
+        flat_indices = indices.view(-1)
+        flat_weights = weights.view(-1)
 
         # Sort by expert index for coalesced memory access
         sorted_expert_indices, sort_order = torch.sort(flat_indices)
@@ -339,10 +365,7 @@ class TMoELayer(BaseMoELayer):
 
         # Reshape and sum over top_k dimension
         restored_outputs = restored_outputs.view(num_tokens, self.top_k, h_dim)
-        output_flat = restored_outputs.sum(dim=1)  # [num_tokens, hidden]
-
-        # Reshape back to original batch dimensions
-        output = output_flat.reshape(batch_size, seq_len, h_dim)
+        output = restored_outputs.sum(dim=1)  # [num_tokens, hidden]
 
         return output
 

@@ -21,7 +21,7 @@ class BaseRouter(nn.Module, ABC):
 
     @abstractmethod
     def forward(
-        self, x: torch.Tensor, return_metrics: bool = False
+        self, x: torch.Tensor, return_metrics: bool = False, **kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[Dict[str, Any]]]:
         """
         Route inputs to experts.
@@ -48,6 +48,10 @@ class BaseRouter(nn.Module, ABC):
 
     def reset_state(self) -> None:
         """Reset any internal state (e.g., fatigue buffers)."""
+        pass
+
+    def clear_aux_state(self) -> None:
+        """Clear temporary tensors used for auxiliary loss computation."""
         pass
 
     def get_state(self) -> Dict[str, Any]:

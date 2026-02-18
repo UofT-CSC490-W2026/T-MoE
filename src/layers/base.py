@@ -1,5 +1,3 @@
-"""Base abstract class for MoE layers."""
-
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional, Dict, Any
 
