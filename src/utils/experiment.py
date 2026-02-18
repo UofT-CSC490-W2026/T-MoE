@@ -15,7 +15,7 @@ from configs.dataset import DatasetConfig
 from src.core import ModelRegistry, ExpertRegistry
 from src.layers.tmoe import TMoELayer
 from src.experts import LoRAConfig
-from src.types import RouterType
+from src.types import RouterType, ExecutionEnv
 
 # Import models to trigger registry decorators
 from src.models import gpt_neo  # noqa: F401
@@ -29,7 +29,7 @@ def setup_experiment(config: DictConfig) -> str:
     Setup experiment directory structure based on execution environment.
     """
     # Get output root based on execution environment
-    if config.execution_env == "aws":
+    if config.execution_env == ExecutionEnv.AWS:
         output_root = config.compute.aws.output_root
     else:
         output_root = config.compute.local.output_root
@@ -178,7 +178,7 @@ def _create_router_from_hydra_config(config: DictConfig, hidden_dim: int):
     }
 
     # Add metabolic-specific parameters if applicable
-    if router_type == "metabolic" and hasattr(config.router, "metabolic"):
+    if router_type == RouterType.METABOLIC and hasattr(config.router, "metabolic"):
         router_kwargs.update(
             {
                 "lambda_metabolic": config.router.metabolic.lambda_metabolic,
@@ -233,7 +233,7 @@ def build_dataloaders(config: DictConfig) -> Tuple[DataLoader, Optional[DataLoad
         tokenizer.pad_token = tokenizer.eos_token
 
     # Determine cache directory based on execution environment
-    if config.execution_env == "aws":
+    if config.execution_env == ExecutionEnv.AWS:
         cache_dir = config.compute.aws.cache_dir
         # TODO: Add S3 integration here when infra is ready
         os.makedirs(cache_dir, exist_ok=True)

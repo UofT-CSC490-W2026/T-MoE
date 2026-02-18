@@ -6,6 +6,7 @@ from torch import nn
 from src.experts import BaseExpert
 from src.layers import BaseMoELayer
 from src.routers import BaseRouter, create_router
+from src.types import RouterType
 
 
 class TMoELayer(BaseMoELayer):
@@ -29,7 +30,7 @@ class TMoELayer(BaseMoELayer):
         num_experts: int = 8,
         expert_class: Optional[Type[BaseExpert]] = None,
         expert_kwargs: Optional[Dict[str, Any]] = None,
-        router_type: str = "metabolic",
+        router_type: RouterType = RouterType.METABOLIC,
         router_kwargs: Optional[Dict[str, Any]] = None,
         top_k: int = 2,
         use_parallel: bool = False,
@@ -77,7 +78,7 @@ class TMoELayer(BaseMoELayer):
         hidden_dim: int,
         num_experts: int,
         top_k: int,
-        router_type: Optional[str],
+        router_type: Optional[RouterType],
         router_kwargs: Dict[str, Any],
     ) -> Optional[BaseRouter]:
         """

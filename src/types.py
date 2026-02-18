@@ -28,7 +28,6 @@ class ExpertType(str, Enum):
 
     GPTNEO_LORA = "gpt_neo_lora"
     # Future expert types can be added here
-    # GPT2_LORA = "gpt2_lora"
     # LLAMA_LORA = "llama_lora"
 
 
@@ -36,5 +35,4 @@ class ModelType(str, Enum):
     """Supported model architectures."""
 
     GPTNEO = "gpt_neo"
-    GPT2 = "gpt2"
     LLAMA = "llama"

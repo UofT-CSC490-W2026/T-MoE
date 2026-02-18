@@ -5,6 +5,8 @@ from typing import Dict, Any, Optional
 import torch
 from torch import nn
 
+from src.types import ExecutionEnv
+
 
 class CheckpointManager:
     """
@@ -18,7 +20,7 @@ class CheckpointManager:
         checkpoint_dir: str,
         keep_last_n: int = 3,
         save_best: bool = True,
-        execution_env: str = "local",
+        execution_env: ExecutionEnv = ExecutionEnv.LOCAL,
     ):
         """
         Initialize checkpoint manager.
@@ -27,7 +29,7 @@ class CheckpointManager:
             checkpoint_dir: Directory to save checkpoints
             keep_last_n: Number of most recent checkpoints to keep
             save_best: Whether to save best model separately
-            execution_env: 'local' or 'aws'
+            execution_env: ExecutionEnv.LOCAL or ExecutionEnv.AWS
         """
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)

@@ -12,12 +12,13 @@ from typing import Any
 from configs.router import MetabolicRouterConfig, StandardRouterConfig
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
+from src.types import RouterType
 
 
 # Mapping of router type strings to their config classes
 ROUTER_CONFIG_CLASSES = {
-    "metabolic": MetabolicRouterConfig,
-    "standard": StandardRouterConfig,
+    RouterType.METABOLIC: MetabolicRouterConfig,
+    RouterType.STANDARD: StandardRouterConfig,
 }
 
 
@@ -79,7 +80,7 @@ def create_router_from_config(config: Any) -> BaseRouter:
     Returns:
         Configured router instance
     """
-    router_type = getattr(config, "router_type", "metabolic")
+    router_type = getattr(config, "router_type", RouterType.METABOLIC)
     router_cls = RouterRegistry.get(router_type)
     return router_cls(config)
 
