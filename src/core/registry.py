@@ -58,3 +58,4 @@ class Registry:
 
 
 RouterRegistry = Registry("routers")
+ExpertRegistry = Registry("experts")
