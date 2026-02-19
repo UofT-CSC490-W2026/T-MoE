@@ -60,11 +60,20 @@ class MetabolicRouter(BaseRouter):
             self.prototypes.weight
         )  # TODO can we use Kaiming initialization instead?
 
-        # Apply weight normalization for automatic L2 normalization
+        # Normalize prototypes for cosine similarity if enabled (this is essential for cosine gating)
         if self.normalize_weights:
             self.prototypes = nn.utils.parametrizations.weight_norm(
                 self.prototypes, name="weight", dim=0
             )
+            with torch.no_grad():
+                for name, param in self.prototypes.named_parameters():
+                    if "original0" in name:  # original0 == magnitude g
+                        # Verify it's the right shape: [num_experts] or [num_experts, 1]
+                        assert param.shape[0] == self.num_experts, (
+                            f"Expected magnitude shape [{self.num_experts}], got {param.shape}"
+                        )
+                        param.fill_(1.0)
+                        break
 
         # Exploration Parameters
         self.noise_std = config.noise_std
@@ -97,9 +106,9 @@ class MetabolicRouter(BaseRouter):
         """
         Compute alignment between input and expert prototypes.
         """
-        # Normalize input for cosine similarity
+        # Normalize input for cosine similarity # TODO: might need to add clamping to prevent NaNs from zero vectors
         if self.normalize_inputs:
-            x = F.normalize(x, p=2, dim=-1)
+            x = F.normalize(x, p=2, dim=-1, eps=1e-8)
 
         # Compute alignment (weights are automatically normalized by weight_norm if enabled in __init__)
         # which is effectively: g * cosine_similarity(x, v)
