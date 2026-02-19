@@ -10,7 +10,7 @@ from src.layers.tmoe import TMoELayer
 from src.experts.gpt_neo import GPTNeoLoRAExpert
 from src.experts.lora_mlp import LoRAConfig
 from src.routers import create_router
-from src.types import ModelType
+from src.project_types import ModelType
 
 
 @ModelRegistry.register(ModelType.GPTNEO.value)

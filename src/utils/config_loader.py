@@ -4,7 +4,7 @@ from typing import List
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
-from src.types import EXPERIMENTS_DIR
+from src.project_types import EXPERIMENTS_DIR
 
 
 def load_experiment_config(config_name: str, overrides: List[str]) -> DictConfig:

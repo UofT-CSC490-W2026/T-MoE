@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 import torch
 from torch import nn
 
-from src.types import ExecutionEnv
+from src.project_types import ExecutionEnv
 
 
 class CheckpointManager:

@@ -10,12 +10,13 @@ T-MoE replaces traditional auxiliary load-balancing losses with biological-inspi
 
 ### Equation 1: Homeostatic Routing Potential
 The potential $z_i$ of an expert $i$ to be selected for an input $x$ at time $t$:
-$$z_i(x,t)= \cos(x, W_i) - \lambda \cdot \mathrm{SoftSign}\!\left(F_i(t)\right) - \mu \cdot \mathrm{Dist}(i)$$
+$$z_i(x,t)= g_i \cdot \cos(x, W_i) - \lambda \cdot \mathrm{SoftSign}\!\left(F_i(t)\right) - \mu \cdot \mathrm{Dist}(i)$$
 
 where:
 $$\mathrm{SoftSign}(x) = \frac{x}{1 + |x|}$$
 
-- $\cos(x, W_i)$: Semantic alignment (cosine similarity with expert prototype $W_i$).
+- $g_i$: Learnable expert importance scale (magnitude from weight norm).
+- $\cos(x, W_i)$: Semantic alignment (cosine similarity with expert direction $W_i$).
 - $\lambda F_i(t)$: Metabolic tax (fatigue penalty).
 - $\mu \cdot \mathrm{Dist}(i)$: Silicon Tax (distance penalty).
 

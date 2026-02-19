@@ -4,7 +4,7 @@ from torch import nn
 from src.core import ExpertRegistry
 from src.experts.lora_mlp import LoRAMLPExpert, LoRAConfig
 from src.experts.lora_layer import LoRALayer
-from src.types import ExpertType
+from src.project_types import ExpertType
 
 
 @ExpertRegistry.register(ExpertType.GPTNEO_LORA.value)

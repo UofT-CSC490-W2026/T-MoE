@@ -6,7 +6,7 @@ from torch import nn
 from src.experts import BaseExpert
 from src.layers import BaseMoELayer
 from src.routers import BaseRouter, create_router
-from src.types import RouterType
+from src.project_types import RouterType
 
 
 class TMoELayer(BaseMoELayer):

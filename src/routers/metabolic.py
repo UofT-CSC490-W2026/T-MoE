@@ -9,7 +9,7 @@ from configs import MetabolicRouterConfig
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
 from src.metrics import RouterMetricsTracker
-from src.types import RouterType
+from src.project_types import RouterType
 
 # Constants
 MIN_TEMPERATURE = 1e-3  # Minimum temperature to prevent division by zero in softmax
@@ -63,7 +63,7 @@ class MetabolicRouter(BaseRouter):
         # Apply weight normalization for automatic L2 normalization
         if self.normalize_weights:
             self.prototypes = nn.utils.parametrizations.weight_norm(
-                self.prototypes, name="weight", dim=1
+                self.prototypes, name="weight", dim=0
             )
 
         # Exploration Parameters
@@ -102,6 +102,7 @@ class MetabolicRouter(BaseRouter):
             x = F.normalize(x, p=2, dim=-1)
 
         # Compute alignment (weights are automatically normalized by weight_norm if enabled in __init__)
+        # which is effectively: g * cosine_similarity(x, v)
         alignment = self.prototypes(x)
 
         return alignment

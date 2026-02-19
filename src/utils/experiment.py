@@ -15,7 +15,7 @@ from configs.dataset import DatasetConfig
 from src.core import ModelRegistry, ExpertRegistry
 from src.layers.tmoe import TMoELayer
 from src.experts import LoRAConfig
-from src.types import RouterType, ExecutionEnv
+from src.project_types import RouterType, ExecutionEnv
 
 # Import models to trigger registry decorators
 from src.models import gpt_neo  # noqa: F401

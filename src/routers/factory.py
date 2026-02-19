@@ -12,7 +12,7 @@ from typing import Any
 from configs.router import MetabolicRouterConfig, StandardRouterConfig
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
-from src.types import RouterType
+from src.project_types import RouterType
 
 
 # Mapping of router type strings to their config classes

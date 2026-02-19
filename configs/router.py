@@ -45,13 +45,13 @@ class MetabolicRouterConfig(RouterConfig):
     router_type: str = "metabolic"
 
     # Equation 1: Heavy-Tailed & Hardware-Aware Potential
-    # z_i(x,t) = cos(x, W_i) - λ·SoftSign(F_i(t)) - μ·Dist(i)
+    # z_i(x,t) = g·cos(x, W_i) - λ·SoftSign(F_i(t)) - μ·Dist(i)
     lambda_metabolic: float = 0.1  # λ: Metabolic pressure coefficient
     mu_silicon: float = 0.0  # μ: Silicon Tax coefficient (hardware distance penalty) should be 0 for T-MoE v1.
 
     # Alignment function configuration
     normalize_inputs: bool = True  # Enable cosine similarity via input L2 normalization
-    normalize_weights: bool = True  # Normalize expert prototypes for cosine similarity
+    normalize_weights: bool = True  # Normalize expert prototypes for cosine similarity (this is essential for cosine gating)
 
     # Equation 2: Age-Aware Fatigue Dynamics
     # F_i(t+1) = (1-γ)F_i(t) + η_i(t)·U_i(t)
