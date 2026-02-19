@@ -8,9 +8,6 @@ from torch import nn
 from src.experts.base import BaseExpert
 
 
-# ── Config ──────────────────────────────────────────────────────────────────
-
-
 @dataclass
 class LoRAConfig:
     """Configuration shared by all LoRA layers and experts."""
@@ -29,9 +26,6 @@ class LoRAConfig:
     @property
     def scaling(self) -> float:
         return self.alpha / self.rank
-
-
-# ── Single LoRA Layer ───────────────────────────────────────────────────────
 
 
 class LoRALayer(nn.Module):
@@ -75,8 +69,6 @@ class LoRALayer(nn.Module):
         self.base_weight: Optional[nn.Parameter] = None
         self.base_bias: Optional[nn.Parameter] = None
 
-    # ── loading ──
-
     def load_base_weight(
         self,
         weight: torch.Tensor,
@@ -97,8 +89,6 @@ class LoRALayer(nn.Module):
         if bias is not None:
             self.base_bias = nn.Parameter(bias.detach().clone(), requires_grad=False)
 
-    # ── forward ──
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """``base(x) + lora_delta(x)`` — works with any leading dims."""
         # Base path (frozen)
@@ -112,9 +102,6 @@ class LoRALayer(nn.Module):
         # LoRA path (trainable)
         lora_out = self.lora_B(self.lora_dropout(self.lora_A(x)))
         return base_out + lora_out * self.scaling
-
-
-# ── Shared LoRA Layer ───────────────────────────────────────────────────────
 
 
 class SharedLoRALayer(nn.Module):
@@ -155,9 +142,6 @@ class SharedLoRALayer(nn.Module):
         base_out = nn.functional.linear(x, self.shared_weight, self.shared_bias)
         lora_out = self.lora_B(self.lora_dropout(self.lora_A(x)))
         return base_out + lora_out * self.scaling
-
-
-# ── Abstract MLP Expert ─────────────────────────────────────────────────────
 
 
 class LoRAMLPExpert(BaseExpert):

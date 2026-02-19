@@ -61,6 +61,9 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
             init_scale=config.init_scale,
         )
         self.act = _get_activation()
+        # NOTE: GPT-Neo's original MLP does not include output dropout.
+        # This is an intentional regularization addition for LoRA fine-tuning.
+        # With dropout=0.0 (default) this is a no-op.
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

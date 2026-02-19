@@ -35,7 +35,19 @@ class LoRAMoELayer(nn.Module):
         self.router = router
         self.expert_pool = ExpertPool(lora_config, num_experts, expert_type)
 
-    # ── forward ──
+    @classmethod
+    def from_pretrained_mlp(
+        cls,
+        mlp: nn.Module,
+        router: BaseRouter,
+        lora_config: LoRAConfig,
+        num_experts: int = 4,
+        expert_type: str = "gpt_neo_lora",
+    ) -> "LoRAMoELayer":
+        """Factory that builds the layer and loads base weights in one step."""
+        layer = cls(mlp, router, lora_config, num_experts, expert_type)
+        layer.expert_pool.load_from_mlp(mlp)
+        return layer
 
     def forward(
         self,
