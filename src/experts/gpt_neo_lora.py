@@ -23,6 +23,16 @@ def _extract_linear_weight(
     return w, bias
 
 
+def _get_activation() -> nn.Module:
+    """Return GPT-Neo's NewGELU if available, else fallback to approx tanh GELU."""
+    try:
+        from transformers.activations import NewGELUActivation
+
+        return NewGELUActivation()
+    except ImportError:
+        return nn.GELU(approximate="tanh")
+
+
 @ExpertRegistry.register("gpt_neo_lora")
 class GPTNeoLoRAMLP(LoRAMLPExpert):
     """
@@ -50,7 +60,7 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
             dropout=config.dropout,
             init_scale=config.init_scale,
         )
-        self.act = nn.GELU(approximate="tanh")
+        self.act = _get_activation()
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -66,10 +76,16 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
         fc_layer = getattr(mlp, "c_fc", None) or getattr(mlp, "fc_in", None)
         proj_layer = getattr(mlp, "c_proj", None) or getattr(mlp, "fc_out", None)
 
-        if fc_layer is not None:
-            w, b = _extract_linear_weight(fc_layer)
-            self.c_fc.load_base_weight(w, b)
+        if fc_layer is None or proj_layer is None:
+            raise ValueError(
+                f"GPT-Neo MLP missing c_fc/c_proj (or fc_in/fc_out). "
+                f"Got attributes: {[k for k in vars(mlp) if not k.startswith('_')]}"
+            )
 
-        if proj_layer is not None:
-            w, b = _extract_linear_weight(proj_layer)
-            self.c_proj.load_base_weight(w, b)
+        w, b = _extract_linear_weight(fc_layer)
+        self.c_fc.load_base_weight(w, b)
+
+        w, b = _extract_linear_weight(proj_layer)
+        self.c_proj.load_base_weight(w, b)
+
+        self.freeze_base_weights()

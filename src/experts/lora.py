@@ -114,6 +114,49 @@ class LoRALayer(nn.Module):
         return base_out + lora_out * self.scaling
 
 
+# ── Shared LoRA Layer ───────────────────────────────────────────────────────
+
+
+class SharedLoRALayer(nn.Module):
+    """
+    LoRA layer referencing shared frozen weights — no per-expert cloning.
+    Use for large models (Llama 3B+) to avoid OOM.
+
+    Math: output = base(x) + (B @ A @ x) * scaling
+    shared_weight is a buffer: moves with .to(device), excluded from optimizer.
+    """
+
+    def __init__(
+        self,
+        shared_weight: torch.Tensor,  # [out, in] — Linear convention
+        shared_bias: Optional[torch.Tensor],
+        rank: int,
+        alpha: int,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+        out_features, in_features = shared_weight.shape
+        self.scaling = alpha / rank
+
+        self.register_buffer("shared_weight", shared_weight.detach())
+        self.register_buffer(
+            "shared_bias",
+            shared_bias.detach() if shared_bias is not None else None,
+        )
+
+        self.lora_A = nn.Linear(in_features, rank, bias=False)
+        self.lora_B = nn.Linear(rank, out_features, bias=False)
+        self.lora_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+
+        nn.init.kaiming_uniform_(self.lora_A.weight, a=0.01)
+        nn.init.zeros_(self.lora_B.weight)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        base_out = nn.functional.linear(x, self.shared_weight, self.shared_bias)
+        lora_out = self.lora_B(self.lora_dropout(self.lora_A(x)))
+        return base_out + lora_out * self.scaling
+
+
 # ── Abstract MLP Expert ─────────────────────────────────────────────────────
 
 

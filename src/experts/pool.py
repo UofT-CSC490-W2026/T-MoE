@@ -30,6 +30,20 @@ class ExpertPool(nn.Module):
     def __getitem__(self, idx: int) -> LoRAMLPExpert:
         return self.experts[idx]
 
+    # ── delegation ──
+
+    def load_from_mlp(self, mlp: nn.Module) -> None:
+        """Load frozen base weights into all experts from the same pretrained MLP."""
+        for expert in self.experts:
+            if hasattr(expert, "load_from_mlp"):
+                expert.load_from_mlp(mlp)
+
+    def freeze_base_weights(self) -> None:
+        """Ensure all base weights across all experts are frozen."""
+        for expert in self.experts:
+            if hasattr(expert, "freeze_base_weights"):
+                expert.freeze_base_weights()
+
     # ── checkpoint helpers ──
 
     def save_expert(self, idx: int, path: str) -> None:

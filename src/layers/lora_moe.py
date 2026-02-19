@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Any, Dict, Tuple, Union
 
 import torch
 from torch import nn
@@ -41,15 +41,17 @@ class LoRAMoELayer(nn.Module):
         self,
         x: torch.Tensor,
         return_metrics: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[Dict[str, Any]]]:
+        record_usage: bool = True,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, Any]]]:
         """
         Args:
             x: ``[batch, seq, hidden]``
             return_metrics: pass routing diagnostics back
+            record_usage: forwarded to the router for fatigue tracking
 
         Returns:
-            output:  ``[batch, seq, hidden]``
-            metrics: routing metrics dict (or ``None``)
+            If return_metrics is True: ``(output, metrics)``
+            Otherwise: plain ``output`` tensor (HuggingFace compatible)
         """
         batch, seq, hidden = x.shape
 
@@ -60,18 +62,24 @@ class LoRAMoELayer(nn.Module):
         # 2. Routing
         # weights : [batch, seq, top_k]
         # indices : [batch, seq, top_k]  (values in 0 … num_experts-1)
-        weights, indices, metrics = self.router(x, return_metrics=return_metrics)
+        import inspect
 
-        # 3. Expert dispatch — loop over *active* experts only
+        router_params = inspect.signature(self.router.forward).parameters
+        router_kwargs = {"return_metrics": return_metrics}
+        if "record_usage" in router_params:
+            router_kwargs["record_usage"] = record_usage
+        weights, indices, metrics = self.router(x, **router_kwargs)
+
+        # 3. Expert dispatch — loop over all experts, skip inactive ones
         x_flat = x.view(-1, hidden)  # [N, H]
         w_flat = weights.view(-1, weights.shape[-1])  # [N, K]
         idx_flat = indices.view(-1, indices.shape[-1])  # [N, K]
         lora_delta = torch.zeros_like(x_flat)  # accumulator
 
-        for eid in idx_flat.unique().tolist():
-            expert = self.expert_pool[eid]
+        for expert_idx in range(self.expert_pool.num_experts):
+            expert = self.expert_pool[expert_idx]
             # mask: True wherever this expert was selected  [N, K]
-            mask = idx_flat == eid
+            mask = idx_flat == expert_idx  # stays on GPU, no .tolist() sync
             # token indices that route to this expert (any top-k slot)
             token_ids = mask.any(dim=1)
             if not token_ids.any():
@@ -81,7 +89,6 @@ class LoRAMoELayer(nn.Module):
             delta = expert(x_flat[token_ids])  # [n, H]
 
             # Sum the routing weights across the K slots for this expert
-            # (a token might select the same expert in >1 slot, rare but valid)
             expert_w = (w_flat * mask.float())[token_ids].sum(
                 dim=1, keepdim=True
             )  # [n, 1]
@@ -90,4 +97,6 @@ class LoRAMoELayer(nn.Module):
 
         output = base_out + lora_delta.view(batch, seq, hidden)
 
-        return output, metrics if return_metrics else None
+        if return_metrics:
+            return output, metrics
+        return output
