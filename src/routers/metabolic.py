@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch.distributions import Gumbel
 from typing import Tuple, Dict, Any, Optional
 import warnings
 
@@ -139,12 +138,11 @@ class MetabolicRouter(BaseRouter):
         # 3. Exploration Noise (Gumbel for differentiable sampling)
         # Allow noise in eval mode for exploration studies (no training check)
         if noise_std > 0:
-            # Use torch.distributions for numerically stable Gumbel sampling
-            gumbel_dist = Gumbel(
-                torch.tensor(0.0, device=potential.device, dtype=potential.dtype),
-                torch.tensor(1.0, device=potential.device, dtype=potential.dtype),
-            )
-            noise = gumbel_dist.sample(potential.shape)
+            # Gumbel(0,1) = -log(-log(U)), U ~ Uniform(0,1)
+            # Equivalent to using torch.distributions.Gumbel but avoids
+            # per-call distribution object creation overhead
+            u = torch.empty_like(potential).uniform_(1e-10, 1.0)
+            noise = -torch.log(-torch.log(u))
             potential = potential + (noise * noise_std)
 
         return potential

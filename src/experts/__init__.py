@@ -1,16 +1,15 @@
 from src.experts.base import BaseExpert
-from src.experts.lora_layer import LoRALayer
-from src.experts.lora_mlp import LoRAMLPExpert, LoRAConfig
+from src.experts.lora import LoRAConfig, LoRALayer, SharedLoRALayer, LoRAMLPExpert
+from src.experts.pool import ExpertPool
 
-# Import concrete experts to trigger registry decorators
-from src.experts import gpt_neo  # noqa: F401
-
-from src.experts.gpt_neo import GPTNeoLoRAExpert
+# Import concrete experts so their @register decorators run
+import src.experts.gpt_neo_lora  # noqa: F401
 
 __all__ = [
     "BaseExpert",
-    "LoRALayer",
     "LoRAConfig",
+    "LoRALayer",
+    "SharedLoRALayer",
     "LoRAMLPExpert",
-    "GPTNeoLoRAExpert",
+    "ExpertPool",
 ]

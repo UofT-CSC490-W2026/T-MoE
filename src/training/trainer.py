@@ -83,6 +83,7 @@ class Trainer:
             config.training, "early_stopping_patience", None
         )
         self.early_stopping_counter = 0
+        self.best_val_loss = float("inf")
 
         # Output directory
         self.output_dir = Path(output_dir)
@@ -254,7 +255,8 @@ class Trainer:
 
                 # Check for improvement
                 if self.early_stopping_patience:
-                    if val_metrics["loss"] < self.train_metrics.best_loss:
+                    if val_metrics["loss"] < self.best_val_loss:
+                        self.best_val_loss = val_metrics["loss"]
                         self.early_stopping_counter = 0
                     else:
                         self.early_stopping_counter += 1

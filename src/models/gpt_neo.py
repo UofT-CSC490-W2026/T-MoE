@@ -6,10 +6,6 @@ from transformers import AutoModelForCausalLM, AutoConfig
 
 from src.core import ModelRegistry
 from src.models.base import BaseModelBackbone
-from src.layers.tmoe import TMoELayer
-from src.experts.gpt_neo import GPTNeoLoRAExpert
-from src.experts.lora_mlp import LoRAConfig
-from src.routers import create_router
 from src.project_types import ModelType
 
 
@@ -134,14 +130,14 @@ class GPTNeoBackbone(BaseModelBackbone):
         config = AutoConfig.from_pretrained(self.model_name)
         self.vocab_size = config.vocab_size
 
-    def inject_moe_layers(self, moe_layers: Dict[int, TMoELayer]) -> None:
+    def inject_moe_layers(self, moe_layers: Dict[int, nn.Module]) -> None:
         """
         Inject pre-built MoE layers by replacing MLP modules in transformer blocks.
 
         This performs true in-network injection where subsequent layers see MoE outputs.
 
         Args:
-            moe_layers: Dictionary mapping layer indices to TMoELayer instances
+            moe_layers: Dictionary mapping layer indices to MoE layer instances
         """
         if not moe_layers:
             print("Warning: No MoE layers provided. Skipping injection.")
@@ -166,79 +162,19 @@ class GPTNeoBackbone(BaseModelBackbone):
             # Store reference
             self.moe_layers[str(idx)] = tmoe_layer
 
-            # Determine number of experts from the TMoE layer
-            num_experts = (
-                len(tmoe_layer.experts)
-                if hasattr(tmoe_layer, "experts")
-                else tmoe_layer.num_experts
-            )
-            print(f"  Layer {idx}: Replaced MLP with TMoELayer ({num_experts} experts)")
+            # Determine number of experts
+            if hasattr(tmoe_layer, "expert_pool"):
+                num_experts = tmoe_layer.expert_pool.num_experts
+            elif hasattr(tmoe_layer, "experts"):
+                num_experts = len(tmoe_layer.experts)
+            else:
+                num_experts = getattr(tmoe_layer, "num_experts", "unknown")
+
+            print(f"  Layer {idx}: Replaced MLP with MoE Layer ({num_experts} experts)")
 
         print(
             f"MoE injection complete. Total layers modified: {len(indices_to_inject)}"
         )
-
-    def _create_tmoe_from_mlp(
-        self,
-        mlp: nn.Module,
-        num_experts: int,
-        router_type: str,
-        router_kwargs: Dict[str, Any],
-        top_k: int,
-        lora_rank: int,
-        use_parallel: bool,
-    ) -> TMoELayer:
-        """
-        Create a TMoELayer by loading weights from a GPT-Neo MLP.
-
-        GPT-Neo MLP structure:
-        - c_fc: hidden_dim → intermediate_dim (with GELU)
-        - c_proj: intermediate_dim → hidden_dim
-        """
-        # Get dimensions from MLP
-        hidden_dim = mlp.c_fc.in_features
-        intermediate_dim = mlp.c_fc.out_features
-
-        # Create LoRA config
-        lora_config = LoRAConfig(
-            hidden_dim=hidden_dim,
-            intermediate_dim=intermediate_dim,
-            rank=lora_rank,
-        )
-
-        # Create experts from MLP
-        experts = []
-        for _ in range(num_experts):
-            expert = GPTNeoLoRAExpert(lora_config)
-            expert.load_from_mlp(mlp)  # Clone frozen weights
-            experts.append(expert)
-
-        # Create router using factory
-        router = create_router(
-            router_type=router_type,
-            hidden_dim=hidden_dim,
-            num_experts=num_experts,
-            top_k=top_k,
-            **(router_kwargs or {}),
-        )
-
-        # Create TMoE layer
-        tmoe_layer = TMoELayer(
-            hidden_dim=hidden_dim,
-            num_experts=num_experts,
-            expert_class=None,
-            expert_kwargs=None,
-            router_type=None,  # Don't create router internally
-            router_kwargs=None,
-            top_k=top_k,
-            use_parallel=use_parallel,
-        )
-
-        # Set the experts and router
-        tmoe_layer.set_experts(nn.ModuleList(experts))
-        tmoe_layer.router = router
-
-        return tmoe_layer
 
     def forward(
         self,
@@ -266,12 +202,15 @@ class GPTNeoBackbone(BaseModelBackbone):
             metrics: Optional routing metrics from MoE layers
         """
         # Forward through backbone (MoE layers now integrated)
+        # Note: output_hidden_states is only needed for the fallback metrics path
+        # (when cached metrics are unavailable). The MoE layers cache routing state
+        # during the main forward pass, so hidden_states are rarely needed.
         with torch.set_grad_enabled(not self.freeze_backbone or bool(self.moe_layers)):
             outputs = self.backbone(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 labels=labels,
-                output_hidden_states=return_metrics,  # Only need if collecting metrics
+                output_hidden_states=return_metrics,
             )
 
         logits = outputs.logits
@@ -289,20 +228,24 @@ class GPTNeoBackbone(BaseModelBackbone):
         # Collect MoE metrics if requested
         all_metrics = {}
         if return_metrics and self.moe_layers:
-            # We need to manually call forward on MoE layers to get metrics
-            # This is a limitation - HuggingFace's forward doesn't expose our custom returns
-            # For now, metrics collection requires a separate pass
-            # IMPORTANT: Use record_usage=False to prevent double fatigue accumulation
+            # Retrieve cached routing metrics from the main forward pass.
+            # MoE layers cache weights/indices during forward(), so we can
+            # compute metrics without a second forward pass through experts.
             for layer_idx_str, moe_layer in self.moe_layers.items():
                 layer_idx = int(layer_idx_str)
 
-                # Get hidden state from this layer
-                layer_hidden = outputs.hidden_states[layer_idx]
+                # Use cached routing state (populated during the main forward pass)
+                layer_metrics = None
+                if hasattr(moe_layer, "get_cached_metrics"):
+                    layer_metrics = moe_layer.get_cached_metrics()
 
-                # Get metrics from MoE layer (don't record usage to avoid double-counting)
-                _, layer_metrics = moe_layer(
-                    layer_hidden, return_metrics=True, record_usage=False
-                )
+                if layer_metrics is None:
+                    # Fallback: run a separate forward pass if no cache available
+                    # (e.g., first call or layer type doesn't support caching)
+                    layer_hidden = outputs.hidden_states[layer_idx]
+                    _, layer_metrics = moe_layer(
+                        layer_hidden, return_metrics=True, record_usage=False
+                    )
 
                 if layer_metrics:
                     all_metrics[f"layer_{layer_idx}"] = layer_metrics

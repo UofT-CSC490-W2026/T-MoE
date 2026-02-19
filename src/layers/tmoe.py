@@ -185,6 +185,10 @@ class TMoELayer(BaseMoELayer):
         # weights: [batch, seq, top_k]
         # indices: [batch, seq, top_k]
 
+        # Cache routing state for metric retrieval without re-running experts
+        self._last_routing_weights = weights.detach()
+        self._last_routing_indices = indices.detach()
+
         # Flatten to 2D for efficient expert processing
         x_flat = x.reshape(-1, hidden_dim)  # [batch*seq, hidden]
         weights_flat = weights.reshape(-1, self.top_k)  # [batch*seq, top_k]
@@ -328,19 +332,20 @@ class TMoELayer(BaseMoELayer):
         expert_counts = torch.bincount(
             sorted_expert_indices, minlength=self.num_experts
         )
-        # Compute cumulative indices for slicing (avoids .tolist() GPU sync)
+        # Compute cumulative indices for slicing (single GPU sync via .tolist())
         cumsum = torch.cat(
             [
                 torch.zeros(1, dtype=torch.long, device=expert_counts.device),
                 expert_counts.cumsum(0),
             ]
         )
+        offsets = cumsum.tolist()  # Single GPU→CPU sync for all offsets
 
         # Process each expert's tokens (batched per expert)
         expert_outputs = []
         for expert_idx in range(self.num_experts):
-            start_idx = cumsum[expert_idx]
-            end_idx = cumsum[expert_idx + 1]
+            start_idx = offsets[expert_idx]
+            end_idx = offsets[expert_idx + 1]
 
             if start_idx == end_idx:
                 expert_outputs.append(

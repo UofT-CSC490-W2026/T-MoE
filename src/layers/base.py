@@ -42,6 +42,11 @@ class BaseMoELayer(nn.Module, ABC):
         self.router: Optional[BaseRouter] = None
         self.experts: Optional[nn.ModuleList] = None
 
+        # Cached routing state from last forward pass for metric retrieval
+        # without requiring a second forward pass through experts.
+        self._last_routing_weights: Optional[torch.Tensor] = None
+        self._last_routing_indices: Optional[torch.Tensor] = None
+
     @abstractmethod
     def forward(
         self, x: torch.Tensor, return_metrics: bool = False, **kwargs
@@ -68,6 +73,34 @@ class BaseMoELayer(nn.Module, ABC):
         """Get the router component."""
         if self.router is None:
             raise RuntimeError("Router not initialized")
+        return self.router
+
+    def get_cached_metrics(self) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve routing metrics from the last forward pass without
+        re-running expert computation.
+
+        Returns:
+            Metrics dictionary if cached routing state is available, else None.
+        """
+        if self._last_routing_weights is None or self._last_routing_indices is None:
+            return None
+        if self.router is None:
+            return None
+        if not hasattr(self.router, "metrics_tracker"):
+            return None
+
+        metrics = self.router.metrics_tracker.compute_all_metrics(
+            self._last_routing_indices, self._last_routing_weights
+        )
+        metrics["weights"] = self._last_routing_weights
+        metrics["indices"] = self._last_routing_indices
+        return metrics
+
+    def clear_cached_metrics(self) -> None:
+        """Clear cached routing state to free memory."""
+        self._last_routing_weights = None
+        self._last_routing_indices = None
         return self.router
 
     def get_experts(self) -> nn.ModuleList:

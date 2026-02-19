@@ -12,16 +12,13 @@ from datasets import load_dataset
 from configs.model import ModelConfig
 from configs.dataset import DatasetConfig
 
-from src.core import ModelRegistry, ExpertRegistry
-from src.layers.tmoe import TMoELayer
-from src.experts import LoRAConfig
-from src.project_types import RouterType, ExecutionEnv
+from src.core import ModelRegistry
+from src.layers.lora_moe import LoRAMoELayer
+from src.experts.lora import LoRAConfig
+from src.project_types import RouterType, ExecutionEnv, ExpertType
 
-# Import models to trigger registry decorators
+# Side-effect import: triggers @ModelRegistry.register decorator
 from src.models import gpt_neo  # noqa: F401
-
-# Import experts to trigger registry decorators
-from src.experts import gpt_neo as gpt_neo_expert  # noqa: F401
 
 
 def setup_experiment(config: DictConfig) -> str:
@@ -89,10 +86,15 @@ def build_model(config: DictConfig) -> torch.nn.Module:
         device=model_config.device,
     )
 
-    # Determine expert type from config or derive from model type
-    # Convention: "{model_type}_lora" (e.g., "gpt_neo_lora", "llama_lora")
-    expert_type = config.expert.get("type", f"{model_info['model_type']}_lora")
-    expert_cls = ExpertRegistry.get(expert_type)
+    # Resolve expert type: validate against ExpertType enum for early, clear errors
+    config_expert_type_str = config.expert.get("type", ExpertType.GPTNEO_LORA.value)
+    try:
+        expert_type = ExpertType(config_expert_type_str)
+    except ValueError:
+        available = [e.value for e in ExpertType]
+        raise ValueError(
+            f"Unknown expert type: '{config_expert_type_str}'. Available: {available}"
+        )
 
     # Build MoE layers
     moe_layers = {}
@@ -105,9 +107,11 @@ def build_model(config: DictConfig) -> torch.nn.Module:
         # Get the original MLP module to load frozen weights from
         original_mlp = model.backbone.transformer.h[actual_layer_idx].mlp
 
-        # Build LoRA experts using registry
-        experts = []
-        expert_config = LoRAConfig(
+        # Build router
+        router = _create_router_from_hydra_config(config, model.hidden_dim)
+
+        # Build LoRA config
+        lora_config = LoRAConfig(
             hidden_dim=model.hidden_dim,
             rank=config.expert.lora.rank,
             alpha=config.expert.lora.alpha,
@@ -115,28 +119,16 @@ def build_model(config: DictConfig) -> torch.nn.Module:
             init_scale=config.expert.lora.init_scale,
         )
 
-        for _ in range(config.expert.count):
-            expert = expert_cls(expert_config)
-            # CRITICAL: Load pretrained MLP weights into each expert
-            expert.load_from_mlp(original_mlp)
-            experts.append(expert)
-
-        # Update layer_idx for dictionary key
-        layer_idx = actual_layer_idx
-
-        # Build router using factory (single source of truth)
-        router = _create_router_from_hydra_config(config, model.hidden_dim)
-
-        # Build MoE layer
-        moe_layer = TMoELayer(
-            hidden_dim=model.hidden_dim,
+        # Build LoRA MoE Layer atomically (loads base weights in one step)
+        moe_layer = LoRAMoELayer.from_pretrained_mlp(
+            mlp=original_mlp,
+            router=router,
+            lora_config=lora_config,
             num_experts=config.expert.count,
-            top_k=config.router.top_k,
+            expert_type=expert_type,
         )
-        moe_layer.router = router
-        moe_layer.experts = torch.nn.ModuleList(experts)
 
-        moe_layers[layer_idx] = moe_layer
+        moe_layers[actual_layer_idx] = moe_layer
 
     # Inject MoE layers
     model.inject_moe_layers(moe_layers)
