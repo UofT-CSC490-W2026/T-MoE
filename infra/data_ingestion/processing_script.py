@@ -18,6 +18,7 @@ Environment variables consumed:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 import shutil
@@ -41,7 +42,6 @@ RETRY_DELAY: float = float(os.environ.get("RETRY_DELAY", "5.0"))
 # ---------------------------------------------------------------------------
 # Logging — plain format (CloudWatch auto-captures stdout/stderr)
 # ---------------------------------------------------------------------------
-import logging
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),

@@ -32,12 +32,11 @@ def run_modal_training(config: PipelineConfig, experiment_config_name: str, dry_
         ImportError: If modal package is not installed.
         RuntimeError: If Modal training fails.
     """
-    try:
-        import modal
-    except ImportError as exc:
+    import importlib.util
+    if importlib.util.find_spec("modal") is None:
         logger.error("Modal package not installed")
         logger.error("Install with: pip install modal")
-        raise ImportError("Modal package required for Modal backend") from exc
+        raise ImportError("Modal package required for Modal backend")
     
     from infra.dataset.ensure_dataset import ensure_dataset_in_s3
     
