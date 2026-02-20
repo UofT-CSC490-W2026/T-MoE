@@ -59,6 +59,7 @@ logger = logging.getLogger("tmoe.training_pipeline")
 # Configuration
 # =====================================================================
 
+
 def load_configs(args) -> tuple:
     """
     Load both pipeline config (for S3/ingestion) and experiment config
@@ -68,15 +69,21 @@ def load_configs(args) -> tuple:
         (pipeline_config, experiment_config)
     """
     from infra.config.config import load_pipeline_config
+
     pipeline_config = load_pipeline_config()
-    logger.info("Pipeline config loaded: bucket=%s, dataset=%s",
-                pipeline_config.raw_data_bucket, pipeline_config.dataset_name)
+    logger.info(
+        "Pipeline config loaded: bucket=%s, dataset=%s",
+        pipeline_config.raw_data_bucket,
+        pipeline_config.dataset_name,
+    )
 
     from src.utils.config_loader import load_experiment_config
+
     experiment_config = load_experiment_config(args.config, args.overrides or [])
 
     # Force execution_env to aws when using S3
     from omegaconf import OmegaConf
+
     OmegaConf.update(experiment_config, "execution_env", "aws", merge=True)
 
     logger.info("Experiment config loaded: %s", experiment_config.experiment_name)
@@ -86,6 +93,7 @@ def load_configs(args) -> tuple:
 # =====================================================================
 # S3 Operations (shared across modes)
 # =====================================================================
+
 
 def check_dataset_in_s3(pipeline_config) -> bool:
     """Check if the dataset already exists in S3."""
@@ -122,8 +130,9 @@ def run_data_ingestion(pipeline_config) -> Dict[str, Any]:
     )
 
     result = ingestion.run()
-    logger.info("Data ingestion complete: %d records uploaded",
-                result.get("total_records", 0))
+    logger.info(
+        "Data ingestion complete: %d records uploaded", result.get("total_records", 0)
+    )
     return result
 
 
@@ -131,8 +140,12 @@ def download_dataset_from_s3(pipeline_config, cache_dir: str) -> None:
     """Download dataset files from S3 to the local cache directory."""
     logger.info("=" * 70)
     logger.info("STEP: Downloading dataset from S3 to local cache")
-    logger.info("  s3://%s/%s → %s", pipeline_config.raw_data_bucket,
-                pipeline_config.raw_data_prefix, cache_dir)
+    logger.info(
+        "  s3://%s/%s → %s",
+        pipeline_config.raw_data_bucket,
+        pipeline_config.raw_data_prefix,
+        cache_dir,
+    )
     logger.info("=" * 70)
 
     from infra.s3client.s3_sync import download_s3_prefix
@@ -150,9 +163,10 @@ def download_dataset_from_s3(pipeline_config, cache_dir: str) -> None:
             f"{pipeline_config.raw_data_prefix}"
         )
     logger.info("Downloaded %d files to %s", len(downloaded), cache_dir)
-    
+
     import tarfile
     import zipfile
+
     cache_path = Path(cache_dir)
     for archive in cache_path.glob("*.tar.gz"):
         logger.info("Extracting %s", archive.name)
@@ -192,38 +206,48 @@ def upload_outputs_to_s3(pipeline_config, output_dir: str) -> None:
 
     if failed_count > 0:
         logger.warning("%d files uploaded, %d failed", uploaded_count, failed_count)
-        checkpoint_failures = [p for p in result["failed"] if "checkpoint" in str(p).lower()]
+        checkpoint_failures = [
+            p for p in result["failed"] if "checkpoint" in str(p).lower()
+        ]
         for path in result["failed"]:
             logger.warning("  FAILED: %s", path)
         if checkpoint_failures:
-            raise RuntimeError(f"Critical checkpoint upload failed: {checkpoint_failures}")
+            raise RuntimeError(
+                f"Critical checkpoint upload failed: {checkpoint_failures}"
+            )
     else:
-        logger.info("All %d files uploaded to s3://%s/%s",
-                    uploaded_count, pipeline_config.raw_data_bucket, s3_prefix)
+        logger.info(
+            "All %d files uploaded to s3://%s/%s",
+            uploaded_count,
+            pipeline_config.raw_data_bucket,
+            s3_prefix,
+        )
 
 
 # =====================================================================
 # Training (for local and container modes)
 # =====================================================================
 
+
 def run_training(experiment_config, cache_dir: str) -> tuple:
     """
     Run model training using the shared training workflow.
-    
+
     This is a thin wrapper around execute_training_workflow for backwards compatibility.
     """
     from src.utils.training_workflow import execute_training_workflow
-    
+
     logger.info("=" * 70)
     logger.info("STEP: Running model training")
     logger.info("=" * 70)
-    
+
     return execute_training_workflow(experiment_config, cache_dir)
 
 
 # =====================================================================
 # AWS Batch Submission (batch mode)
 # =====================================================================
+
 
 def submit_batch_job(
     config_name: str,
@@ -245,10 +269,12 @@ def submit_batch_job(
 
     batch_client = boto3.client("batch", region_name=pipeline_config.aws_region)
 
-    job_queue = os.environ.get("BATCH_JOB_QUEUE",
-                               f"tmoe-{os.environ.get('ENVIRONMENT', 'dev')}-training")
-    job_definition = os.environ.get("BATCH_JOB_DEFINITION",
-                                     f"tmoe-{os.environ.get('ENVIRONMENT', 'dev')}-training")
+    job_queue = os.environ.get(
+        "BATCH_JOB_QUEUE", f"tmoe-{os.environ.get('ENVIRONMENT', 'dev')}-training"
+    )
+    job_definition = os.environ.get(
+        "BATCH_JOB_DEFINITION", f"tmoe-{os.environ.get('ENVIRONMENT', 'dev')}-training"
+    )
 
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     job_name = f"tmoe-training-{config_name}-{timestamp}"
@@ -329,12 +355,18 @@ def wait_for_batch_job(
         status = job["status"]
         status_reason = job.get("statusReason", "")
 
-        logger.info("  Status: %s %s", status, f"({status_reason})" if status_reason else "")
+        logger.info(
+            "  Status: %s %s", status, f"({status_reason})" if status_reason else ""
+        )
 
         # Try to stream logs when job is RUNNING or finished
         if stream_logs and logs_client and status in ("RUNNING", "SUCCEEDED", "FAILED"):
             last_log_token, log_stream_name = _stream_job_logs(
-                logs_client, job, log_stream_name, last_log_token, aws_region,
+                logs_client,
+                job,
+                log_stream_name,
+                last_log_token,
+                aws_region,
             )
 
         if status in terminal_states:
@@ -390,6 +422,7 @@ def _stream_job_logs(
 # =====================================================================
 # Mode Handlers
 # =====================================================================
+
 
 def run_local_mode(args, pipeline_config, experiment_config) -> None:
     """
@@ -471,6 +504,7 @@ def run_container_mode(args, pipeline_config, experiment_config) -> None:
 # Helpers
 # =====================================================================
 
+
 def _log_dataset_status(found: bool) -> None:
     if found:
         logger.info("✅ Dataset found in S3 — skipping ingestion")
@@ -483,8 +517,10 @@ def _log_dry_run(dataset_found: bool, args) -> None:
     logger.info("=" * 70)
     logger.info("DRY RUN — Actions that would be taken:")
     logger.info("  Mode         : %s", args.mode)
-    logger.info("  Dataset in S3: %s",
-                "YES (skip ingestion)" if dataset_found else "NO (run ingestion)")
+    logger.info(
+        "  Dataset in S3: %s",
+        "YES (skip ingestion)" if dataset_found else "NO (run ingestion)",
+    )
     if args.mode == "batch":
         logger.info("  Action       : Submit Batch job and stream logs")
     else:
@@ -496,8 +532,9 @@ def _log_completion(dataset_found: bool, metrics: dict, output_dir: str) -> None
     logger.info("")
     logger.info("=" * 70)
     logger.info("PIPELINE COMPLETED SUCCESSFULLY")
-    logger.info("  Dataset      : %s",
-                "pre-existing" if dataset_found else "newly ingested")
+    logger.info(
+        "  Dataset      : %s", "pre-existing" if dataset_found else "newly ingested"
+    )
     logger.info("  Final loss   : %.4f", metrics["loss"])
     logger.info("  Best loss    : %.4f", metrics["best_loss"])
     logger.info("  Output dir   : %s", output_dir)
@@ -507,6 +544,7 @@ def _log_completion(dataset_found: bool, metrics: dict, output_dir: str) -> None
 # =====================================================================
 # Main Entry Point
 # =====================================================================
+
 
 def main() -> None:
     """
@@ -525,15 +563,17 @@ Examples:
         """,
     )
     parser.add_argument(
-        "-m", "--mode",
+        "-m",
+        "--mode",
         type=str,
         choices=["local", "batch", "container"],
         default="local",
         help="Execution mode: local (in-process), batch (submit to AWS Batch), "
-             "container (inside Docker, called by Batch).",
+        "container (inside Docker, called by Batch).",
     )
     parser.add_argument(
-        "-c", "--config",
+        "-c",
+        "--config",
         type=str,
         required=True,
         help="Experiment config name from experiments/ directory (without .yaml).",

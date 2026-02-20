@@ -6,7 +6,7 @@ Designed to work when SageMaker is unavailable.
 
 Usage:
     from infra.data_ingestion.fallback_ingestion import FallbackIngestion
-    
+
     ingestion = FallbackIngestion(
         dataset_name="KrisMinchev/wikitext-2-raw-v1",
         s3_bucket="my-bucket",
@@ -68,7 +68,7 @@ class FallbackIngestion:
         self.dataset_splits = dataset_splits
         self.output_format = output_format
         self.max_retries = max_retries
-        
+
         # Configure logging
         logging.basicConfig(
             level=getattr(logging, log_level.upper(), logging.INFO),
@@ -88,7 +88,7 @@ class FallbackIngestion:
         """
         start_time = time.time()
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        
+
         logger.info("=" * 70)
         logger.info("T-MoE Fallback Data Ingestion")
         logger.info("  Dataset    : %s", self.dataset_name)
@@ -113,9 +113,13 @@ class FallbackIngestion:
             splits_info: Dict[str, Dict[str, Any]] = {}
             for split_name in splits_to_process:
                 split_data = dataset[split_name]
-                logger.info("Processing split: %s (%d examples)", split_name, len(split_data))
-                
-                local_file = self._write_split_to_disk(split_name, split_data, temp_path)
+                logger.info(
+                    "Processing split: %s (%d examples)", split_name, len(split_data)
+                )
+
+                local_file = self._write_split_to_disk(
+                    split_name, split_data, temp_path
+                )
                 splits_info[split_name] = {
                     "num_examples": len(split_data),
                     "local_path": str(local_file),
@@ -146,9 +150,16 @@ class FallbackIngestion:
             logger.info("=" * 70)
             logger.info("SUCCESS")
             logger.info("  Total records : %d", summary["total_records"])
-            logger.info("  Total size    : %.2f MB", summary["total_bytes"] / 1024 / 1024)
+            logger.info(
+                "  Total size    : %.2f MB", summary["total_bytes"] / 1024 / 1024
+            )
             logger.info("  Elapsed time  : %.1f s", elapsed)
-            logger.info("  S3 location   : s3://%s/%s%s/", self.s3_bucket, self.s3_prefix, timestamp)
+            logger.info(
+                "  S3 location   : s3://%s/%s%s/",
+                self.s3_bucket,
+                self.s3_prefix,
+                timestamp,
+            )
             logger.info("=" * 70)
 
             return summary
@@ -156,19 +167,24 @@ class FallbackIngestion:
     def _load_dataset(self) -> Dict[str, Any]:
         """Load dataset from HuggingFace Hub with retry logic."""
         last_error: Exception | None = None
-        
+
         for attempt in range(1, self.max_retries + 1):
             try:
-                logger.info("Loading dataset %s (attempt %d/%d)", self.dataset_name, attempt, self.max_retries)
-                
+                logger.info(
+                    "Loading dataset %s (attempt %d/%d)",
+                    self.dataset_name,
+                    attempt,
+                    self.max_retries,
+                )
+
                 if self.dataset_config:
                     ds = load_dataset(self.dataset_name, self.dataset_config)
                 else:
                     ds = load_dataset(self.dataset_name)
-                
+
                 if ds is None or len(ds) == 0:  # type: ignore[arg-type]
                     raise RuntimeError(f"Dataset {self.dataset_name} is empty or None")
-                
+
                 for name in ds:
                     split = ds[name]
                     logger.info(
@@ -177,9 +193,9 @@ class FallbackIngestion:
                         len(split),
                         split.column_names,
                     )
-                
+
                 return dict(ds)  # type: ignore[arg-type]
-                
+
             except (ConnectionError, TimeoutError, OSError) as exc:
                 last_error = exc
                 wait = 5.0 * (2 ** (attempt - 1))
@@ -190,7 +206,7 @@ class FallbackIngestion:
                     wait,
                 )
                 time.sleep(wait)
-        
+
         raise RuntimeError(
             f"Failed to load {self.dataset_name} after {self.max_retries} attempts: {last_error}"
         )
@@ -198,7 +214,7 @@ class FallbackIngestion:
     def _get_splits_to_process(self, dataset: Dict[str, Any]) -> List[str]:
         """Determine which splits to process."""
         available_splits = list(dataset.keys())
-        
+
         if self.dataset_splits:
             # Validate requested splits exist
             missing = set(self.dataset_splits) - set(available_splits)
@@ -208,7 +224,7 @@ class FallbackIngestion:
                     f"Available: {available_splits}"
                 )
             return self.dataset_splits
-        
+
         return available_splits
 
     def _write_split_to_disk(
@@ -219,7 +235,7 @@ class FallbackIngestion:
     ) -> Path:
         """Write one split to disk in the requested format."""
         ext_map = {"jsonl": ".jsonl", "parquet": ".parquet", "text": ".txt"}
-        
+
         if self.output_format not in ext_map:
             raise ValueError(f"Unsupported format {self.output_format!r}")
 
@@ -295,42 +311,44 @@ class FallbackIngestion:
         # Import S3Client here to avoid circular imports
         import sys
         from pathlib import Path as PathLib
-        
+
         # Add project root to path
         project_root = PathLib(__file__).resolve().parent.parent.parent
         sys.path.insert(0, str(project_root))
-        
+
         from infra.s3client.client import S3Client
-        
+
         s3_client = S3Client(region=self.aws_region, max_retries=self.max_retries)
-        
+
         # Check bucket exists
         if not s3_client.check_bucket_exists(self.s3_bucket):
-            raise RuntimeError(f"S3 bucket does not exist or is not accessible: {self.s3_bucket}")
-        
+            raise RuntimeError(
+                f"S3 bucket does not exist or is not accessible: {self.s3_bucket}"
+            )
+
         s3_paths: Dict[str, str] = {}
         files_to_upload = list(local_dir.iterdir())
-        
+
         logger.info("Uploading %d files to S3…", len(files_to_upload))
-        
+
         for local_file in files_to_upload:
             if not local_file.is_file():
                 continue
-            
+
             s3_key = f"{self.s3_prefix}{timestamp}/{local_file.name}"
-            
+
             # Check if file already exists (idempotency)
             existing_objects = s3_client.list_objects(
                 bucket=self.s3_bucket,
                 prefix=s3_key,
                 max_keys=1,
             )
-            
+
             if existing_objects:
                 logger.warning("File already exists in S3, skipping: %s", s3_key)
                 s3_paths[local_file.name] = f"s3://{self.s3_bucket}/{s3_key}"
                 continue
-            
+
             # Upload file
             success = s3_client.upload_file(
                 local_path=local_file,
@@ -338,11 +356,11 @@ class FallbackIngestion:
                 key=s3_key,
                 show_progress=True,
             )
-            
+
             if not success:
                 raise RuntimeError(f"Failed to upload {local_file.name} to S3")
-            
+
             s3_paths[local_file.name] = f"s3://{self.s3_bucket}/{s3_key}"
-        
+
         logger.info("Successfully uploaded %d files to S3", len(s3_paths))
         return s3_paths

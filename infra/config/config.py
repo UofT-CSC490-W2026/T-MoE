@@ -67,7 +67,7 @@ class PipelineConfig:
     use_sagemaker: bool
     dataset_config: Optional[str] = None
     dataset_splits: Optional[list] = None
-    
+
     # SageMaker-specific fields (only required when use_sagemaker=True)
     sagemaker_role_arn: Optional[str] = None
     instance_type: Optional[str] = None
@@ -76,10 +76,10 @@ class PipelineConfig:
     transformers_version: Optional[str] = None
     pytorch_version: Optional[str] = None
     python_version: Optional[str] = None
-    
+
     # Backend selection (NEW)
     compute_backend: str = "aws"  # Options: "aws", "modal"
-    
+
     # Modal-specific fields (NEW)
     modal_gpu: Optional[str] = None
     modal_cpu: Optional[int] = None
@@ -109,7 +109,9 @@ def _load_yaml_section() -> dict:
             return {}
         return OmegaConf.to_container(di, resolve=True)  # type: ignore[return-value]
     except Exception:
-        logger.warning("Failed to parse config.yaml data_ingestion section", exc_info=True)
+        logger.warning(
+            "Failed to parse config.yaml data_ingestion section", exc_info=True
+        )
         return {}
 
 
@@ -148,21 +150,21 @@ def _load_compute_config() -> dict:
         from omegaconf import OmegaConf
     except ImportError:
         return {}
-    
+
     if not CONFIG_YAML_PATH.is_file():
         return {}
-    
+
     try:
         cfg = OmegaConf.load(CONFIG_YAML_PATH)
         compute = cfg.get("compute")
         if compute is None:
             return {}
-        
+
         flat: dict = {}
-        
+
         # Backend selection
         flat["compute_backend"] = compute.get("backend", "aws")
-        
+
         # Modal-specific configuration
         modal = compute.get("modal", {})
         if modal:
@@ -170,7 +172,7 @@ def _load_compute_config() -> dict:
             flat["modal_cpu"] = modal.get("cpu")
             flat["modal_timeout"] = modal.get("timeout")
             flat["modal_volume_name"] = modal.get("volume_name")
-        
+
         return {k: v for k, v in flat.items() if v is not None}
     except Exception:
         logger.debug("Failed to parse compute config from config.yaml", exc_info=True)
@@ -184,6 +186,7 @@ def _try_load_dotenv() -> None:
     """Load .env from project root if python-dotenv is available."""
     try:
         from dotenv import load_dotenv  # type: ignore[import-untyped]
+
         env_path = PROJECT_ROOT / ".env"
         if env_path.is_file():
             load_dotenv(env_path)
@@ -241,13 +244,13 @@ def _validate(merged: dict) -> PipelineConfig:
     """Validate merged config and return a frozen PipelineConfig."""
     # Always required fields
     required = ["aws_region", "raw_data_bucket"]
-    
+
     use_sagemaker = merged.get("use_sagemaker", False)
-    
+
     # SageMaker-specific required fields
     if use_sagemaker:
         required.append("sagemaker_role_arn")
-    
+
     missing = [k for k in required if not merged.get(k)]
     if missing:
         raise ValueError(
@@ -272,7 +275,9 @@ def _validate(merged: dict) -> PipelineConfig:
     log_level = merged.get("log_level", "INFO").upper()
     valid_levels = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
     if log_level not in valid_levels:
-        raise ValueError(f"LOG_LEVEL must be one of {valid_levels} — got: {log_level!r}")
+        raise ValueError(
+            f"LOG_LEVEL must be one of {valid_levels} — got: {log_level!r}"
+        )
     merged["log_level"] = log_level
 
     fmt = merged.get("output_format", "jsonl")
@@ -285,7 +290,7 @@ def _validate(merged: dict) -> PipelineConfig:
         merged["use_sagemaker"] = use_sagemaker_val.lower() in ("true", "1", "yes")
     else:
         merged["use_sagemaker"] = bool(use_sagemaker_val)
-    
+
     # Coerce numeric fields
     merged["max_retries"] = int(merged.get("max_retries", 3))
     if use_sagemaker and "instance_count" in merged:
@@ -298,7 +303,7 @@ def _validate(merged: dict) -> PipelineConfig:
             merged["max_runtime_seconds"] = int(merged["max_runtime_seconds"])
         except (ValueError, TypeError):
             pass
-    
+
     # Coerce Modal numeric fields
     if "modal_cpu" in merged and merged["modal_cpu"] is not None:
         try:
@@ -310,7 +315,7 @@ def _validate(merged: dict) -> PipelineConfig:
             merged["modal_timeout"] = int(merged["modal_timeout"])
         except (ValueError, TypeError):
             pass
-    
+
     # Validate backend selection
     backend = merged.get("compute_backend", "aws")
     if backend not in ("aws", "modal"):
@@ -319,16 +324,34 @@ def _validate(merged: dict) -> PipelineConfig:
 
     # Build config with only the fields that exist in the dataclass
     config_dict = {}
-    for field_name in ["aws_region", "raw_data_bucket", "dataset_name", "output_format",
-                       "raw_data_prefix", "environment", "log_level", "max_retries",
-                       "use_sagemaker", "dataset_config", "dataset_splits",
-                       "sagemaker_role_arn", "instance_type", "instance_count",
-                       "max_runtime_seconds", "transformers_version", "pytorch_version",
-                       "python_version", "compute_backend", "modal_gpu", "modal_cpu",
-                       "modal_timeout", "modal_volume_name"]:
+    for field_name in [
+        "aws_region",
+        "raw_data_bucket",
+        "dataset_name",
+        "output_format",
+        "raw_data_prefix",
+        "environment",
+        "log_level",
+        "max_retries",
+        "use_sagemaker",
+        "dataset_config",
+        "dataset_splits",
+        "sagemaker_role_arn",
+        "instance_type",
+        "instance_count",
+        "max_runtime_seconds",
+        "transformers_version",
+        "pytorch_version",
+        "python_version",
+        "compute_backend",
+        "modal_gpu",
+        "modal_cpu",
+        "modal_timeout",
+        "modal_volume_name",
+    ]:
         if field_name in merged:
             config_dict[field_name] = merged[field_name]
-    
+
     return PipelineConfig(**config_dict)
 
 
@@ -356,7 +379,7 @@ def load_pipeline_config() -> PipelineConfig:
     yaml_section = _load_yaml_section()
     yaml_flat = _flatten_yaml(yaml_section)
     merged.update(yaml_flat)
-    
+
     # Layer 2b: YAML compute overrides (for backend selection and Modal config)
     compute_config = _load_compute_config()
     merged.update(compute_config)

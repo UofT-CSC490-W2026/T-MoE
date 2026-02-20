@@ -52,7 +52,9 @@ def load_configuration() -> Any:
     try:
         config = load_pipeline_config()
         logger.info("Configuration loaded successfully")
-        logger.info("  Execution mode : %s", "SageMaker" if config.use_sagemaker else "Fallback")
+        logger.info(
+            "  Execution mode : %s", "SageMaker" if config.use_sagemaker else "Fallback"
+        )
         logger.info("  Dataset        : %s", config.dataset_name)
         logger.info("  S3 bucket      : %s", config.raw_data_bucket)
         logger.info("  AWS region     : %s", config.aws_region)
@@ -61,7 +63,9 @@ def load_configuration() -> Any:
         logger.error("Configuration validation failed: %s", exc)
         logger.error("")
         logger.error("Quick fix:")
-        logger.error("  1. Run: cd infra/terraform && terraform output env_configuration")
+        logger.error(
+            "  1. Run: cd infra/terraform && terraform output env_configuration"
+        )
         logger.error("  2. Copy the output to a .env file in the project root")
         logger.error("  3. Or set environment variables directly")
         raise

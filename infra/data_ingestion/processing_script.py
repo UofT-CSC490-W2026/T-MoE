@@ -72,11 +72,13 @@ def validate_environment() -> None:
         probe.write_text("ok")
         probe.unlink()
     except OSError as exc:
-        raise EnvironmentError(f"Output dir {output_dir} is not writable: {exc}") from exc
+        raise EnvironmentError(
+            f"Output dir {output_dir} is not writable: {exc}"
+        ) from exc
 
     # Disk space (warn if < 1 GB)
     usage = shutil.disk_usage(str(output_dir))
-    free_gb = usage.free / (1024 ** 3)
+    free_gb = usage.free / (1024**3)
     logger.info("Disk free: %.1f GB", free_gb)
     if free_gb < 1.0:
         raise EnvironmentError(f"Insufficient disk space: {free_gb:.1f} GB free")
@@ -119,7 +121,9 @@ def load_huggingface_dataset(dataset_name: str) -> Dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            logger.info("Loading dataset %s (attempt %d/%d)", dataset_name, attempt, MAX_RETRIES)
+            logger.info(
+                "Loading dataset %s (attempt %d/%d)", dataset_name, attempt, MAX_RETRIES
+            )
             ds = load_dataset(dataset_name)
             break
         except (ConnectionError, TimeoutError, OSError) as exc:
@@ -176,9 +180,7 @@ def validate_split_data(split_name: str, split_data: Any) -> None:
     sample = split_data.select(range(min(5, len(split_data))))
     non_empty = sum(1 for row in sample if row.get("text") and row["text"].strip())
     if non_empty == 0:
-        raise ValueError(
-            f"Split '{split_name}' first 5 rows are all empty/None"
-        )
+        raise ValueError(f"Split '{split_name}' first 5 rows are all empty/None")
 
     logger.info(
         "Validated split '%s': %d examples, columns=%s",
@@ -322,7 +324,11 @@ def main() -> None:
     # 6 — final validation
     files = list(output_dir.iterdir())
     total_size = sum(f.stat().st_size for f in files if f.is_file())
-    logger.info("Output directory: %d files, %.2f MB total", len(files), total_size / 1024 / 1024)
+    logger.info(
+        "Output directory: %d files, %.2f MB total",
+        len(files),
+        total_size / 1024 / 1024,
+    )
 
     completion = {
         "status": "SUCCESS",

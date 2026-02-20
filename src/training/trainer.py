@@ -76,7 +76,7 @@ class Trainer:
 
         # Mixed precision
         self.use_amp = getattr(config.training, "use_amp", True)
-        
+
         # Determine device-aware mixed precision settings
         if self.use_amp:
             if self.device == "cuda":
@@ -86,7 +86,9 @@ class Trainer:
                 # CPU mixed precision (BFloat16) doesn't use a scaler
                 self.scaler = GradScaler("cpu", enabled=False)
                 self.autocast_device = "cpu"
-                print("ℹ️  CPU Mixed Precision enabled (using BFloat16, no scaling required)")
+                print(
+                    "ℹ️  CPU Mixed Precision enabled (using BFloat16, no scaling required)"
+                )
             else:
                 self.scaler = GradScaler(enabled=False)
                 self.autocast_device = self.device

@@ -62,7 +62,9 @@ def load_terraform_outputs(
     Returns an empty dict on any failure (Terraform not installed, state
     not initialised, etc.) so that the caller can fall back to env vars.
     """
-    tf_dir = Path(terraform_dir) if terraform_dir else PROJECT_ROOT / "infra" / "terraform"
+    tf_dir = (
+        Path(terraform_dir) if terraform_dir else PROJECT_ROOT / "infra" / "terraform"
+    )
     if not tf_dir.is_dir():
         logger.debug("Terraform directory not found: %s", tf_dir)
         return {}

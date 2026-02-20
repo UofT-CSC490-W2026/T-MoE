@@ -69,7 +69,10 @@ def upload_experiment_dir(
     all_files = sorted(f for f in local_path.rglob("*") if f.is_file())
     logger.info(
         "Uploading %d files from %s → s3://%s/%s",
-        len(all_files), local_dir, bucket, s3_prefix,
+        len(all_files),
+        local_dir,
+        bucket,
+        s3_prefix,
     )
 
     for file_path in all_files:
@@ -91,7 +94,8 @@ def upload_experiment_dir(
 
     logger.info(
         "Upload complete: %d succeeded, %d failed",
-        len(uploaded), len(failed),
+        len(uploaded),
+        len(failed),
     )
     return {"uploaded": uploaded, "failed": failed}
 
@@ -134,14 +138,17 @@ def download_s3_prefix(
 
     logger.info(
         "Downloading %d objects from s3://%s/%s → %s",
-        len(objects), bucket, s3_prefix, local_dir,
+        len(objects),
+        bucket,
+        s3_prefix,
+        local_dir,
     )
 
     downloaded: List[str] = []
     for obj in objects:
         s3_key = obj["Key"]
         # Compute relative path from the prefix
-        relative = s3_key[len(s3_prefix):].lstrip("/")
+        relative = s3_key[len(s3_prefix) :].lstrip("/")
         if not relative:
             continue  # Skip the prefix itself if it's a "directory marker"
 

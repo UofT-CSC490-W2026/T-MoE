@@ -252,11 +252,12 @@ class S3Client:
                 errors.extend(resp.get("Errors", []))
                 deleted.extend(batch[: len(batch) - len(resp.get("Errors", []))])
             except ClientError as exc:
-                logger.error(
-                    "delete_objects failed: %s", exc.response["Error"]["Code"]
-                )
+                logger.error("delete_objects failed: %s", exc.response["Error"]["Code"])
                 errors.extend(
-                    [{"Key": k, "Code": "ClientError", "Message": str(exc)} for k in batch]
+                    [
+                        {"Key": k, "Code": "ClientError", "Message": str(exc)}
+                        for k in batch
+                    ]
                 )
 
         logger.info("Deleted %d objects, %d errors", len(deleted), len(errors))
@@ -305,9 +306,7 @@ class S3Client:
             )
             return url  # type: ignore[return-value]
         except ClientError as exc:
-            logger.error(
-                "presigned_url failed: %s", exc.response["Error"]["Code"]
-            )
+            logger.error("presigned_url failed: %s", exc.response["Error"]["Code"])
             return None
 
     # ------------------------------------------------------------------
@@ -333,12 +332,16 @@ class S3Client:
         if found:
             logger.info(
                 "Dataset found in s3://%s/%s (%d objects checked)",
-                bucket, prefix, len(objects),
+                bucket,
+                prefix,
+                len(objects),
             )
         else:
             logger.info(
                 "No dataset files found in s3://%s/%s (%d objects checked)",
-                bucket, prefix, len(objects),
+                bucket,
+                prefix,
+                len(objects),
             )
         return found
 
