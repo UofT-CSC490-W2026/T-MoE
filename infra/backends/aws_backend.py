@@ -1,10 +1,3 @@
-"""
-AWS Batch backend for T-MoE training.
-
-Refactored from run_training_pipeline.py to provide clean AWS Batch execution
-using the unified configuration and dataset resolution strategy.
-"""
-
 from __future__ import annotations
 
 import logging

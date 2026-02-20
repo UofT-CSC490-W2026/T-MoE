@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from torch.distributions import Gumbel
 from typing import Tuple, Dict, Any, Optional
 import warnings
 
@@ -13,13 +12,6 @@ from src.project_types import RouterType
 
 # Constants
 MIN_TEMPERATURE = 1e-3  # Minimum temperature to prevent division by zero in softmax
-
-# Constants
-MIN_TEMPERATURE = 1e-3  # Minimum temperature to prevent division by zero in softmax
-
-# Constants
-MIN_TEMPERATURE = 1e-3  # Minimum temperature to prevent division by zero in softmax
-
 
 @RouterRegistry.register(RouterType.METABOLIC.value)
 class MetabolicRouter(BaseRouter):

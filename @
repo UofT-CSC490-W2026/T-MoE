@@ -1,0 +1,23 @@
+lint fix
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# Author:    Aviral Bhardwaj <aviral.bhardwaj@mail.utoronto.ca>
+#
+# interactive rebase in progress; onto d84acd7
+# Last commands done (7 commands done):
+#    pick d5f6bbd new experiment
+#    pick 0461041 lint fix
+# Next commands to do (28 remaining commands):
+#    pick 1948f00 lint fix
+#    pick 2667947 updated enum to be used everywhere
+# You are currently rebasing branch 'infra' on 'd84acd7'.
+#
+# Changes to be committed:
+#	modified:   src/utils/slurm.py
+#
+# Untracked files:
+#	infra/
+#	terraform.tfstate
+#
