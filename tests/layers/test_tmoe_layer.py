@@ -110,13 +110,12 @@ def test_forward_shape_and_type(tmoe_layer, hidden_dim):
     batch, seq = 2, 8
     x = torch.randn(batch, seq, hidden_dim)
 
-    # Standard call (return_metrics=False)
-    output, metrics = tmoe_layer(x, return_metrics=False)
+    # Standard call (return_metrics=False) - returns tensor only (HuggingFace compatible)
+    output = tmoe_layer(x, return_metrics=False)
     assert isinstance(output, torch.Tensor)
-    assert metrics is None
     assert output.shape == x.shape
 
-    # With metrics
+    # With metrics - returns tuple
     output, metrics = tmoe_layer(x, return_metrics=True)
     assert isinstance(output, torch.Tensor)
     assert isinstance(metrics, dict)
@@ -126,7 +125,7 @@ def test_forward_shape_and_type(tmoe_layer, hidden_dim):
 def test_backward_pass(tmoe_layer, hidden_dim):
     """Test that gradients flow through the layer."""
     x = torch.randn(2, 4, hidden_dim, requires_grad=True)
-    output, _ = tmoe_layer(x)
+    output = tmoe_layer(x)  # Default: return_metrics=False, returns tensor only
 
     loss = output.mean()
     loss.backward()
@@ -167,8 +166,8 @@ def test_parallel_vs_sequential_numerical_equivalence(valid_kwargs, hidden_dim):
 
     # Forward pass with no noise for deterministic routing
     with torch.no_grad():
-        output_seq, _ = layer_seq(x, noise_std=0.0)
-        output_par, _ = layer_par(x, noise_std=0.0)
+        output_seq, _ = layer_seq(x, return_metrics=True, noise_std=0.0)
+        output_par, _ = layer_par(x, return_metrics=True, noise_std=0.0)
 
     # Should be numerically close (allowing for floating point differences)
     assert torch.allclose(output_seq, output_par, rtol=1e-5, atol=1e-6), (
@@ -192,8 +191,8 @@ def test_parallel_vs_sequential_gradient_equivalence(valid_kwargs, hidden_dim):
     x_par = x_seq.clone().detach().requires_grad_(True)
 
     # Forward pass with no noise for deterministic routing
-    output_seq, _ = layer_seq(x_seq, noise_std=0.0)
-    output_par, _ = layer_par(x_par, noise_std=0.0)
+    output_seq, _ = layer_seq(x_seq, return_metrics=True, noise_std=0.0)
+    output_par, _ = layer_par(x_par, return_metrics=True, noise_std=0.0)
 
     # Backward pass with same loss
     loss_seq = output_seq.sum()
@@ -229,7 +228,7 @@ def test_non_contiguous_input_sequential(tmoe_layer, hidden_dim):
     assert not x.is_contiguous(), "Test setup failed: tensor should be non-contiguous"
 
     # Should not raise an error (reshape handles non-contiguous)
-    output, _ = tmoe_layer(x)
+    output = tmoe_layer(x)
     assert output.shape == (batch, seq, hidden_dim)
 
 
@@ -243,7 +242,7 @@ def test_non_contiguous_input_parallel(valid_kwargs, hidden_dim):
     assert not x.is_contiguous(), "Test setup failed: tensor should be non-contiguous"
 
     # Should not raise an error (reshape handles non-contiguous)
-    output, _ = layer(x)
+    output = layer(x)
     assert output.shape == (batch, seq, hidden_dim)
 
 
@@ -259,7 +258,7 @@ def test_non_contiguous_gradient_flow(valid_kwargs, hidden_dim):
     # Retain grad on non-leaf tensor to check gradient flow
     x.retain_grad()
 
-    output, _ = layer(x)
+    output = layer(x)
     loss = output.sum()
     loss.backward()
 

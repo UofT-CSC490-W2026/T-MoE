@@ -1,24 +1,26 @@
+import os
+
 import torch
 from torch import nn
 
 from src.core.registry import ExpertRegistry
 from src.experts.lora import LoRAConfig, LoRAMLPExpert
+from src.project_types import ExpertType
 
 
 class ExpertPool(nn.Module):
-    """
-    A pool of ``num_experts`` LoRA MLP experts, indexed 0 … N-1.
-
-    The pool is created once at init and the experts are accessed by integer
-    index — the same integers the Router returns.
-    """
+    """Manages a fixed collection of LoRA MLP experts indexed 0 … N-1."""
 
     def __init__(
-        self, config: LoRAConfig, num_experts: int, expert_type: str = "gpt_neo_lora"
+        self,
+        config: LoRAConfig,
+        num_experts: int,
+        expert_type: ExpertType = ExpertType.GPTNEO_LORA,
     ):
         super().__init__()
         self.config = config
-        self.expert_class = ExpertRegistry.get(expert_type)
+        self.expert_type = expert_type
+        self.expert_class = ExpertRegistry.get(expert_type.value)
         self.experts = nn.ModuleList(
             [self.expert_class(config) for _ in range(num_experts)]
         )
@@ -30,43 +32,29 @@ class ExpertPool(nn.Module):
     def __getitem__(self, idx: int) -> LoRAMLPExpert:
         return self.experts[idx]
 
-    # ── delegation ──
-
     def load_from_mlp(self, mlp: nn.Module) -> None:
-        """Load frozen base weights into all experts from the same pretrained MLP."""
         for expert in self.experts:
-            if hasattr(expert, "load_from_mlp"):
-                expert.load_from_mlp(mlp)
+            expert.load_from_mlp(mlp)
 
     def freeze_base_weights(self) -> None:
-        """Ensure all base weights across all experts are frozen."""
         for expert in self.experts:
-            if hasattr(expert, "freeze_base_weights"):
-                expert.freeze_base_weights()
-
-    # ── checkpoint helpers ──
+            expert.freeze_base_weights()
 
     def save_expert(self, idx: int, path: str) -> None:
-        """Save a single expert's state dict."""
         torch.save(self.experts[idx].state_dict(), path)
 
     def load_expert(self, idx: int, path: str) -> None:
-        """Load a single expert's state dict."""
         state = torch.load(path, map_location="cpu")
         self.experts[idx].load_state_dict(state, strict=False)
 
     def save_all(self, dir_path: str) -> None:
         """Save every expert to ``<dir_path>/expert_<i>.pt``."""
-        import os
-
         os.makedirs(dir_path, exist_ok=True)
         for i, expert in enumerate(self.experts):
             torch.save(expert.state_dict(), os.path.join(dir_path, f"expert_{i}.pt"))
 
     def load_all(self, dir_path: str) -> None:
         """Load every expert from ``<dir_path>/expert_<i>.pt``."""
-        import os
-
         for i in range(len(self.experts)):
             path = os.path.join(dir_path, f"expert_{i}.pt")
             if os.path.exists(path):

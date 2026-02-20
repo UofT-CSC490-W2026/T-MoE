@@ -8,9 +8,13 @@ from configs import MetabolicRouterConfig
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
 from src.metrics import RouterMetricsTracker
+from src.project_types import RouterType
+
+# Constants
+MIN_TEMPERATURE = 1e-3  # Minimum temperature to prevent division by zero in softmax
 
 
-@RouterRegistry.register("metabolic")
+@RouterRegistry.register(RouterType.METABOLIC.value)
 class MetabolicRouter(BaseRouter):
     """
     Metabolic Router with Heavy-Tailed Fatigue Dynamics.
@@ -22,6 +26,12 @@ class MetabolicRouter(BaseRouter):
 
     def __init__(self, config: MetabolicRouterConfig):
         super().__init__(config)
+
+        # Validate top_k <= num_experts
+        if config.top_k > config.num_experts:
+            raise ValueError(
+                f"top_k ({config.top_k}) cannot exceed num_experts ({config.num_experts})"
+            )
 
         # Metabolic Parameters
         self.lambda_metabolic = config.lambda_metabolic
@@ -49,11 +59,20 @@ class MetabolicRouter(BaseRouter):
             self.prototypes.weight
         )  # TODO can we use Kaiming initialization instead?
 
-        # Apply weight normalization for automatic L2 normalization
+        # Normalize prototypes for cosine similarity if enabled (this is essential for cosine gating)
         if self.normalize_weights:
             self.prototypes = nn.utils.parametrizations.weight_norm(
-                self.prototypes, name="weight", dim=1
+                self.prototypes, name="weight", dim=0
             )
+            with torch.no_grad():
+                for name, param in self.prototypes.named_parameters():
+                    if "original0" in name:  # original0 == magnitude g
+                        # Verify it's the right shape: [num_experts] or [num_experts, 1]
+                        assert param.shape[0] == self.num_experts, (
+                            f"Expected magnitude shape [{self.num_experts}], got {param.shape}"
+                        )
+                        param.fill_(1.0)
+                        break
 
         # Exploration Parameters
         self.noise_std = config.noise_std
@@ -63,6 +82,12 @@ class MetabolicRouter(BaseRouter):
         self.register_buffer("birth_step", torch.zeros(self.num_experts))
         self.register_buffer("num_steps", torch.tensor(0, dtype=torch.long))
 
+        # Usage tracking for deferred fatigue update (gradient accumulation support)
+        # $O(E)$ accumulators replacing $O(N)$ concatenations
+        self.register_buffer("_pending_usage_sum", torch.zeros(self.num_experts))
+        self.register_buffer("_pending_tokens", torch.tensor(0, dtype=torch.long))
+        self._usage_pending = False
+
         # Initialize Metrics Tracker
         self.metrics_tracker = RouterMetricsTracker(self)
 
@@ -70,17 +95,21 @@ class MetabolicRouter(BaseRouter):
         self.register_buffer("expert_ids", torch.arange(self.num_experts))
 
         # Cache hardware distance vector (constant for single-device, can be overridden for multi-device)
+        # Hardware Distance (Placeholder - NOOP)
+        # TODO: Implement proper hardware topology when needed
+        # For now, this is disabled (all zeros = no penalty)
         self.register_buffer("hardware_distance", torch.zeros(self.num_experts))
 
     def compute_alignment(self, x: torch.Tensor) -> torch.Tensor:
         """
         Compute alignment between input and expert prototypes.
         """
-        # Normalize input for cosine similarity
+        # Normalize input for cosine similarity # TODO: might need to add clamping to prevent NaNs from zero vectors
         if self.normalize_inputs:
-            x = F.normalize(x, p=2, dim=-1)
+            x = F.normalize(x, p=2, dim=-1, eps=1e-8)
 
         # Compute alignment (weights are automatically normalized by weight_norm if enabled in __init__)
+        # which is effectively: g * cosine_similarity(x, v)
         alignment = self.prototypes(x)
 
         return alignment
@@ -108,30 +137,54 @@ class MetabolicRouter(BaseRouter):
         # 3. Exploration Noise (Gumbel for differentiable sampling)
         # Allow noise in eval mode for exploration studies (no training check)
         if noise_std > 0:
-            # Standard Gumbel distribution
-            gumbel_uniform = torch.rand_like(potential)
-            noise = -torch.log(-torch.log(gumbel_uniform + 1e-20) + 1e-20)
+            # Gumbel(0,1) = -log(-log(U)), U ~ Uniform(0,1)
+            # Equivalent to using torch.distributions.Gumbel but avoids
+            # per-call distribution object creation overhead
+            u = torch.empty_like(potential).uniform_(1e-10, 1.0 - 1e-10)
+            noise = -torch.log(-torch.log(u))
             potential = potential + (noise * noise_std)
 
         return potential
 
-    def update_fatigue(self, indices: torch.Tensor, weights: torch.Tensor) -> None:
+    def _record_usage(self, indices: torch.Tensor, weights: torch.Tensor) -> None:
+        """
+        Record expert usage for deferred fatigue update.
+
+        This method accumulates usage across forward passes within a logical batch
+        (i.e., across gradient accumulation steps). Call step() after optimizer.step()
+        to apply the accumulated usage to fatigue.
+
+        Args:
+            indices: Expert indices [batch, seq, top_k]
+            weights: Routing weights [batch, seq, top_k]
+        """
+        flat_indices = indices.flatten()
+        flat_weights = weights.flatten()
+        batch_tokens = flat_indices.numel() // self.top_k
+
+        # Pre-aggregate usage inside the forward pass footprint
+        usage = torch.bincount(
+            flat_indices, weights=flat_weights, minlength=self.num_experts
+        )
+
+        if self._usage_pending:
+            self._pending_usage_sum.add_(usage)
+            self._pending_tokens.add_(batch_tokens)
+        else:
+            self._pending_usage_sum.copy_(usage)
+            self._pending_tokens.fill_(batch_tokens)
+            self._usage_pending = True
+
+    def update_fatigue(self, usage: torch.Tensor) -> None:
         """
         Update expert fatigue with age-aware dynamics (Equation 2).
+
+        Args:
+            usage: Pre-aggregated and normalized float usage per expert.
         """
         device = self.fatigue.device
 
-        # 1. Compute usage U_i(t) from routing weights using bincount
-        # Use raw counts (no normalization) to preserve fatigue signal strength
-        flattened_expert_indices = indices.flatten()
-        flattened_routing_weights = weights.flatten()
-        usage = torch.bincount(
-            flattened_expert_indices,
-            weights=flattened_routing_weights,
-            minlength=self.num_experts,
-        )
-
-        # 2. Age-Aware Cost Scaling (prevents newborn apoptosis)
+        # 1. Age-Aware Cost Scaling (prevents newborn apoptosis)
         # η_i(t) = β_cost · min(1.0, (t - birth_i) / T_warmup)
         # Use num_steps + 1 to account for current step (prevents free first step)
         if self.warmup_steps > 0:
@@ -142,15 +195,15 @@ class MetabolicRouter(BaseRouter):
 
         eta_i = self.beta_cost * age_factor
 
-        # 3. Adaptive Cost Scaling (Equation 3)
+        # 2. Adaptive Cost Scaling (Equation 3)
         # η_eff = η_base · (N_current / N_start)
         n_current = self.n_active.item()  # Use tracked active expert count
         eta_eff = eta_i * (n_current / max(self.n_start, 1))
 
-        # 4. Fatigue Update: F_i(t+1) = (1-γ)F_i(t) + η_eff·U_i(t)
+        # 3. Fatigue Update: F_i(t+1) = (1-γ)F_i(t) + η_eff·U_i(t)
+        # In-place optimized update
         with torch.no_grad():
-            self.fatigue.mul_(1 - self.gamma_recovery)  # Exponential recovery
-            self.fatigue.add_(eta_eff * usage)  # Accumulate from usage
+            self.fatigue.mul_(1 - self.gamma_recovery).add_(eta_eff * usage)
 
     def forward(
         self,
@@ -158,6 +211,7 @@ class MetabolicRouter(BaseRouter):
         return_metrics: bool = False,
         noise_std: Optional[float] = None,
         temperature: Optional[float] = None,
+        record_usage: bool = True,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[Dict[str, Any]]]:
         """
         End-to-end routing forward pass.
@@ -169,6 +223,9 @@ class MetabolicRouter(BaseRouter):
                        If None, uses self.noise_std during training and 0.0 during eval.
             temperature: Optional override for softmax temperature.
                         If None, uses self.temperature. Useful for stochastic eval routing.
+            record_usage: Whether to record usage for fatigue updates. Set to False
+                         when collecting metrics from a separate forward pass to avoid
+                         double-counting usage.
 
         Returns:
             weights: Routing probabilities [batch, seq, top_k]
@@ -189,14 +246,13 @@ class MetabolicRouter(BaseRouter):
 
         # 4. Normalize Weights (Softmax)
         temp = temperature if temperature is not None else self.temperature
+        # Ensure temperature is bounded to prevent division by zero and overflow
+        temp = max(temp, MIN_TEMPERATURE)
         weights = F.softmax(top_k_values / temp, dim=-1)
 
-        # 5. Update Fatigue (only during training)
-        if self.training:
-            self.update_fatigue(top_k_indices, weights)
-            # Increment global step counter (used for age-aware warmup)
-            with torch.no_grad():
-                self.num_steps += 1
+        # 5. Record Usage (only during training and if requested)
+        if self.training and record_usage:
+            self._record_usage(top_k_indices, weights)
 
         # 6. Prepare Metrics
         metrics = None
@@ -204,6 +260,46 @@ class MetabolicRouter(BaseRouter):
             metrics = self.metrics_tracker.compute_all_metrics(top_k_indices, weights)
 
         return weights, top_k_indices, metrics
+
+    def step(self) -> None:
+        """
+        Apply pending usage to fatigue and increment step counter.
+
+        **IMPORTANT**: Call this method after `optimizer.step()` to ensure
+        fatigue updates occur once per logical batch (not per forward pass).
+        This is critical for correct behavior with gradient accumulation.
+
+        Example:
+            ```python
+            for batch in dataloader:
+                output, loss = model(batch)
+                loss.backward()
+
+                if (step + 1) % accumulation_steps == 0:
+                    optimizer.step()
+                    optimizer.zero_grad()
+
+                    # Update fatigue after optimizer step
+                    model.router.step()  # or layer.router.step() for MoE layers
+            ```
+        """
+        if not self._usage_pending:
+            # No usage recorded since last step (eval mode or first call)
+            return
+
+        # Apply accumulated usage to fatigue
+        with torch.no_grad():
+            # Get exact batched-averaged token usage fraction
+            usage_avg = self._pending_usage_sum / max(self._pending_tokens.item(), 1)
+
+            # update_fatigue now accepts pre-aggregated float usage
+            self.update_fatigue(usage_avg)
+
+            # Increment global step counter
+            self.num_steps += 1
+
+            # Clear pending usage flag
+            self._usage_pending = False
 
     def register_birth(self, expert_id: int) -> None:
         """
@@ -238,6 +334,10 @@ class MetabolicRouter(BaseRouter):
             self.fatigue.zero_()
             self.birth_step.zero_()
             self.num_steps.zero_()
+            # Clear pending usage
+            self._pending_usage_sum.zero_()
+            self._pending_tokens.zero_()
+            self._usage_pending = False
 
     def get_state(self) -> Dict[str, Any]:
         """

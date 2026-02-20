@@ -1,3 +1,3 @@
-from .registry import Registry, RouterRegistry, ExpertRegistry
+from .registry import Registry, RouterRegistry, ExpertRegistry, ModelRegistry
 
-__all__ = ["Registry", "RouterRegistry", "ExpertRegistry"]
+__all__ = ["Registry", "RouterRegistry", "ExpertRegistry", "ModelRegistry"]

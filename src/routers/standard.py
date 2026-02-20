@@ -39,7 +39,7 @@ class StandardRouter(BaseRouter):
         self._last_weights: Optional[torch.Tensor] = None
 
     def forward(
-        self, x: torch.Tensor, return_metrics: bool = False
+        self, x: torch.Tensor, return_metrics: bool = False, **kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[Dict[str, Any]]]:
         # logits: [batch, seq, num_experts]
         logits = self.gate(x) / self.temperature
@@ -49,9 +49,9 @@ class StandardRouter(BaseRouter):
         weights = F.normalize(top_k_values, p=1, dim=-1)
 
         if self.training and self.use_aux_loss:
-            self._last_probs = probs.detach()
-            self._last_indices = top_k_indices.detach()
-            self._last_weights = weights.detach()
+            self._last_probs = probs
+            self._last_indices = top_k_indices
+            self._last_weights = weights
 
         metrics = None
         if return_metrics:
@@ -91,11 +91,14 @@ class StandardRouter(BaseRouter):
         aux = self.aux_loss_coef * num_experts * (usage * P).sum()
         return aux
 
-    def reset_state(self) -> None:
-        pass
-
     def get_state(self) -> Dict[str, Any]:
         return {}
+
+    def clear_aux_state(self) -> None:
+        """Clear temporary tensors to release memory and avoid stale grads."""
+        self._last_probs = None
+        self._last_indices = None
+        self._last_weights = None
 
 
 @RouterRegistry.register("topk")

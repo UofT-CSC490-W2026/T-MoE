@@ -57,5 +57,7 @@ class Registry:
         return f"{self.__class__.__name__}(name='{self.name}', items={self.list()})"
 
 
+# Component registries
 RouterRegistry = Registry("routers")
+ModelRegistry = Registry("models")
 ExpertRegistry = Registry("experts")

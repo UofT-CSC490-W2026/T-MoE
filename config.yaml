@@ -1,0 +1,210 @@
+# ============================================================================
+# T-MoE Experiment Configuration
+# ============================================================================
+# Comprehensive configuration for T-MoE experiments
+# Supports both local and AWS execution environments
+#
+# Usage:
+#   python train.py --config config.yaml
+#   python train.py --config config.yaml execution_env=aws
+# ============================================================================
+
+# Experiment Metadata
+experiment_name: gptneo_lora_moe
+seed: 42
+execution_env: local  # Options: local, aws
+
+# ============================================================================
+# MODEL CONFIGURATION
+# ============================================================================
+model:
+  # Model selection (uses catalog/model_catalog.py)
+  model_key: gpt-neo-125m  # Options: gpt-neo-125m, gpt-neo-350m, gpt2, gpt2-medium, etc.
+
+  # Custom model (overrides model_key if provided)
+  custom_model_name: null  # e.g., "my-org/my-model"
+  model_type: gpt_neo  # gpt_neo, gpt2, llama. Need to specify if using custom_model_name because of backbone loading logic.
+
+  freeze_backbone: true
+  moe_layer_indices: [-1]  # List of layer indices to inject MoE (-1 = last layer)
+
+  # Model dimensions (auto-loaded from catalog or HuggingFace)
+  hidden_dim: null  # Auto-detected
+  num_layers: null  # Auto-detected
+  vocab_size: null  # Auto-detected
+
+# ============================================================================
+# ROUTER CONFIGURATION
+# ============================================================================
+router:
+  type: standard  # Options: standard, metabolic
+  num_experts: 4
+  top_k: 1
+  hidden_dim: null  # Auto-set from model
+
+  # Router-specific parameters
+  temperature: 1.0
+  noise_std: 0.0
+  use_aux_loss: false
+
+  # Metabolic Router specific (only used if type=MetabolicRouter)
+  metabolic:
+    lambda_metabolic: 0.1
+    mu_silicon: 0.0
+    gamma_recovery: 0.01
+    beta_cost: 0.04
+    warmup_steps: 100
+    normalize_inputs: true
+    normalize_weights: true
+
+# ============================================================================
+# EXPERT CONFIGURATION
+# ============================================================================
+expert:
+  type: gpt_neo_lora  # Options: gpt_neo_lora (future: gpt2_lora, llama_lora)
+  count: 4  # Number of experts
+
+  # LoRA-specific parameters
+  lora:
+    rank: 16
+    alpha: 16
+    dropout: 0.0
+    init_scale: 0.01
+
+# ============================================================================
+# TRAINING CONFIGURATION
+# ============================================================================
+training:
+  # Basic training
+  batch_size: 8
+  lr: 1.0e-3
+  steps: 1000
+  warmup_steps: 100
+
+  # Optimizer
+  optimizer: adamw
+  weight_decay: 0.01
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+
+  # Gradient management
+  gradient_accumulation_steps: 1
+  clip_grad_norm: 1.0
+  use_amp: true  # Automatic Mixed Precision
+
+  # Learning rate schedule
+  lr_scheduler: cosine
+  lr_scheduler_kwargs:
+    eta_min: 1.0e-5
+
+  # Checkpointing
+  save_interval: 500
+  keep_last_n_checkpoints: 3
+  save_best: true
+
+  # Validation & Early Stopping
+  eval_interval: 100
+  early_stopping_patience: null  # null = disabled, int = number of eval steps
+
+  # Logging
+  log_interval: 10
+  log_grad_norm: true
+  log_param_norm: true
+
+# ============================================================================
+# DATASET CONFIGURATION
+# ============================================================================
+dataset:
+  # Dataset selection (uses catalog/dataset_catalog.py)
+  dataset_key: wikitext-2  # Options: wikitext-2, wikitext-103, c4, openwebtext, the_pile, code
+
+  # Custom dataset (overrides dataset_key if provided)
+  custom_dataset_name: null  # e.g., "my-org/my-dataset"
+  custom_dataset_config: null
+  text_column: text
+
+  # Data processing
+  max_seq_len: 512
+  num_samples: null  # null = use entire dataset
+  streaming: false
+
+  # Data splits
+  train_split: train
+  eval_split: validation
+  test_split: test
+
+  # DataLoader
+  num_workers: 4
+  prefetch_factor: 2
+  shuffle: true
+  drop_last: true
+
+# ============================================================================
+# LOGGING CONFIGURATION (WandB)
+# ============================================================================
+logging:
+  # WandB settings
+  enabled: true
+  project: null  # Set via WANDB_PROJECT env var
+  entity: null  # Set via WANDB_ENTITY env var
+  group: null  # Optional experiment grouping
+  tags: []  # List of tags for this run
+
+  # Logging behavior
+  mode: online  # Options: online, offline, disabled
+  log_model: true  # Save model checkpoints as W&B artifacts
+  log_gradients: false  # Log gradient histograms (expensive)
+  log_interval: 10
+  notes: null  # Optional notes for this run
+
+# ============================================================================
+# DEVICE CONFIGURATION
+# ============================================================================
+device:
+  device: cuda  # Options: cuda, cpu, mps, auto
+  dtype: float32  # Options: float32, float16, bfloat16
+  compile: false  # Use torch.compile (PyTorch 2.0+)
+
+# ============================================================================
+# COMPUTE ENVIRONMENT CONFIGURATION
+# ============================================================================
+compute:
+  execution_env: local  # Options: local, aws
+
+  # ========================================
+  # LOCAL EXECUTION (SLURM)
+  # ========================================
+  local:
+    # Paths
+    data_root: ./data
+    output_root: ./outputs
+    cache_dir: ./cache
+
+  # ========================================
+  # AWS EXECUTION (EC2 + S3)
+  # ========================================
+  aws:
+    # S3 Paths (update with your actual bucket names)
+    data_root: s3://tmoe-data/datasets
+    output_root: s3://tmoe-experiments/outputs
+    cache_dir: /tmp/tmoe_cache  # Local cache on EC2
+
+    # S3 configuration
+    s3:
+      endpoint_url: null
+      region: us-east-1
+      use_accelerate: false
+
+    # EC2 instance metadata
+    instance_type: p3.2xlarge  # Optional metadata
+
+# ============================================================================
+# OUTPUT STRUCTURE (Auto-generated)
+# ============================================================================
+# Outputs will be saved to:
+#   {output_root}/experiments/{experiment_name}_{timestamp}/
+#     ├── checkpoints/
+#     ├── logs/
+#     ├── wandb/
+#     └── config.yaml  # Saved copy of this config
+# ============================================================================

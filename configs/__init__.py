@@ -1,4 +1,4 @@
-from .base import BaseConfig
+from .base import BaseConfig, DeviceConfig, LoggingConfig, TrainingConfig
 from .router import (
     RouterConfig,
     MetabolicRouterConfig,
@@ -8,6 +8,8 @@ from .router import (
     DynMoERouterConfig,
 )
 from .dataset import DatasetConfig
+from .model import ModelConfig
+from .experiment import ExpertConfig, ComputeConfig, TMoEExperimentConfig
 
 __all__ = [
     "BaseConfig",
@@ -18,4 +20,11 @@ __all__ = [
     "TopKRouterConfig",
     "SwitchRouterConfig",
     "DynMoERouterConfig",
+    "DeviceConfig",
+    "LoggingConfig",
+    "TrainingConfig",
+    "ModelConfig",
+    "ComputeConfig",
+    "ExpertConfig",
+    "TMoEExperimentConfig",
 ]

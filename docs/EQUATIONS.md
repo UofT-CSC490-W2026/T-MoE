@@ -10,12 +10,13 @@ T-MoE replaces traditional auxiliary load-balancing losses with biological-inspi
 
 ### Equation 1: Homeostatic Routing Potential
 The potential $z_i$ of an expert $i$ to be selected for an input $x$ at time $t$:
-$$z_i(x,t)= \cos(x, W_i) - \lambda \cdot \mathrm{SoftSign}\!\left(F_i(t)\right) - \mu \cdot \mathrm{Dist}(i)$$
+$$z_i(x,t)= g_i \cdot \cos(x, W_i) - \lambda \cdot \mathrm{SoftSign}\!\left(F_i(t)\right) - \mu \cdot \mathrm{Dist}(i)$$
 
 where:
 $$\mathrm{SoftSign}(x) = \frac{x}{1 + |x|}$$
 
-- $\cos(x, W_i)$: Semantic alignment (cosine similarity with expert prototype $W_i$).
+- $g_i$: Learnable expert importance scale (magnitude from weight norm).
+- $\cos(x, W_i)$: Semantic alignment (cosine similarity with expert direction $W_i$).
 - $\lambda F_i(t)$: Metabolic tax (fatigue penalty).
 - $\mu \cdot \mathrm{Dist}(i)$: Silicon Tax (distance penalty).
 
@@ -23,7 +24,7 @@ $$\mathrm{SoftSign}(x) = \frac{x}{1 + |x|}$$
 Fatigue $F_i$ accumulates with usage and recovers over time:
 $$F_i(t+1) = (1-\gamma) F_i(t) + \eta_i(t) \cdot U_i(t), \qquad 0 < \gamma < 1$$
 where:
-- $\eta_i(t) = \eta_{eff} \cdot \min\!\left(1.0, \frac{t - \text{birth\_step}\_i}{T\_{\text{warmup}}}\right)$
+$$\eta_i(t) = \eta_{eff} \cdot \min\!\left(1.0, \frac{t - \text{birth\_step}\_i}{T\_{\text{warmup}}}\right)$$
 - $T_{\text{warmup}} > 0$
 - $\gamma$: Recovery rate (homeostatic return).
 - $\eta_{eff}$: Effective activation cost.
@@ -31,6 +32,7 @@ where:
 
 ### Equation 3: Adaptive Cost Scaling
 To maintain stability during expert expansion, the activation cost $\eta$ scales with the number of active experts $N$:
+
 $$\eta_{eff} = \eta_{base} \cdot \frac{N_{current}}{N_{start}}$$
 
 ---

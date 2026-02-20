@@ -7,6 +7,7 @@ from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
 from src.experts.pool import ExpertPool
 from src.layers.lora_moe import LoRAMoELayer
 from src.routers.base import BaseRouter
+from src.project_types import ExpertType
 
 
 # ── helpers ──
@@ -30,6 +31,17 @@ class _RouterCfg:
     hidden_dim = 32
     num_experts = 2
     top_k = 2
+
+
+class MockMLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.c_fc = nn.Linear(32, 128)
+        self.act = nn.GELU(approximate="tanh")
+        self.c_proj = nn.Linear(128, 32)
+
+    def forward(self, x):
+        return self.c_proj(self.act(self.c_fc(x)))
 
 
 @pytest.fixture
@@ -98,14 +110,20 @@ def test_shared_lora_layer_forward():
 
 def test_gpt_neo_lora_mlp_structure():
     mlp = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
-    assert isinstance(mlp.c_fc, LoRALayer)
-    assert isinstance(mlp.c_proj, LoRALayer)
+    mock_base = MockMLP()
+    mlp.load_from_mlp(mock_base)
+    assert isinstance(mlp.c_fc, SharedLoRALayer)
+    assert isinstance(mlp.c_proj, SharedLoRALayer)
 
 
 def test_gpt_neo_lora_mlp_zero_at_init():
     mlp = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
-    out = mlp(torch.randn(1, 10, 32))
-    assert torch.allclose(out, torch.zeros_like(out))
+    mock_base = MockMLP()
+    mlp.load_from_mlp(mock_base)
+    x = torch.randn(1, 10, 32)
+    out = mlp(x)
+    expected = mock_base(x)
+    assert torch.allclose(out, expected, atol=1e-6)
 
 
 def test_gpt_neo_lora_load_from_mlp_raises_on_missing():
@@ -120,7 +138,7 @@ def test_gpt_neo_lora_load_from_mlp_raises_on_missing():
 
 
 def test_expert_pool(lora_config):
-    pool = ExpertPool(lora_config, num_experts=3, expert_type="gpt_neo_lora")
+    pool = ExpertPool(lora_config, num_experts=3, expert_type=ExpertType.GPTNEO_LORA)
 
     assert pool.num_experts == 3
     assert isinstance(pool[0], GPTNeoLoRAMLP)
@@ -131,10 +149,12 @@ def test_expert_pool(lora_config):
 
 
 def test_lora_moe_layer_matches_base_at_init(lora_config):
-    base_mlp = nn.Sequential(nn.Linear(32, 128), nn.GELU(), nn.Linear(128, 32))
+    base_mlp = MockMLP()
     router = MockRouter(_RouterCfg())
 
-    layer = LoRAMoELayer(base_mlp, router, lora_config, num_experts=2)
+    layer = LoRAMoELayer.from_pretrained_mlp(
+        base_mlp, router, lora_config, num_experts=2
+    )
 
     x = torch.randn(2, 5, 32)
     # Default return is plain tensor (HF compatible)
@@ -146,9 +166,11 @@ def test_lora_moe_layer_matches_base_at_init(lora_config):
 
 
 def test_lora_moe_layer_returns_tuple_with_metrics(lora_config):
-    base_mlp = nn.Sequential(nn.Linear(32, 128), nn.GELU(), nn.Linear(128, 32))
+    base_mlp = MockMLP()
     router = MockRouter(_RouterCfg())
-    layer = LoRAMoELayer(base_mlp, router, lora_config, num_experts=2)
+    layer = LoRAMoELayer.from_pretrained_mlp(
+        base_mlp, router, lora_config, num_experts=2
+    )
 
     x = torch.randn(2, 5, 32)
     result = layer(x, return_metrics=True)
@@ -158,9 +180,11 @@ def test_lora_moe_layer_returns_tuple_with_metrics(lora_config):
 
 
 def test_lora_moe_layer_changes_after_perturb(lora_config):
-    base_mlp = nn.Sequential(nn.Linear(32, 128), nn.GELU(), nn.Linear(128, 32))
+    base_mlp = MockMLP()
     router = MockRouter(_RouterCfg())
-    layer = LoRAMoELayer(base_mlp, router, lora_config, num_experts=2)
+    layer = LoRAMoELayer.from_pretrained_mlp(
+        base_mlp, router, lora_config, num_experts=2
+    )
 
     x = torch.randn(2, 5, 32)
     expected = base_mlp(x)
