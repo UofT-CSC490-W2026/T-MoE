@@ -223,10 +223,6 @@ class Trainer:
                 for moe_layer in self.model.moe_layers.values():
                     if hasattr(moe_layer, "step"):
                         moe_layer.step()
-                    if hasattr(moe_layer, "router") and hasattr(
-                        moe_layer.router, "clear_aux_state"
-                    ):
-                        moe_layer.router.clear_aux_state()
 
             if self.scheduler is not None:
                 self.scheduler.step()

@@ -56,6 +56,22 @@ class LoRAMoELayer(BaseMoELayer):
         layer.expert_pool.load_from_mlp(mlp)
         return layer
 
+    def get_cached_metrics(self) -> Optional[Dict[str, Any]]:
+        """Return metrics from most recent forward pass."""
+        if (
+            hasattr(self, "_last_routing_weights")
+            and self._last_routing_weights is not None
+        ):
+            return self.router.metrics_tracker.compute_all_metrics(
+                self._last_routing_indices, self._last_routing_weights
+            )
+        return None
+
+    def step(self) -> None:
+        """Delegate to router's step method (applies fatigue)."""
+        if hasattr(self.router, "step"):
+            self.router.step()
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -65,9 +81,6 @@ class LoRAMoELayer(BaseMoELayer):
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[Dict[str, Any]]]]:
         x = hidden_states
         batch, seq, hidden = x.shape
-
-        with torch.no_grad():
-            base_out = self.base_layer(x)
 
         router_kwargs: Dict[str, Any] = {"return_metrics": return_metrics}
         if self._router_accepts_record_usage:
@@ -93,8 +106,12 @@ class LoRAMoELayer(BaseMoELayer):
             expert_w = (w_flat * mask.float())[token_ids].sum(dim=1, keepdim=True)
             lora_delta[token_ids] += delta * expert_w
 
-        output = base_out + lora_delta.view(batch, seq, hidden)
+        output = lora_delta.view(batch, seq, hidden)
 
         if return_metrics:
+            if metrics is None:
+                metrics = {}
+            metrics["weights"] = weights
+            metrics["indices"] = indices
             return output, metrics
         return output

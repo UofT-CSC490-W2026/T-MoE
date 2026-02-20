@@ -35,4 +35,4 @@ class ModelType(str, Enum):
     """Supported model architectures."""
 
     GPTNEO = "gpt_neo"
-    LLAMA = "llama"
+    # LLAMA = "llama"

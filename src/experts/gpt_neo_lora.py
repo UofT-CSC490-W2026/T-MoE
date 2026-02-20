@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 from src.core.registry import ExpertRegistry
-from src.experts.lora import LoRAConfig, LoRALayer, LoRAMLPExpert
+from src.experts.lora import LoRAConfig, SharedLoRALayer, LoRAMLPExpert
 
 
 def _extract_linear_weight(
@@ -31,22 +31,9 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
 
     def __init__(self, config: LoRAConfig):
         super().__init__(config)
-        self.c_fc = LoRALayer(
-            config.hidden_dim,
-            config.intermediate_dim,
-            rank=config.rank,
-            alpha=config.alpha,
-            dropout=config.dropout,
-            init_scale=config.init_scale,
-        )
-        self.c_proj = LoRALayer(
-            config.intermediate_dim,
-            config.hidden_dim,
-            rank=config.rank,
-            alpha=config.alpha,
-            dropout=config.dropout,
-            init_scale=config.init_scale,
-        )
+        self.config = config
+        self.c_fc = None  # Instantiated in load_from_mlp
+        self.c_proj = None  # Instantiated in load_from_mlp
         self.act = _get_activation()
         # NOTE: GPT-Neo's original MLP does not include output dropout.
         # This is an intentional regularization addition for LoRA fine-tuning.
@@ -67,14 +54,23 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
             )
 
         fc_w, fc_b = _extract_linear_weight(fc_layer)
-        actual_out, actual_in = fc_w.shape
-        if (actual_in, actual_out) != (self.c_fc.in_features, self.c_fc.out_features):
-            raise ValueError(
-                f"Dim mismatch: LoRAConfig expects ({self.c_fc.in_features}, "
-                f"{self.c_fc.out_features}) but MLP has ({actual_in}, {actual_out})."
-            )
+        # Note: we skip dimensionality validation because SharedLoRALayer handles it
+        # and infers intermediate inputs and outputs dynamically from the shared weights.
+
+        self.c_fc = SharedLoRALayer(
+            shared_weight=fc_w,
+            shared_bias=fc_b,
+            rank=self.config.rank,
+            alpha=self.config.alpha,
+            dropout=self.config.dropout,
+        )
 
         proj_w, proj_b = _extract_linear_weight(proj_layer)
-        self.c_fc.load_base_weight(fc_w, fc_b)
-        self.c_proj.load_base_weight(proj_w, proj_b)
-        self.freeze_base_weights()
+        self.c_proj = SharedLoRALayer(
+            shared_weight=proj_w,
+            shared_bias=proj_b,
+            rank=self.config.rank,
+            alpha=self.config.alpha,
+            dropout=self.config.dropout,
+        )
+        # Weights are naturally frozen due to SharedLoRALayer using register_buffer

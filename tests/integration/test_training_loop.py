@@ -8,15 +8,22 @@ from src.routers.metabolic import MetabolicRouter
 from configs.router import MetabolicRouterConfig
 
 
+class MockMLP(nn.Module):
+    def __init__(self, hidden_dim, intermediate_dim):
+        super().__init__()
+        self.c_fc = nn.Linear(hidden_dim, intermediate_dim)
+        self.act = nn.GELU(approximate="tanh")
+        self.c_proj = nn.Linear(intermediate_dim, hidden_dim)
+
+    def forward(self, x):
+        return self.c_proj(self.act(self.c_fc(x)))
+
+
 def test_training_integration():
     hidden_dim, intermediate_dim = 64, 256
 
     # Backbone MLP (will be frozen)
-    backbone = nn.Sequential(
-        nn.Linear(hidden_dim, intermediate_dim),
-        nn.GELU(),
-        nn.Linear(intermediate_dim, hidden_dim),
-    )
+    backbone = MockMLP(hidden_dim, intermediate_dim)
 
     # Configs
     lora_cfg = LoRAConfig(
@@ -28,16 +35,16 @@ def test_training_integration():
     )
     router_cfg = MetabolicRouterConfig(hidden_dim=hidden_dim, num_experts=4, top_k=2)
 
-    # Build MoE layer
-    moe = LoRAMoELayer(
-        base_layer=backbone,
+    # Build MoE layer using from_pretrained_mlp to trigger load_from_mlp
+    moe = LoRAMoELayer.from_pretrained_mlp(
+        mlp=backbone,
         router=MetabolicRouter(router_cfg),
         lora_config=lora_cfg,
         num_experts=4,
     )
 
     # ── verify freeze ──
-    assert not backbone[0].weight.requires_grad, "Backbone should be frozen"
+    assert not backbone.c_fc.weight.requires_grad, "Backbone should be frozen"
     assert any(p.requires_grad for p in moe.router.parameters()), (
         "Router should be trainable"
     )
@@ -55,7 +62,7 @@ def test_training_integration():
     opt.zero_grad()
     loss.backward()
 
-    assert backbone[0].weight.grad is None, "Backbone should receive no gradients"
+    assert backbone.c_fc.weight.grad is None, "Backbone should receive no gradients"
     assert any(
         p.grad is not None for p in moe.router.parameters() if p.requires_grad
     ), "Router should receive gradients"

@@ -24,7 +24,7 @@ $$\mathrm{SoftSign}(x) = \frac{x}{1 + |x|}$$
 Fatigue $F_i$ accumulates with usage and recovers over time:
 $$F_i(t+1) = (1-\gamma) F_i(t) + \eta_i(t) \cdot U_i(t), \qquad 0 < \gamma < 1$$
 where:
-- $\eta_i(t) = \eta_{eff} \cdot \min\!\left(1.0, \frac{t - \text{birth\_step}\_i}{T\_{\text{warmup}}}\right)$
+$$\eta_i(t) = \eta_{eff} \cdot \min\!\left(1.0, \frac{t - \text{birth\_step}\_i}{T\_{\text{warmup}}}\right)$$
 - $T_{\text{warmup}} > 0$
 - $\gamma$: Recovery rate (homeostatic return).
 - $\eta_{eff}$: Effective activation cost.
@@ -32,6 +32,7 @@ where:
 
 ### Equation 3: Adaptive Cost Scaling
 To maintain stability during expert expansion, the activation cost $\eta$ scales with the number of active experts $N$:
+
 $$\eta_{eff} = \eta_{base} \cdot \frac{N_{current}}{N_{start}}$$
 
 ---

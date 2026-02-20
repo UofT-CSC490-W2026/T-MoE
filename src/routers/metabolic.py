@@ -83,10 +83,9 @@ class MetabolicRouter(BaseRouter):
         self.register_buffer("num_steps", torch.tensor(0, dtype=torch.long))
 
         # Usage tracking for deferred fatigue update (gradient accumulation support)
-        self.register_buffer("_pending_usage_indices", torch.zeros(0, dtype=torch.long))
-        self.register_buffer(
-            "_pending_usage_weights", torch.zeros(0, dtype=torch.get_default_dtype())
-        )
+        # $O(E)$ accumulators replacing $O(N)$ concatenations
+        self.register_buffer("_pending_usage_sum", torch.zeros(self.num_experts))
+        self.register_buffer("_pending_tokens", torch.tensor(0, dtype=torch.long))
         self._usage_pending = False
 
         # Initialize Metrics Tracker
@@ -141,7 +140,7 @@ class MetabolicRouter(BaseRouter):
             # Gumbel(0,1) = -log(-log(U)), U ~ Uniform(0,1)
             # Equivalent to using torch.distributions.Gumbel but avoids
             # per-call distribution object creation overhead
-            u = torch.empty_like(potential).uniform_(1e-10, 1.0)
+            u = torch.empty_like(potential).uniform_(1e-10, 1.0 - 1e-10)
             noise = -torch.log(-torch.log(u))
             potential = potential + (noise * noise_std)
 
@@ -159,57 +158,33 @@ class MetabolicRouter(BaseRouter):
             indices: Expert indices [batch, seq, top_k]
             weights: Routing weights [batch, seq, top_k]
         """
-        # Append to pending usage buffers
         flat_indices = indices.flatten()
         flat_weights = weights.flatten()
+        batch_tokens = flat_indices.numel() // self.top_k
 
-        if self._usage_pending:
-            # Accumulate with existing pending usage
-            self._pending_usage_indices = torch.cat(
-                [self._pending_usage_indices, flat_indices]
-            )
-            self._pending_usage_weights = torch.cat(
-                [self._pending_usage_weights, flat_weights]
-            )
-        else:
-            # First usage in this accumulation cycle
-            self._pending_usage_indices = flat_indices
-            self._pending_usage_weights = flat_weights
-            self._usage_pending = True
-
-    def update_fatigue(self, indices: torch.Tensor, weights: torch.Tensor) -> None:
-        """
-        Update expert fatigue with age-aware dynamics (Equation 2).
-        """
-        device = self.fatigue.device
-
-        # 1. Compute usage U_i(t) from routing weights using bincount
-        # Handle both 3D tensors [batch, seq, top_k] and reshaped 2D tensors [num_tokens, top_k]
-        if indices.ndim == 3:
-            batch_size, seq_len, top_k = indices.shape
-            num_tokens = batch_size * seq_len
-        elif indices.ndim == 2:
-            # Reshaped from step(): [num_tokens, top_k]
-            num_tokens, top_k = indices.shape
-        else:
-            raise ValueError(
-                f"Expected indices to have 2 or 3 dimensions, got {indices.ndim}"
-            )
-
-        flat_indices = indices.reshape(-1)  # [batch*seq*top_k]
-        flat_weights = weights.reshape(-1)  # [batch*seq*top_k]
-
-        # Compute per-expert usage (sum of routing weights)
-        # Use bincount with weights to sum routing probabilities per expert
+        # Pre-aggregate usage inside the forward pass footprint
         usage = torch.bincount(
             flat_indices, weights=flat_weights, minlength=self.num_experts
         )
 
-        # Normalize by number of tokens (NOT by num_tokens * top_k)
-        # After normalization, sum(usage) = 1.0 (since routing weights sum to 1 per token)
-        usage = usage / num_tokens
+        if self._usage_pending:
+            self._pending_usage_sum.add_(usage)
+            self._pending_tokens.add_(batch_tokens)
+        else:
+            self._pending_usage_sum.copy_(usage)
+            self._pending_tokens.fill_(batch_tokens)
+            self._usage_pending = True
 
-        # 2. Age-Aware Cost Scaling (prevents newborn apoptosis)
+    def update_fatigue(self, usage: torch.Tensor) -> None:
+        """
+        Update expert fatigue with age-aware dynamics (Equation 2).
+
+        Args:
+            usage: Pre-aggregated and normalized float usage per expert.
+        """
+        device = self.fatigue.device
+
+        # 1. Age-Aware Cost Scaling (prevents newborn apoptosis)
         # η_i(t) = β_cost · min(1.0, (t - birth_i) / T_warmup)
         # Use num_steps + 1 to account for current step (prevents free first step)
         if self.warmup_steps > 0:
@@ -220,15 +195,15 @@ class MetabolicRouter(BaseRouter):
 
         eta_i = self.beta_cost * age_factor
 
-        # 3. Adaptive Cost Scaling (Equation 3)
+        # 2. Adaptive Cost Scaling (Equation 3)
         # η_eff = η_base · (N_current / N_start)
         n_current = self.n_active.item()  # Use tracked active expert count
         eta_eff = eta_i * (n_current / max(self.n_start, 1))
 
-        # 4. Fatigue Update: F_i(t+1) = (1-γ)F_i(t) + η_eff·U_i(t)
+        # 3. Fatigue Update: F_i(t+1) = (1-γ)F_i(t) + η_eff·U_i(t)
+        # In-place optimized update
         with torch.no_grad():
-            self.fatigue.mul_(1 - self.gamma_recovery)  # Exponential recovery
-            self.fatigue.add_(eta_eff * usage)  # Accumulate from usage
+            self.fatigue.mul_(1 - self.gamma_recovery).add_(eta_eff * usage)
 
     def forward(
         self,
@@ -314,21 +289,16 @@ class MetabolicRouter(BaseRouter):
 
         # Apply accumulated usage to fatigue
         with torch.no_grad():
-            self.update_fatigue(
-                self._pending_usage_indices.reshape(-1, self.top_k),
-                self._pending_usage_weights.reshape(-1, self.top_k),
-            )
+            # Get exact batched-averaged token usage fraction
+            usage_avg = self._pending_usage_sum / max(self._pending_tokens.item(), 1)
+
+            # update_fatigue now accepts pre-aggregated float usage
+            self.update_fatigue(usage_avg)
 
             # Increment global step counter
             self.num_steps += 1
 
-            # Clear pending usage
-            self._pending_usage_indices = torch.zeros(
-                0, dtype=torch.long, device=self.fatigue.device
-            )
-            self._pending_usage_weights = torch.zeros(
-                0, dtype=torch.get_default_dtype(), device=self.fatigue.device
-            )
+            # Clear pending usage flag
             self._usage_pending = False
 
     def register_birth(self, expert_id: int) -> None:
@@ -365,12 +335,8 @@ class MetabolicRouter(BaseRouter):
             self.birth_step.zero_()
             self.num_steps.zero_()
             # Clear pending usage
-            self._pending_usage_indices = torch.zeros(
-                0, dtype=torch.long, device=self.fatigue.device
-            )
-            self._pending_usage_weights = torch.zeros(
-                0, dtype=torch.get_default_dtype(), device=self.fatigue.device
-            )
+            self._pending_usage_sum.zero_()
+            self._pending_tokens.zero_()
             self._usage_pending = False
 
     def get_state(self) -> Dict[str, Any]:
