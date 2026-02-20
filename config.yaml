@@ -170,7 +170,7 @@ device:
 # ============================================================================
 compute:
   # Backend selection (NEW: determines execution platform)
-  backend: aws  # Options: aws, modal
+  backend: modal  # Options: aws, modal
   
   execution_env: local  # Options: local, aws (deprecated, use backend instead)
 
