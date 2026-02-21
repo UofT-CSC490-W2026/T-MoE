@@ -76,7 +76,25 @@ class Trainer:
 
         # Mixed precision
         self.use_amp = getattr(config.training, "use_amp", True)
-        self.scaler = GradScaler("cuda", enabled=self.use_amp)
+
+        # Determine device-aware mixed precision settings
+        if self.use_amp:
+            if self.device == "cuda":
+                self.scaler = GradScaler("cuda", enabled=True)
+                self.autocast_device = "cuda"
+            elif "cpu" in self.device:
+                # CPU mixed precision (BFloat16) doesn't use a scaler
+                self.scaler = GradScaler("cpu", enabled=False)
+                self.autocast_device = "cpu"
+                print(
+                    "ℹ️  CPU Mixed Precision enabled (using BFloat16, no scaling required)"
+                )
+            else:
+                self.scaler = GradScaler(enabled=False)
+                self.autocast_device = self.device
+        else:
+            self.scaler = GradScaler(enabled=False)
+            self.autocast_device = self.device
 
         # Early stopping
         self.early_stopping_patience = getattr(
@@ -187,7 +205,7 @@ class Trainer:
                 batch = {k: v.to(self.device) for k, v in batch.items()}
 
                 # Forward pass with AMP
-                with autocast("cuda", enabled=self.use_amp):
+                with autocast(device_type=self.autocast_device, enabled=self.use_amp):
                     logits, loss, moe_metrics = self.model(
                         input_ids=batch["input_ids"],
                         attention_mask=batch.get("attention_mask"),
@@ -223,6 +241,10 @@ class Trainer:
                 for moe_layer in self.model.moe_layers.values():
                     if hasattr(moe_layer, "step"):
                         moe_layer.step()
+                    if hasattr(moe_layer, "router") and hasattr(
+                        moe_layer.router, "clear_aux_state"
+                    ):
+                        moe_layer.router.clear_aux_state()
 
             if self.scheduler is not None:
                 self.scheduler.step()
@@ -304,7 +326,7 @@ class Trainer:
         for batch in self.val_dataloader:
             batch = {k: v.to(self.device) for k, v in batch.items()}
 
-            with autocast("cuda", enabled=self.use_amp):
+            with autocast(device_type=self.autocast_device, enabled=self.use_amp):
                 _, loss, _ = self.model(
                     input_ids=batch["input_ids"],
                     attention_mask=batch.get("attention_mask"),

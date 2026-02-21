@@ -169,7 +169,10 @@ device:
 # COMPUTE ENVIRONMENT CONFIGURATION
 # ============================================================================
 compute:
-  execution_env: local  # Options: local, aws
+  # Backend selection (NEW: determines execution platform)
+  backend: modal  # Options: aws, modal
+  
+  execution_env: local  # Options: local, aws (deprecated, use backend instead)
 
   # ========================================
   # LOCAL EXECUTION (SLURM)
@@ -197,6 +200,64 @@ compute:
 
     # EC2 instance metadata
     instance_type: p3.2xlarge  # Optional metadata
+
+  # ========================================
+  # MODAL EXECUTION (NEW)
+  # ========================================
+  modal:
+    # GPU configuration
+    gpu: "A10G:1"  # Modal GPU spec (e.g., "A10G:1", "A100:1", "T4:1")
+    
+    # CPU cores
+    cpu: 4
+    
+    # Timeout in seconds
+    timeout: 14400  # 4 hours
+    
+    # Modal Volume name for artifact persistence
+    volume_name: "tmoe-training-artifacts"
+
+# ============================================================================
+# DATA INGESTION CONFIGURATION
+# ============================================================================
+# Configuration for the data ingestion pipeline.
+# Supports both SageMaker-based and direct fallback ingestion.
+# Used by: run_pipeline.py
+# ============================================================================
+data_ingestion:
+  # Execution mode control
+  use_sagemaker: false  # Set to true to use SageMaker, false for direct S3 upload
+
+  # Dataset to ingest from HuggingFace Hub
+  source_dataset: KrisMinchev/wikitext-2-raw-v1
+  dataset_config: null  # Optional dataset config/subset (e.g., "en" for some datasets)
+  dataset_splits: null  # null = all splits, or list: [train, validation, test]
+
+  # SageMaker processing job configuration (only used if use_sagemaker: true)
+  sagemaker:
+    instance_type: ml.m5.xlarge
+    instance_count: 1
+    use_spot_instances: false  # Enable for ~70% cost savings
+    max_runtime_seconds: 3600
+
+    # HuggingFace container versions
+    transformers_version: "4.26"
+    pytorch_version: "2.0"
+    python_version: "py310"
+
+  # S3 paths (aligned with compute.aws structure)
+  s3:
+    raw_data_bucket: null  # Set from terraform output OR RAW_DATA_BUCKET env var
+    raw_data_prefix: datasets/raw/
+    processing_output_prefix: datasets/processed/
+
+  # Processing options
+  processing:
+    validate_splits: true
+    output_format: jsonl  # Options: jsonl, parquet, text
+    compression: none  # Options: gzip, none
+    max_retries: 3
+    log_level: INFO
 
 # ============================================================================
 # OUTPUT STRUCTURE (Auto-generated)

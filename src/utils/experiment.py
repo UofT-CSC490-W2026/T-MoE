@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import Tuple, Optional
+from typing import Any, Tuple, Optional
 
 from omegaconf import DictConfig
 import torch
@@ -19,6 +19,52 @@ from src.project_types import RouterType, ExecutionEnv, ExpertType
 
 # Side-effect import: triggers @ModelRegistry.register decorator
 from src.models import gpt_neo  # noqa: F401
+
+
+def _load_from_local_files(
+    cache_dir: str,
+    train_split: str = "train",
+    eval_split: Optional[str] = "validation",
+) -> Tuple[Optional[Any], Optional[Any]]:
+    """
+    Attempt to load datasets from pre-downloaded files in cache_dir.
+
+    Looks for files named ``{split}.jsonl`` or ``{split}.parquet`` inside
+    *cache_dir* (these are the files produced by the fallback ingestion
+    pipeline and downloaded from S3 by the orchestrator).
+
+    Args:
+        cache_dir: Local directory containing data files.
+        train_split: Name of the training split file (without extension).
+        eval_split: Name of the eval split file (without extension), or None.
+
+    Returns:
+        (train_dataset, val_dataset) — both may be None if no files found.
+    """
+    cache_path = Path(cache_dir)
+
+    def _find_and_load(split_name: str):
+        """Find a data file for the given split and load it."""
+        for ext, loader in [(".jsonl", "json"), (".parquet", "parquet")]:
+            candidate = cache_path / f"{split_name}{ext}"
+            if candidate.is_file():
+                print(f"  Loading {split_name} from local file: {candidate}")
+                ds = load_dataset(loader, data_files=str(candidate), split="train")
+                return ds
+        return None
+
+    train_ds = _find_and_load(train_split)
+    if train_ds is None:
+        print(f"  No local data files found for split '{train_split}' in {cache_dir}")
+        return None, None
+
+    val_ds = None
+    if eval_split:
+        val_ds = _find_and_load(eval_split)
+        if val_ds is None:
+            print(f"  Warning: No local data file for eval split '{eval_split}'")
+
+    return train_ds, val_ds
 
 
 def setup_experiment(config: DictConfig) -> str:
@@ -227,33 +273,46 @@ def build_dataloaders(config: DictConfig) -> Tuple[DataLoader, Optional[DataLoad
     # Determine cache directory based on execution environment
     if config.execution_env == ExecutionEnv.AWS:
         cache_dir = config.compute.aws.cache_dir
-        # TODO: Add S3 integration here when infra is ready
         os.makedirs(cache_dir, exist_ok=True)
     else:
         cache_dir = Path(config.compute.local.cache_dir)
         cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load datasets from HuggingFace
-    train_dataset = load_dataset(
-        dataset_info["name"],
-        dataset_info.get("config"),
-        split=config.dataset.train_split,
-        streaming=dataset_info["streaming"],
-        cache_dir=str(cache_dir),
-    )
-
+    # -------------------------------------------------------------------
+    # Load datasets — S3-backed (AWS) or HuggingFace Hub (local/SLURM)
+    # -------------------------------------------------------------------
+    train_dataset = None
     val_dataset = None
-    if config.dataset.eval_split:
-        try:
-            val_dataset = load_dataset(
-                dataset_info["name"],
-                dataset_info.get("config"),
-                split=config.dataset.eval_split,
-                streaming=dataset_info["streaming"],
-                cache_dir=str(cache_dir),
-            )
-        except Exception as e:
-            print(f"Warning: Could not load validation split: {e}")
+
+    if config.execution_env == "aws":
+        # Try to load from pre-downloaded files in cache_dir
+        train_dataset, val_dataset = _load_from_local_files(
+            cache_dir=str(cache_dir),
+            train_split=config.dataset.train_split,
+            eval_split=config.dataset.eval_split,
+        )
+
+    if train_dataset is None:
+        # Fallback: load directly from HuggingFace Hub
+        train_dataset = load_dataset(
+            dataset_info["name"],
+            dataset_info.get("config"),
+            split=config.dataset.train_split,
+            streaming=dataset_info["streaming"],
+            cache_dir=str(cache_dir),
+        )
+
+        if config.dataset.eval_split:
+            try:
+                val_dataset = load_dataset(
+                    dataset_info["name"],
+                    dataset_info.get("config"),
+                    split=config.dataset.eval_split,
+                    streaming=dataset_info["streaming"],
+                    cache_dir=str(cache_dir),
+                )
+            except Exception as e:
+                print(f"Warning: Could not load validation split: {e}")
 
     # Tokenize datasets and create labels
     def tokenize_function(examples):
