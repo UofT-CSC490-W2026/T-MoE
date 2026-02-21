@@ -198,12 +198,13 @@ def _modal_train_tmoe_impl(
 
     if not s3_dataset_path.startswith("s3://"):
         raise ValueError(f"Invalid S3 path: {s3_dataset_path}")
-        
+
     parts = s3_dataset_path[5:].split("/", 1)
     bucket = parts[0]
     prefix = parts[1] if len(parts) > 1 else ""
 
     from infra.s3client.s3_sync import download_s3_prefix
+
     download_s3_prefix(
         bucket=bucket,
         s3_prefix=prefix,
@@ -253,4 +254,3 @@ def _modal_train_tmoe_impl(
     print(f"Results uploaded to s3://{raw_data_bucket}/{s3_prefix}")
     print(f"Uploaded: {uploaded_count}, Failed: {failed_count}")
     print("=" * 70)
-

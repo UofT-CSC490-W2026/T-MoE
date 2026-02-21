@@ -27,7 +27,9 @@ def load_huggingface_dataset(
     last_error: Exception | None = None
     for attempt in range(1, max_retries + 1):
         try:
-            logger.info("Loading dataset %s (attempt %d/%d)", dataset_name, attempt, max_retries)
+            logger.info(
+                "Loading dataset %s (attempt %d/%d)", dataset_name, attempt, max_retries
+            )
             if dataset_config:
                 ds = load_dataset(dataset_name, dataset_config)
             else:
@@ -36,7 +38,9 @@ def load_huggingface_dataset(
         except (ConnectionError, TimeoutError, OSError) as exc:
             last_error = exc
             wait = retry_delay * (2 ** (attempt - 1))
-            logger.warning("Attempt %d failed (%s). Retrying in %.1fs ...", attempt, exc, wait)
+            logger.warning(
+                "Attempt %d failed (%s). Retrying in %.1fs ...", attempt, exc, wait
+            )
             time.sleep(wait)
     else:
         raise RuntimeError(
@@ -67,7 +71,9 @@ def validate_split_data(split_name: str, split_data: Any) -> None:
 
     columns = split_data.column_names
     if "text" not in columns:
-        raise ValueError(f"Split '{split_name}' is missing 'text' column. Found: {columns}")
+        raise ValueError(
+            f"Split '{split_name}' is missing 'text' column. Found: {columns}"
+        )
 
     sample = split_data.select(range(min(5, len(split_data))))
     non_empty = sum(1 for row in sample if row.get("text") and row["text"].strip())
