@@ -29,6 +29,7 @@ scripts/
 # System
 .DS_Store
 Thumbs.db
+.cache/
 
 # Terraform
 .terraform/

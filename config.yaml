@@ -46,6 +46,7 @@ router:
   temperature: 1.0
   noise_std: 0.0
   use_aux_loss: false
+  aux_loss_coef: 0.01
 
   # Metabolic Router specific (only used if type=MetabolicRouter)
   metabolic:
@@ -171,7 +172,6 @@ device:
 compute:
   # Backend selection (NEW: determines execution platform)
   backend: modal  # Options: aws, modal
-  
   execution_env: local  # Options: local, aws (deprecated, use backend instead)
 
   # ========================================
@@ -207,13 +207,13 @@ compute:
   modal:
     # GPU configuration
     gpu: "A10G:1"  # Modal GPU spec (e.g., "A10G:1", "A100:1", "T4:1")
-    
+
     # CPU cores
     cpu: 4
-    
+
     # Timeout in seconds
     timeout: 14400  # 4 hours
-    
+
     # Modal Volume name for artifact persistence
     volume_name: "tmoe-training-artifacts"
 
@@ -228,9 +228,7 @@ data_ingestion:
   # Execution mode control
   use_sagemaker: false  # Set to true to use SageMaker, false for direct S3 upload
 
-  # Dataset to ingest from HuggingFace Hub
-  source_dataset: KrisMinchev/wikitext-2-raw-v1
-  dataset_config: null  # Optional dataset config/subset (e.g., "en" for some datasets)
+  # Dataset ingestion driven dynamically by the `dataset.dataset_key` catalog mapping above.
   dataset_splits: null  # null = all splits, or list: [train, validation, test]
 
   # SageMaker processing job configuration (only used if use_sagemaker: true)

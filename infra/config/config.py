@@ -34,7 +34,7 @@ _DEFAULTS = {
     "instance_type": "ml.m5.xlarge",
     "instance_count": 1,
     "max_runtime_seconds": 3600,
-    "dataset_name": "KrisMinchev/wikitext-2-raw-v1",
+    "dataset_name": "EleutherAI/wikitext-2",
     "output_format": "jsonl",
     "raw_data_prefix": "datasets/raw/",
     "environment": "dev",
@@ -116,11 +116,42 @@ def _load_yaml_section() -> dict:
 
 
 def _flatten_yaml(yaml: dict) -> dict:
-    """Flatten the nested YAML data_ingestion section into a flat dict."""
+    """Flatten the combined YAML sections into a flat dict."""
     flat: dict = {}
-    flat["dataset_name"] = yaml.get("source_dataset")
+
+    # Resolve Dataset
+    ds_block = yaml.get("_dataset_block", {})
+    custom_name = ds_block.get("custom_dataset_name")
+
+    if custom_name:
+        flat["dataset_name"] = custom_name
+        flat["dataset_config"] = ds_block.get("custom_dataset_config")
+    elif ds_block.get("dataset_key"):
+        dataset_key = ds_block.get("dataset_key")
+        try:
+            import sys
+
+            # Ensure catalog is importable
+            project_root = Path(__file__).resolve().parent.parent.parent
+            if str(project_root) not in sys.path:
+                sys.path.insert(0, str(project_root))
+
+            from catalog.dataset_catalog import get_dataset_info
+
+            cat_info = get_dataset_info(dataset_key)
+            flat["dataset_name"] = cat_info["name"]
+            flat["dataset_config"] = cat_info["config"]
+        except Exception as exc:
+            logger.warning(
+                "Failed to load dataset key '%s' from catalog: %s", dataset_key, exc
+            )
+
+    # In case data_ingestion still manually defines source_dataset (legacy override)
+    if "source_dataset" in yaml and yaml["source_dataset"]:
+        flat["dataset_name"] = yaml.get("source_dataset")
+        flat["dataset_config"] = yaml.get("dataset_config")
+
     flat["use_sagemaker"] = yaml.get("use_sagemaker")
-    flat["dataset_config"] = yaml.get("dataset_config")
     flat["dataset_splits"] = yaml.get("dataset_splits")
 
     sm = yaml.get("sagemaker", {})
@@ -203,7 +234,6 @@ _ENV_MAP = {
     "SAGEMAKER_ROLE_ARN": "sagemaker_role_arn",
     "RAW_DATA_BUCKET": "raw_data_bucket",
     "INSTANCE_TYPE": "instance_type",
-    "DATASET_NAME": "dataset_name",
     "OUTPUT_FORMAT": "output_format",
     "ENVIRONMENT": "environment",
     "LOG_LEVEL": "log_level",
@@ -375,8 +405,8 @@ def load_pipeline_config() -> PipelineConfig:
     # Start with defaults
     merged: dict = dict(_DEFAULTS)
 
-    # Layer 2a: YAML data_ingestion overrides
-    yaml_section = _load_yaml_section()
+    # Layer 2a: YAML data_ingestion and dataset overrides
+    yaml_section = _load_yaml_sections()
     yaml_flat = _flatten_yaml(yaml_section)
     merged.update(yaml_flat)
 

@@ -231,12 +231,18 @@ class Trainer:
                 )
 
             # Step optimizer with gradient scaler
+            # GradScaler may skip optimizer.step() if gradients contain inf/NaN.
+            # Track the scale before/after to detect skipped steps.
+            old_scale = self.scaler.get_scale()
             self.scaler.step(self.optimizer)
             self.scaler.update()
+            new_scale = self.scaler.get_scale()
+            optimizer_stepped = (
+                old_scale <= new_scale
+            )  # scale decreases when step is skipped
             self.optimizer.zero_grad()
 
             # Update MoE router fatigue after optimizer step
-            # This applies the accumulated usage from gradient accumulation
             if hasattr(self.model, "moe_layers") and self.model.moe_layers:
                 for moe_layer in self.model.moe_layers.values():
                     if hasattr(moe_layer, "step"):
@@ -246,7 +252,8 @@ class Trainer:
                     ):
                         moe_layer.router.clear_aux_state()
 
-            if self.scheduler is not None:
+            # Only step scheduler if optimizer actually updated weights
+            if self.scheduler is not None and optimizer_stepped:
                 self.scheduler.step()
 
             # Update metrics
@@ -382,12 +389,10 @@ class Trainer:
         if moe_metrics and self.router_metrics:
             for layer_name, layer_metrics in moe_metrics.items():
                 if "indices" in layer_metrics and "weights" in layer_metrics:
-                    router_metrics = self.router_metrics.compute_all_metrics(
-                        indices=layer_metrics["indices"],
-                        weights=layer_metrics["weights"],
-                    )
+                    # layer_metrics already contains layer-specific metrics computed by
+                    # its own router (including its specific fatigue state).
                     self.router_metrics.log_to_wandb(
-                        router_metrics,
+                        layer_metrics,
                         step=self.global_step,
                         prefix=f"router/{layer_name}",
                     )

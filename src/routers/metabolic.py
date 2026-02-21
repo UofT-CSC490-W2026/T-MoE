@@ -186,12 +186,16 @@ class MetabolicRouter(BaseRouter):
 
         # 1. Age-Aware Cost Scaling (prevents newborn apoptosis)
         # η_i(t) = β_cost · min(1.0, (t - birth_i) / T_warmup)
-        # Use num_steps + 1 to account for current step (prevents free first step)
+        # Apply warmup ONLY to dynamically spawned experts (birth_step > 0).
+        # Initial experts (birth_step == 0) start fully mature.
+        age_factor = torch.ones(self.num_experts, device=device)
         if self.warmup_steps > 0:
-            age = (self.num_steps + 1 - self.birth_step).float()
-            age_factor = torch.clamp(age / self.warmup_steps, min=0.0, max=1.0)
-        else:
-            age_factor = torch.ones(self.num_experts, device=device)
+            newborn_mask = self.birth_step > 0
+            if newborn_mask.any():
+                age = (self.num_steps + 1 - self.birth_step[newborn_mask]).float()
+                age_factor[newborn_mask] = torch.clamp(
+                    age / self.warmup_steps, min=0.0, max=1.0
+                )
 
         eta_i = self.beta_cost * age_factor
 

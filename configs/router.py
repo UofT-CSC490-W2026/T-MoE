@@ -17,6 +17,11 @@ class RouterConfig(BaseConfig):
     noise_std: float = 0.1
     temperature: float = 1.0
 
+    # Load balancing loss (auxiliary loss used by Switch Transformer, etc.)
+    # Added to base config to allow Hydra schema mapping for all child configs
+    use_aux_loss: bool = False
+    aux_loss_coef: float = 0.01
+
 
 @dataclass
 class StandardRouterConfig(RouterConfig):

@@ -62,9 +62,13 @@ class LoRAMoELayer(BaseMoELayer):
             hasattr(self, "_last_routing_weights")
             and self._last_routing_weights is not None
         ):
-            return self.router.metrics_tracker.compute_all_metrics(
+            metrics = self.router.metrics_tracker.compute_all_metrics(
                 self._last_routing_indices, self._last_routing_weights
             )
+            # Include raw weights/indices so trainer._log_metrics() can gate on them
+            metrics["weights"] = self._last_routing_weights
+            metrics["indices"] = self._last_routing_indices
+            return metrics
         return None
 
     def step(self) -> None:
