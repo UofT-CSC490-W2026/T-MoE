@@ -196,8 +196,17 @@ def _modal_train_tmoe_impl(
     dataset_cache = Path("/tmp/tmoe_dataset")
     dataset_cache.mkdir(parents=True, exist_ok=True)
 
-    _download_from_s3(
-        s3_path=s3_dataset_path,
+    if not s3_dataset_path.startswith("s3://"):
+        raise ValueError(f"Invalid S3 path: {s3_dataset_path}")
+        
+    parts = s3_dataset_path[5:].split("/", 1)
+    bucket = parts[0]
+    prefix = parts[1] if len(parts) > 1 else ""
+
+    from infra.s3client.s3_sync import download_s3_prefix
+    download_s3_prefix(
+        bucket=bucket,
+        s3_prefix=prefix,
         local_dir=str(dataset_cache),
         aws_region=aws_region,
     )
@@ -245,45 +254,3 @@ def _modal_train_tmoe_impl(
     print(f"Uploaded: {uploaded_count}, Failed: {failed_count}")
     print("=" * 70)
 
-
-def _download_from_s3(s3_path: str, local_dir: str, aws_region: str) -> None:
-    """
-    Download dataset from S3 to local directory.
-
-    Args:
-        s3_path: S3 path in format s3://bucket/prefix
-        local_dir: Local directory to download to.
-        aws_region: AWS region.
-    """
-    import boto3
-    from pathlib import Path
-
-    # Parse S3 path
-    if not s3_path.startswith("s3://"):
-        raise ValueError(f"Invalid S3 path: {s3_path}")
-
-    parts = s3_path[5:].split("/", 1)
-    bucket = parts[0]
-    prefix = parts[1] if len(parts) > 1 else ""
-
-    s3_client = boto3.client("s3", region_name=aws_region)
-
-    # List and download objects
-    paginator = s3_client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            # Skip directories
-            if key.endswith("/"):
-                continue
-
-            # Determine local path
-            relative_path = key[len(prefix) :].lstrip("/")
-            local_file = Path(local_dir) / relative_path
-            local_file.parent.mkdir(parents=True, exist_ok=True)
-
-            # Download
-            print(f"  Downloading: {key}")
-            s3_client.download_file(bucket, key, str(local_file))
-
-    print(f"Downloaded files from {s3_path} to {local_dir}")

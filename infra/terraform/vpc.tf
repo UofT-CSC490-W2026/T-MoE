@@ -1,16 +1,7 @@
-# ==============================================================================
-# T-MoE Training — VPC for AWS Batch Compute Environment
-# ==============================================================================
-# Lightweight VPC with public subnets for Batch GPU instances.
-# Instances need outbound internet to pull Docker images from ECR
-# and access S3/CloudWatch endpoints.
-# ==============================================================================
-
 data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# --- VPC ---
 resource "aws_vpc" "batch" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
@@ -21,7 +12,6 @@ resource "aws_vpc" "batch" {
   }
 }
 
-# --- Public Subnets (2 AZs for availability) ---
 resource "aws_subnet" "batch_public" {
   count = 2
 
@@ -35,7 +25,6 @@ resource "aws_subnet" "batch_public" {
   }
 }
 
-# --- Internet Gateway ---
 resource "aws_internet_gateway" "batch" {
   vpc_id = aws_vpc.batch.id
 
@@ -44,7 +33,6 @@ resource "aws_internet_gateway" "batch" {
   }
 }
 
-# --- Route Table (public subnets → IGW) ---
 resource "aws_route_table" "batch_public" {
   vpc_id = aws_vpc.batch.id
 
@@ -65,13 +53,11 @@ resource "aws_route_table_association" "batch_public" {
   route_table_id = aws_route_table.batch_public.id
 }
 
-# --- Security Group (outbound only — no inbound rules) ---
 resource "aws_security_group" "batch" {
   name_prefix = "${var.project_name}-${var.environment}-batch-"
   description = "Security group for Batch GPU training instances"
   vpc_id      = aws_vpc.batch.id
 
-  # Allow all outbound traffic (ECR pulls, S3 access, CloudWatch)
   egress {
     from_port   = 0
     to_port     = 0

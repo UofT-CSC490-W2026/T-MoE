@@ -1,18 +1,8 @@
-# ==============================================================================
-# T-MoE Training — AWS Batch Compute Environment, Job Queue, Job Definition
-# ==============================================================================
-# GPU-capable Spot compute environment that scales to 0 when idle.
-# Job definition runs the training pipeline Docker container.
-# ==============================================================================
-
-# --- Launch Template (ECS-optimized GPU AMI) ---
 resource "aws_launch_template" "batch_gpu" {
   name_prefix = "${var.project_name}-${var.environment}-batch-gpu-"
 
-  # Attach additional storage for model weights and datasets
   block_device_mappings {
     device_name = "/dev/xvda"
-
     ebs {
       volume_size           = 100
       volume_type           = "gp3"
@@ -30,7 +20,6 @@ resource "aws_launch_template" "batch_gpu" {
   }
 }
 
-# --- Batch Compute Environment (On-Demand CPU Instances for Testing) ---
 resource "aws_batch_compute_environment" "gpu_spot" {
   compute_environment_name = "${var.project_name}-${var.environment}-cpu-verify-v2"
   type                     = "MANAGED"
@@ -40,19 +29,13 @@ resource "aws_batch_compute_environment" "gpu_spot" {
   compute_resources {
     type                = "EC2"
     allocation_strategy = "BEST_FIT_PROGRESSIVE"
+    min_vcpus           = var.batch_min_vcpus
+    max_vcpus           = var.batch_max_vcpus
+    instance_type       = var.batch_instance_types
+    subnets             = aws_subnet.batch_public[*].id
+    security_group_ids  = [aws_security_group.batch.id]
+    instance_role       = aws_iam_instance_profile.batch_ecs.arn
 
-    min_vcpus = var.batch_min_vcpus
-    max_vcpus = var.batch_max_vcpus
-
-    # Changed to m5.xlarge for CPU mode
-    instance_type = ["m5.xlarge"]
-
-    subnets            = aws_subnet.batch_public[*].id
-    security_group_ids = [aws_security_group.batch.id]
-
-    instance_role = aws_iam_instance_profile.batch_ecs.arn
-
-    # Use standard ECS-optimized AMI for CPU testing
     ec2_configuration {
       image_type = "ECS_AL2023"
     }
@@ -82,7 +65,6 @@ resource "aws_batch_compute_environment" "gpu_spot" {
   ]
 }
 
-# --- Job Queue ---
 resource "aws_batch_job_queue" "training" {
   name     = "${var.project_name}-${var.environment}-training"
   state    = "ENABLED"
@@ -97,11 +79,9 @@ resource "aws_batch_job_queue" "training" {
     Name = "${var.project_name}-${var.environment}-training-queue"
   }
 
-  # Ensure the queue is updated/created after the compute environment is ready
   depends_on = [aws_batch_compute_environment.gpu_spot]
 }
 
-# --- CloudWatch Log Group for Batch Jobs ---
 resource "aws_cloudwatch_log_group" "batch_training" {
   name              = "/aws/batch/${var.project_name}-${var.environment}/training"
   retention_in_days = 14
@@ -112,7 +92,6 @@ resource "aws_cloudwatch_log_group" "batch_training" {
   }
 }
 
-# --- Job Definition ---
 resource "aws_batch_job_definition" "training" {
   name = "${var.project_name}-${var.environment}-training"
   type = "container"
@@ -124,7 +103,7 @@ resource "aws_batch_job_definition" "training" {
   }
 
   timeout {
-    attempt_duration_seconds = 43200 # 12 hours max
+    attempt_duration_seconds = 43200
   }
 
   container_properties = jsonencode({
@@ -173,4 +152,222 @@ resource "aws_batch_job_definition" "training" {
   tags = {
     Name = "${var.project_name}-${var.environment}-training-job-def"
   }
+}
+
+resource "aws_iam_role" "batch_service" {
+  name = "${var.project_name}-${var.environment}-batch-service"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowBatchAssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "batch.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "Batch Service Role"
+    Description = "Service role for AWS Batch compute environment management"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "batch_service" {
+  role       = aws_iam_role.batch_service.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole"
+}
+
+resource "aws_iam_role_policy" "batch_service_extras" {
+  name = "${var.project_name}-${var.environment}-batch-service-extras"
+  role = aws_iam_role.batch_service.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowECSListClusters"
+        Effect = "Allow"
+        Action = [
+          "ecs:ListClusters",
+          "ecs:DescribeClusters",
+          "ecs:CreateCluster",
+          "ecs:DeleteCluster"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowBatchLogsManagement"
+        Effect = "Allow"
+        Action = [
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams",
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "batch_spot_fleet" {
+  name = "${var.project_name}-${var.environment}-batch-spot-fleet"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowSpotFleetAssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "spotfleet.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "Batch Spot Fleet Role"
+    Description = "Role for Spot Fleet instance management"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "batch_spot_fleet" {
+  role       = aws_iam_role.batch_spot_fleet.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole"
+}
+
+resource "aws_iam_role" "batch_ecs_task" {
+  name = "${var.project_name}-${var.environment}-batch-ecs-task"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowECSTaskAssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name        = "Batch ECS Task Role"
+    Description = "Role assumed by training containers for S3 and CloudWatch access"
+  }
+}
+
+resource "aws_iam_role_policy" "batch_ecs_s3" {
+  name = "${var.project_name}-${var.environment}-batch-ecs-s3"
+  role = aws_iam_role.batch_ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ListBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ]
+        Resource = [aws_s3_bucket.raw_data.arn]
+      },
+      {
+        Sid    = "ReadWriteObjects"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = ["${aws_s3_bucket.raw_data.arn}/*"]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "batch_ecs_logs" {
+  name = "${var.project_name}-${var.environment}-batch-ecs-logs"
+  role = aws_iam_role.batch_ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "CloudWatchLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams",
+          "logs:GetLogEvents"
+        ]
+        Resource = ["arn:aws:logs:${var.aws_region}:*:log-group:/aws/batch/*"]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "batch_ecs_ecr" {
+  name = "${var.project_name}-${var.environment}-batch-ecs-ecr"
+  role = aws_iam_role.batch_ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ECRPull"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = ["*"]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "batch_ecs_instance" {
+  name = "${var.project_name}-${var.environment}-batch-ecs-instance"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowEC2AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = {
+    Name = "Batch ECS Instance Role"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "batch_ecs_instance" {
+  role       = aws_iam_role.batch_ecs_instance.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+resource "aws_iam_instance_profile" "batch_ecs" {
+  name = "${var.project_name}-${var.environment}-batch-ecs"
+  role = aws_iam_role.batch_ecs_instance.name
 }

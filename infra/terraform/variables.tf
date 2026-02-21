@@ -1,7 +1,3 @@
-# ==============================================================================
-# T-MoE Data Ingestion - Terraform Variables
-# ==============================================================================
-
 variable "aws_region" {
   description = "AWS region for resource deployment"
   type        = string
@@ -49,14 +45,10 @@ variable "raw_bucket_prefix" {
   default     = "raw-data"
 }
 
-# ==============================================================================
-# AWS Batch Variables
-# ==============================================================================
-
 variable "batch_instance_types" {
-  description = "GPU instance types for Batch compute environment"
+  description = "Instance types for Batch compute environment"
   type        = list(string)
-  default     = ["g4dn.xlarge"]
+  default     = ["m5.xlarge"]
 }
 
 variable "batch_max_vcpus" {

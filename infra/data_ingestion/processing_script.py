@@ -29,6 +29,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
+from shared import (
+    load_huggingface_dataset,
+    validate_split_data,
+    write_split_to_disk,
+)
+
 # ---------------------------------------------------------------------------
 # Configuration (all driven by environment variables)
 # ---------------------------------------------------------------------------
@@ -105,161 +111,6 @@ def validate_environment() -> None:
 
 
 # ============================================================================
-# 2. Dataset Loading
-# ============================================================================
-def load_huggingface_dataset(dataset_name: str) -> Dict[str, Any]:
-    """Download a dataset from HuggingFace Hub with exponential-backoff retry.
-
-    Returns:
-        Mapping of split name → HuggingFace ``Dataset`` object.
-
-    Raises:
-        RuntimeError: after exhausting all retries.
-    """
-    from datasets import load_dataset  # type: ignore[import-untyped]
-
-    last_error: Exception | None = None
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            logger.info(
-                "Loading dataset %s (attempt %d/%d)", dataset_name, attempt, MAX_RETRIES
-            )
-            ds = load_dataset(dataset_name)
-            break
-        except (ConnectionError, TimeoutError, OSError) as exc:
-            last_error = exc
-            wait = RETRY_DELAY * (2 ** (attempt - 1))
-            logger.warning(
-                "Attempt %d failed (%s). Retrying in %.1fs …",
-                attempt,
-                exc,
-                wait,
-            )
-            time.sleep(wait)
-    else:
-        raise RuntimeError(
-            f"Failed to load {dataset_name} after {MAX_RETRIES} attempts: {last_error}"
-        )
-
-    if ds is None or len(ds) == 0:  # type: ignore[arg-type]
-        raise RuntimeError(f"Dataset {dataset_name} is empty or None")
-
-    for name in ds:
-        split = ds[name]
-        logger.info(
-            "  split %-12s — %7d rows, columns=%s",
-            name,
-            len(split),
-            split.column_names,
-        )
-
-    return dict(ds)  # type: ignore[arg-type]
-
-
-# ============================================================================
-# 3. Split Validation
-# ============================================================================
-def validate_split_data(split_name: str, split_data: Any) -> None:
-    """Assert a single split has the expected shape.
-
-    Raises:
-        ValueError: if the split is missing, empty, or lacks a ``text`` column.
-    """
-    if split_data is None:
-        raise ValueError(f"Split '{split_name}' is None")
-    if len(split_data) == 0:
-        raise ValueError(f"Split '{split_name}' is empty")
-
-    columns = split_data.column_names
-    if "text" not in columns:
-        raise ValueError(
-            f"Split '{split_name}' is missing 'text' column. Found: {columns}"
-        )
-
-    # Quick sanity: first 5 rows should contain at least one non-empty string
-    sample = split_data.select(range(min(5, len(split_data))))
-    non_empty = sum(1 for row in sample if row.get("text") and row["text"].strip())
-    if non_empty == 0:
-        raise ValueError(f"Split '{split_name}' first 5 rows are all empty/None")
-
-    logger.info(
-        "Validated split '%s': %d examples, columns=%s",
-        split_name,
-        len(split_data),
-        columns,
-    )
-
-
-# ============================================================================
-# 4. Data Writing
-# ============================================================================
-_EXT_MAP = {"jsonl": ".jsonl", "parquet": ".parquet", "text": ".txt"}
-
-
-def write_split_to_disk(
-    split_name: str,
-    split_data: Any,
-    output_format: str = "jsonl",
-) -> Path:
-    """Write one split to disk in the requested format.
-
-    Returns:
-        ``Path`` to the written file.
-
-    Raises:
-        ValueError: for unsupported format.
-        IOError: on write errors.
-    """
-    if output_format not in _EXT_MAP:
-        raise ValueError(f"Unsupported format {output_format!r}")
-
-    output_path = Path(OUTPUT_BASE_DIR) / f"{split_name}{_EXT_MAP[output_format]}"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    total_records = 0
-    empty_records = 0
-
-    if output_format == "jsonl":
-        with open(output_path, "w", encoding="utf-8") as fh:
-            for row in split_data:
-                text = row.get("text")
-                if text is None or not text.strip():
-                    empty_records += 1
-                    continue
-                fh.write(json.dumps({"text": text}, ensure_ascii=False) + "\n")
-                total_records += 1
-
-    elif output_format == "parquet":
-        split_data.to_parquet(str(output_path))
-        total_records = len(split_data)
-
-    elif output_format == "text":
-        with open(output_path, "w", encoding="utf-8") as fh:
-            for row in split_data:
-                text = row.get("text")
-                if text is None or not text.strip():
-                    empty_records += 1
-                    continue
-                fh.write(text.strip() + "\n")
-                total_records += 1
-
-    file_size = output_path.stat().st_size
-    logger.info(
-        "Written split '%s': %d records (%d empty skipped), %.2f MB → %s",
-        split_name,
-        total_records,
-        empty_records,
-        file_size / 1024 / 1024,
-        output_path,
-    )
-
-    if file_size == 0:
-        raise IOError(f"Output file is empty: {output_path}")
-
-    return output_path
-
-
-# ============================================================================
 # 5. Metadata
 # ============================================================================
 def write_metadata(
@@ -302,7 +153,7 @@ def main() -> None:
     validate_environment()
 
     # 2 — load
-    dataset = load_huggingface_dataset(DATASET_NAME)
+    dataset = load_huggingface_dataset(DATASET_NAME, None, MAX_RETRIES, RETRY_DELAY)
     logger.info("Loaded %d splits", len(dataset))
 
     # 3+4 — validate & write each split
@@ -310,7 +161,9 @@ def main() -> None:
     for split_name, split_data in dataset.items():
         logger.info("Processing split: %s", split_name)
         validate_split_data(split_name, split_data)
-        out_path = write_split_to_disk(split_name, split_data, OUTPUT_FORMAT)
+        out_path = write_split_to_disk(
+            split_name, split_data, output_dir, OUTPUT_FORMAT
+        )
         splits_info[split_name] = {
             "num_examples": len(split_data),
             "file_path": str(out_path),

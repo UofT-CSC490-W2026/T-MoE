@@ -1,14 +1,3 @@
-# ==============================================================================
-# T-MoE Data Ingestion - SageMaker Configuration
-# ==============================================================================
-# CloudWatch log group and future SageMaker resource placeholders.
-#
-# NOTE: Processing jobs are launched programmatically via run_processing.py,
-# not defined in Terraform. This file establishes conventions and provides
-# hooks for future SageMaker Pipelines / Studio integration.
-# ==============================================================================
-
-# --- CloudWatch Log Group for SageMaker Processing Jobs ---
 resource "aws_cloudwatch_log_group" "sagemaker_processing" {
   name              = "/aws/sagemaker/processing-jobs/${var.project_name}-${var.environment}"
   retention_in_days = 14
@@ -19,47 +8,89 @@ resource "aws_cloudwatch_log_group" "sagemaker_processing" {
   }
 }
 
-# ==============================================================================
-# FUTURE: SageMaker Studio Domain
-# ==============================================================================
-# Uncomment and configure when SageMaker Studio is needed for interactive
-# development and experiment tracking.
-#
-# resource "aws_sagemaker_domain" "tmoe_studio" {
-#   domain_name = "${var.project_name}-${var.environment}-studio"
-#   auth_mode   = "IAM"
-#   vpc_id      = var.vpc_id
-#   subnet_ids  = var.subnet_ids
-#
-#   default_user_settings {
-#     execution_role = aws_iam_role.sagemaker_execution.arn
-#   }
-#
-#   tags = {
-#     Name = "T-MoE SageMaker Studio"
-#   }
-# }
+resource "aws_iam_role" "sagemaker_execution" {
+  name = "${var.project_name}-${var.environment}-sagemaker-execution"
 
-# ==============================================================================
-# FUTURE: SageMaker Pipeline Definition
-# ==============================================================================
-# When ready to automate ingestion → preprocessing → training:
-#
-# resource "aws_sagemaker_pipeline" "tmoe_ingestion" {
-#   pipeline_name         = "${var.project_name}-${var.environment}-ingestion"
-#   pipeline_display_name = "T-MoE Data Ingestion Pipeline"
-#   role_arn              = aws_iam_role.sagemaker_execution.arn
-#
-#   pipeline_definition = jsonencode({
-#     // Step Functions or SageMaker Pipeline JSON definition
-#   })
-# }
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowSageMakerAssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "sagemaker.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
 
-# ==============================================================================
-# FUTURE: EventBridge Scheduled Rule for Periodic Ingestion
-# ==============================================================================
-# resource "aws_cloudwatch_event_rule" "periodic_ingestion" {
-#   name                = "${var.project_name}-${var.environment}-periodic-ingestion"
-#   description         = "Trigger data ingestion on schedule"
-#   schedule_expression = "rate(7 days)"
-# }
+  tags = {
+    Name        = "SageMaker Execution Role"
+    Description = "Execution role for T-MoE SageMaker data ingestion processing jobs"
+  }
+}
+
+resource "aws_iam_role_policy" "sagemaker_s3_access" {
+  name = "${var.project_name}-${var.environment}-s3-access"
+  role = aws_iam_role.sagemaker_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ListRawDataBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ]
+        Resource = [
+          aws_s3_bucket.raw_data.arn
+        ]
+      },
+      {
+        Sid    = "ReadWriteRawDataObjects"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = [
+          "${aws_s3_bucket.raw_data.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "sagemaker_logs" {
+  name = "${var.project_name}-${var.environment}-cloudwatch-logs"
+  role = aws_iam_role.sagemaker_execution.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "CloudWatchLogsAccess"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams",
+          "logs:GetLogEvents"
+        ]
+        Resource = [
+          "arn:aws:logs:${var.aws_region}:*:log-group:/aws/sagemaker/*"
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "sagemaker_ecr_readonly" {
+  role       = aws_iam_role.sagemaker_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}

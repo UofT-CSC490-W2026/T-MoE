@@ -12,14 +12,12 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
-import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # ---------------------------------------------------------------------------
 # Project path
@@ -52,85 +50,6 @@ except ImportError:
 
 
 # ============================================================================
-# Terraform output loader
-# ============================================================================
-def load_terraform_outputs(
-    terraform_dir: Optional[str] = None,
-) -> Dict[str, str]:
-    """Run ``terraform output -json`` and return a flat {key: value} dict.
-
-    Returns an empty dict on any failure (Terraform not installed, state
-    not initialised, etc.) so that the caller can fall back to env vars.
-    """
-    tf_dir = (
-        Path(terraform_dir) if terraform_dir else PROJECT_ROOT / "infra" / "terraform"
-    )
-    if not tf_dir.is_dir():
-        logger.debug("Terraform directory not found: %s", tf_dir)
-        return {}
-
-    state_file = tf_dir / "terraform.tfstate"
-    dot_tf = tf_dir / ".terraform"
-    if not state_file.exists() and not dot_tf.exists():
-        logger.info("Terraform not initialised — skipping terraform outputs")
-        return {}
-
-    try:
-        result = subprocess.run(
-            ["terraform", "output", "-json"],
-            cwd=str(tf_dir),
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if result.returncode != 0:
-            logger.warning("terraform output failed: %s", result.stderr.strip())
-            return {}
-    except FileNotFoundError:
-        logger.debug("terraform binary not found on PATH")
-        return {}
-    except subprocess.TimeoutExpired:
-        logger.warning("terraform output timed out")
-        return {}
-
-    try:
-        raw = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        logger.warning("terraform output returned invalid JSON")
-        return {}
-
-    # ``terraform output -json`` wraps each output as {"value": …, "type": …}
-    outputs: Dict[str, str] = {}
-    for key, obj in raw.items():
-        if isinstance(obj, dict) and "value" in obj:
-            outputs[key] = str(obj["value"])
-        else:
-            outputs[key] = str(obj)
-
-    logger.info("Loaded %d terraform outputs", len(outputs))
-    return outputs
-
-
-# ============================================================================
-# Merge Terraform outputs into environment (so config.load picks them up)
-# ============================================================================
-_TF_TO_ENV = {
-    "raw_data_bucket_name": "RAW_DATA_BUCKET",
-    "sagemaker_execution_role_arn": "SAGEMAKER_ROLE_ARN",
-    "aws_region": "AWS_REGION",
-}
-
-
-def apply_terraform_outputs(tf_outputs: Dict[str, str]) -> None:
-    """Push Terraform outputs into the process environment (does not
-    overwrite values that are already set)."""
-    import os
-
-    for tf_key, env_key in _TF_TO_ENV.items():
-        val = tf_outputs.get(tf_key)
-        if val and not os.environ.get(env_key):
-            os.environ[env_key] = val
-            logger.info("Set %s from terraform output", env_key)
 
 
 # ============================================================================
@@ -240,23 +159,18 @@ def run_processing_job(processor: "HuggingFaceProcessor", config: Any) -> str:
 def main() -> None:
     """End-to-end orchestration: config → processor → job → report."""
 
-    # 1. Terraform outputs (best-effort)
-    tf_outputs = load_terraform_outputs()
-    if tf_outputs:
-        apply_terraform_outputs(tf_outputs)
-
-    # 2. Load validated config (env > yaml > defaults)
+    # 1. Load validated config (env > yaml > defaults)
     from infra.config.config import load_pipeline_config
 
     config = load_pipeline_config()
 
-    # 3. Create processor
+    # 2. Create processor
     processor = create_processor(config)
 
-    # 4. Run
+    # 3. Run
     job_arn = run_processing_job(processor, config)
 
-    # 5. Summary
+    # 4. Summary
     logger.info("=" * 70)
     logger.info("SUCCESS")
     logger.info("  Job ARN   : %s", job_arn)

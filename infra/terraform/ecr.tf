@@ -1,10 +1,3 @@
-# ==============================================================================
-# T-MoE Training — ECR Repository for Training Container
-# ==============================================================================
-# Private ECR repository for the training Docker image.
-# Lifecycle policy keeps only the last 5 images for cost control.
-# ==============================================================================
-
 resource "aws_ecr_repository" "training" {
   name                 = "${var.project_name}-${var.environment}-training"
   image_tag_mutability = "MUTABLE"
@@ -20,7 +13,6 @@ resource "aws_ecr_repository" "training" {
   }
 }
 
-# --- Lifecycle Policy: Keep last 5 images ---
 resource "aws_ecr_lifecycle_policy" "training" {
   repository = aws_ecr_repository.training.name
 
