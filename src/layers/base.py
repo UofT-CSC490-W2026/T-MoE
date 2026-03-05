@@ -91,7 +91,8 @@ class BaseMoELayer(nn.Module, ABC):
             return None
 
         metrics = self.router.metrics_tracker.compute_all_metrics(
-            self._last_routing_indices, self._last_routing_weights
+            self._last_routing_indices,
+            self._last_routing_weights,
         )
         metrics["weights"] = self._last_routing_weights
         metrics["indices"] = self._last_routing_indices

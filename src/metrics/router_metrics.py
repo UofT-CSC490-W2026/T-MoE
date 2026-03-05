@@ -12,6 +12,115 @@ except ImportError:
     wandb = None
 
 
+class GlobalSpecializationTracker:
+    """
+    Globally tracks token-to-expert routing to compute valid Information Theory metrics.
+    Because token frequencies are low per-batch, H(E|T) must be tracked across many batches
+    to form a true probability distribution.
+    """
+
+    def __init__(self, vocab_size: int, num_experts: int, device: str = "cpu"):
+        self.vocab_size = vocab_size
+        self.num_experts = num_experts
+        # Accumulate on CPU to avoid wasting VRAM
+        self.usage_counts = torch.zeros(
+            (int(vocab_size), int(num_experts)),
+            dtype=torch.long,
+            device=torch.device(device) if isinstance(device, str) else device,
+        )
+        self.total_tokens = 0
+
+    def update(self, token_ids: torch.Tensor, expert_indices: torch.Tensor):
+        """
+        Update global counts.
+        token_ids: [batch, seq]
+        expert_indices: [batch, seq, top_k]
+        """
+        with torch.no_grad():
+            batch, seq, top_k = expert_indices.shape
+
+            # Flatten inputs
+            flat_tokens = token_ids.view(-1)  # [batch * seq]
+            flat_experts = expert_indices.reshape(-1, top_k)  # [batch * seq, top_k]
+
+            # Filter out padding tokens (-100 usually, or just < 0 and >= vocab_size)
+            valid_mask = (flat_tokens >= 0) & (flat_tokens < self.vocab_size)
+            valid_tokens = flat_tokens[valid_mask].cpu()
+            valid_experts = flat_experts[valid_mask].cpu()
+
+            if len(valid_tokens) == 0:
+                return
+
+            # Accumulate
+            # We add 1 for each expert selection (a token selected top_k experts, so it adds 1 to each of those experts)
+            # Flatten again for scatter/bincount
+            expanded_tokens = valid_tokens.unsqueeze(1).expand(-1, top_k).flatten()
+            flattened_experts = valid_experts.flatten()
+
+            # Use 1D indices for bincount
+            linear_indices = expanded_tokens * self.num_experts + flattened_experts
+            counts = torch.bincount(
+                linear_indices, minlength=self.vocab_size * self.num_experts
+            )
+
+            self.usage_counts += counts.view(self.vocab_size, self.num_experts)
+            self.total_tokens += valid_tokens.numel()
+
+    def compute_metrics(self) -> Dict[str, float]:
+        """
+        Compute true H(E|T), H(E), Specialization Score, and Collapse Score.
+        Returns empty dict if no tokens have been processed.
+        """
+        if self.total_tokens == 0:
+            return {}
+
+        with torch.no_grad():
+            # 1. Active tokens mask (only consider tokens we've actually seen)
+            token_counts = self.usage_counts.sum(dim=1)
+            active_mask = token_counts > 0
+
+            if not active_mask.any():
+                return {}
+
+            active_usage = self.usage_counts[active_mask].float()
+            active_token_counts = token_counts[active_mask].float()
+
+            # 2. P(E|T) - Probability of choosing expert E given token T
+            p_e_given_t = active_usage / active_usage.sum(dim=1, keepdim=True)
+
+            # 3. H(E|T) - Conditional Entropy
+            entropy_e_given_t = -(p_e_given_t * torch.log(p_e_given_t + 1e-10)).sum(
+                dim=1
+            )
+
+            # Weight by token frequency to get expected conditional entropy
+            p_t = active_token_counts / active_token_counts.sum()
+            expected_conditional_entropy = (p_t * entropy_e_given_t).sum()
+
+            # 4. H(E) - Marginal Entropy
+            total_expert_usage = self.usage_counts.sum(dim=0).float()
+            p_e = total_expert_usage / total_expert_usage.sum()
+            marginal_entropy = -(p_e * torch.log(p_e + 1e-10)).sum()
+
+            # 5. Scores
+            if marginal_entropy.item() < 1e-5:
+                specialization_score = 0.0
+                collapse_score = 1.0
+            else:
+                specialization_score = 1.0 - (
+                    expected_conditional_entropy / marginal_entropy
+                )
+                collapse_score = 1.0 - (marginal_entropy / np.log(self.num_experts))
+
+            return {
+                "specialization_score": float(specialization_score.item()),
+                "collapse_score": float(collapse_score.item()),
+                "marginal_entropy": float(marginal_entropy.item()),
+                "conditional_entropy": float(expected_conditional_entropy.item()),
+                "global_tokens_seen": float(self.total_tokens),
+            }
+
+
 class RouterMetricsTracker:
     """
     Comprehensive metrics tracker for Metabolic Router.
@@ -184,7 +293,9 @@ class RouterMetricsTracker:
         return np.exp(entropy)
 
     def compute_all_metrics(
-        self, indices: torch.Tensor, weights: torch.Tensor
+        self,
+        indices: torch.Tensor,
+        weights: torch.Tensor,
     ) -> Dict[str, Any]:
         """
         Compute all metrics in one pass.
@@ -267,6 +378,16 @@ class RouterMetricsTracker:
                 },
                 step=step,
             )
+
+        # Specialization metrics (logged as scalars when present)
+        for key in (
+            "specialization_score",
+            "collapse_score",
+            "marginal_entropy",
+            "conditional_entropy",
+        ):
+            if key in metrics:
+                wandb.log({f"{prefix}/{key}": metrics[key]}, step=step)
 
     def to_dict(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -159,6 +159,12 @@ class TMoELayer(BaseMoELayer):
         """
         x = hidden_states  # Rename for internal consistency
 
+        token_type_ids = kwargs.pop("token_type_ids", None)
+
+        self._last_token_type_ids = (
+            token_type_ids.detach() if token_type_ids is not None else None
+        )
+
         # Validate inputs
         if self.experts is None:
             raise RuntimeError(
@@ -180,7 +186,10 @@ class TMoELayer(BaseMoELayer):
 
         # Get routing weights and indices (router expects 3D input)
         weights, indices, metrics = self.router(
-            x, return_metrics=return_metrics, record_usage=record_usage, **kwargs
+            x,
+            return_metrics=return_metrics,
+            record_usage=record_usage,
+            **kwargs,
         )
         # weights: [batch, seq, top_k]
         # indices: [batch, seq, top_k]

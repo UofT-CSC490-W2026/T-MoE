@@ -16,7 +16,7 @@ except ImportError:
 
 from src.training.checkpoint import CheckpointManager
 from src.metrics.training_metrics import TrainingMetricsTracker
-from src.metrics.router_metrics import RouterMetricsTracker
+from src.metrics.router_metrics import RouterMetricsTracker, GlobalSpecializationTracker
 
 
 class Trainer:
@@ -119,11 +119,40 @@ class Trainer:
 
         # Router metrics (if model has router)
         self.router_metrics = None
+        self.global_specialization_trackers = {}
         if hasattr(model, "moe_layers") and model.moe_layers:
             # Get first MoE layer's router
             first_moe = list(model.moe_layers.values())[0]
             if hasattr(first_moe, "router"):
                 self.router_metrics = RouterMetricsTracker(first_moe.router)
+
+            # Initialize global trackers for every layer
+            vocab_size = getattr(getattr(config, "model", None), "vocab_size", None)
+            if vocab_size is None:
+                vocab_size = getattr(model, "config", getattr(model, "backbone", None))
+                vocab_size = (
+                    getattr(vocab_size, "vocab_size", 50257)
+                    if vocab_size is not None
+                    else 50257
+                )
+            if vocab_size is None:
+                vocab_size = 50257
+
+            for layer_name, layer in model.moe_layers.items():
+                if hasattr(layer, "router"):
+                    # Match the key format used by the model's return_metrics (e.g. "layer_1")
+                    tracker_key = (
+                        f"layer_{layer_name}"
+                        if not str(layer_name).startswith("layer_")
+                        else str(layer_name)
+                    )
+                    self.global_specialization_trackers[tracker_key] = (
+                        GlobalSpecializationTracker(
+                            vocab_size=vocab_size,
+                            num_experts=layer.router.num_experts,
+                            device="cpu",
+                        )
+                    )
 
         # Training state
         self.global_step = 0
@@ -214,6 +243,17 @@ class Trainer:
                         ],  # Now properly includes -100 for padding
                         return_metrics=True,
                     )
+
+                    if moe_metrics:
+                        for layer_name, layer_metrics in moe_metrics.items():
+                            if (
+                                layer_name in self.global_specialization_trackers
+                                and "indices" in layer_metrics
+                            ):
+                                self.global_specialization_trackers[layer_name].update(
+                                    token_ids=batch["input_ids"],
+                                    expert_indices=layer_metrics["indices"],
+                                )
 
                     # Scale loss for gradient accumulation
                     loss = loss / self.grad_accum_steps
@@ -389,6 +429,13 @@ class Trainer:
         if moe_metrics and self.router_metrics:
             for layer_name, layer_metrics in moe_metrics.items():
                 if "indices" in layer_metrics and "weights" in layer_metrics:
+                    # Inject global specialization metrics
+                    if layer_name in self.global_specialization_trackers:
+                        global_stats = self.global_specialization_trackers[
+                            layer_name
+                        ].compute_metrics()
+                        layer_metrics.update(global_stats)
+
                     # layer_metrics already contains layer-specific metrics computed by
                     # its own router (including its specific fatigue state).
                     self.router_metrics.log_to_wandb(

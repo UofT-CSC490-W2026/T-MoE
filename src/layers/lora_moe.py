@@ -63,7 +63,8 @@ class LoRAMoELayer(BaseMoELayer):
             and self._last_routing_weights is not None
         ):
             metrics = self.router.metrics_tracker.compute_all_metrics(
-                self._last_routing_indices, self._last_routing_weights
+                self._last_routing_indices,
+                self._last_routing_weights,
             )
             # Include raw weights/indices so trainer._log_metrics() can gate on them
             metrics["weights"] = self._last_routing_weights

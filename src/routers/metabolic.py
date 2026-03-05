@@ -193,9 +193,8 @@ class MetabolicRouter(BaseRouter):
             newborn_mask = self.birth_step > 0
             if newborn_mask.any():
                 age = (self.num_steps + 1 - self.birth_step[newborn_mask]).float()
-                age_factor[newborn_mask] = torch.clamp(
-                    age / self.warmup_steps, min=0.0, max=1.0
-                )
+                age = age.clamp(min=1)  # defensive: guard against zero/negative age
+                age_factor[newborn_mask] = torch.clamp(age / self.warmup_steps, max=1.0)
 
         eta_i = self.beta_cost * age_factor
 
@@ -204,10 +203,14 @@ class MetabolicRouter(BaseRouter):
         n_current = self.n_active.item()  # Use tracked active expert count
         eta_eff = eta_i * (n_current / max(self.n_start, 1))
 
-        # 3. Fatigue Update: F_i(t+1) = (1-γ)F_i(t) + η_eff·U_i(t)
-        # In-place optimized update
+        # 3. Differential Fatigue Update (tracks EXCESS usage relative to fair share)
+        # F_i(t+1) = (1-γ)F_i(t) + η_eff·(U_i(t) - 1/N)
+        # - Balanced expert (U=1/N): fatigue → 0  (no interference)
+        # - Overloaded expert (U>1/N): fatigue → positive (penalty)
+        # - Neglected expert (U<1/N): fatigue → negative (bonus)
+        excess_usage = usage - (1.0 / self.num_experts)
         with torch.no_grad():
-            self.fatigue.mul_(1 - self.gamma_recovery).add_(eta_eff * usage)
+            self.fatigue.mul_(1 - self.gamma_recovery).add_(eta_eff * excess_usage)
 
     def forward(
         self,

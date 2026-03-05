@@ -34,7 +34,7 @@ _DEFAULTS = {
     "instance_type": "ml.m5.xlarge",
     "instance_count": 1,
     "max_runtime_seconds": 3600,
-    "dataset_name": "EleutherAI/wikitext-2",
+    "dataset_name": "wikitext",
     "output_format": "jsonl",
     "raw_data_prefix": "datasets/raw/",
     "environment": "dev",
@@ -112,6 +112,27 @@ def _load_yaml_section() -> dict:
         logger.warning(
             "Failed to parse config.yaml data_ingestion section", exc_info=True
         )
+        return {}
+
+
+def _load_yaml_dataset_section() -> dict:
+    """Return the top-level dataset section from config.yaml, or {}."""
+    try:
+        from omegaconf import OmegaConf
+    except ImportError:
+        return {}
+
+    if not CONFIG_YAML_PATH.is_file():
+        return {}
+
+    try:
+        cfg = OmegaConf.load(CONFIG_YAML_PATH)
+        ds = cfg.get("dataset")
+        if ds is None:
+            return {}
+        return OmegaConf.to_container(ds, resolve=True)
+    except Exception:
+        logger.warning("Failed to parse config.yaml dataset section", exc_info=True)
         return {}
 
 
@@ -406,7 +427,13 @@ def load_pipeline_config() -> PipelineConfig:
     merged: dict = dict(_DEFAULTS)
 
     # Layer 2a: YAML data_ingestion and dataset overrides
-    yaml_section = _load_yaml_sections()
+    yaml_section = _load_yaml_section()
+
+    # Inject top-level dataset section so _flatten_yaml can resolve dataset_key
+    dataset_block = _load_yaml_dataset_section()
+    if dataset_block:
+        yaml_section["_dataset_block"] = dataset_block
+
     yaml_flat = _flatten_yaml(yaml_section)
     merged.update(yaml_flat)
 
