@@ -1,6 +1,6 @@
 import torch
 
-from configs.router import StandardRouterConfig
+from src.configs.router import StandardRouterConfig
 from src.routers.standard import StandardRouter
 
 

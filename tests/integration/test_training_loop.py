@@ -5,7 +5,7 @@ import torch.optim as optim
 from src.experts.lora import LoRAConfig
 from src.layers.lora_moe import LoRAMoELayer
 from src.routers.metabolic import MetabolicRouter
-from configs.router import MetabolicRouterConfig
+from src.configs.router import MetabolicRouterConfig
 
 
 class MockMLP(nn.Module):

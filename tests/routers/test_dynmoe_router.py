@@ -1,6 +1,6 @@
 import torch
 
-from configs.router import DynMoERouterConfig
+from src.configs.router import DynMoERouterConfig
 from src.routers.dynmoe import DynMoERouter
 
 

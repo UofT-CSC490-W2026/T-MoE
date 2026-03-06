@@ -1,13 +1,9 @@
-"""
-DynMoE-style top-any router: sigmoid gate with thresholded selection.
-"""
-
 from typing import Tuple, Dict, Any, Optional
 
 import torch
 from torch import nn
 
-from configs import DynMoERouterConfig
+from src.configs import DynMoERouterConfig
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
 from src.metrics import RouterMetricsTracker

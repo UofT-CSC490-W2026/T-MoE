@@ -19,16 +19,16 @@ Orchestrates the full training workflow with three execution modes:
 
 Usage:
     # Local training
-    python run_training_pipeline.py --mode local --config gptneo_125m_lora
+    python run_aws_training.py --mode local --config gptneo_125m_lora
 
     # Submit to AWS Batch
-    python run_training_pipeline.py --mode batch --config gptneo_125m_lora
+    python run_aws_training.py --mode batch --config gptneo_125m_lora
 
     # Inside container (called by Batch, not invoked directly)
-    python run_training_pipeline.py --mode container --config gptneo_125m_lora
+    python run_aws_training.py --mode container --config gptneo_125m_lora
 
     # Dry run (any mode)
-    python run_training_pipeline.py --mode batch --config gptneo_125m_lora --dry-run
+    python run_aws_training.py --mode batch --config gptneo_125m_lora --dry-run
 """
 
 from __future__ import annotations
@@ -279,7 +279,7 @@ def submit_batch_job(
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     job_name = f"tmoe-training-{config_name}-{timestamp}"
 
-    # Job command (only arguments, since entrypoint is python run_training_pipeline.py --mode container)
+    # Job command (only arguments, since entrypoint is python run_aws_training.py --mode container)
     command = ["--config", config_name]
     if overrides:
         command.extend(overrides)
@@ -557,9 +557,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_training_pipeline.py --mode local --config gptneo_125m_lora
-  python run_training_pipeline.py --mode batch --config gptneo_125m_lora
-  python run_training_pipeline.py --mode batch --config gptneo_125m_lora --dry-run
+  python run_aws_training.py --mode local --config gptneo_125m_lora
+  python run_aws_training.py --mode batch --config gptneo_125m_lora
+  python run_aws_training.py --mode batch --config gptneo_125m_lora --dry-run
         """,
     )
     parser.add_argument(

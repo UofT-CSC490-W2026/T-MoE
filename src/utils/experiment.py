@@ -9,8 +9,8 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from datasets import load_dataset
 
-from configs.model import ModelConfig
-from configs.dataset import DatasetConfig
+from src.configs.model import ModelConfig
+from src.configs.dataset import DatasetConfig
 
 from src.core import ModelRegistry
 from src.layers.lora_moe import LoRAMoELayer

@@ -1,58 +1,61 @@
 import sys
+from pathlib import Path
 from typing import List
 
-import hydra
 from omegaconf import DictConfig, OmegaConf
 
 from src.project_types import EXPERIMENTS_DIR
 
 
-def load_experiment_config(config_name: str, overrides: List[str]) -> DictConfig:
+def load_experiment_config(
+    config_path_or_name: str, overrides: List[str] = None
+) -> DictConfig:
     """
-    Load and merge base config with experiment-specific config.
+    Load experiment config from a YAML file and apply CLI overrides.
 
-    This function:
-    1. Initializes Hydra with the project root config directory
-    2. Loads the base configuration (config.yaml)
-    3. Loads the experiment-specific configuration from experiments/
-    4. Merges them with experiment config taking precedence
-    5. Applies any CLI overrides
+    Works like Hydra's dotlist overrides but is completely DDP-safe
+    (no global Hydra initialization state).
+
+    Args:
+        config_path_or_name: Either a full path to a .yaml file OR a bare
+            experiment name (e.g. "gptneo_125m_metabolic") resolved against
+            the experiments/ directory.
+        overrides: List of OmegaConf dotlist overrides, e.g.
+            ["training.lr=1e-4", "training.batch_size=8"]
+
+    Returns:
+        Merged DictConfig ready for use.
     """
-    # Initialize Hydra with project root as config path
-    # config_path is relative to this file (src/utils/config_loader.py)
-    # so we need to go up two directories to reach project root
-    with hydra.initialize(version_base=None, config_path="../.."):
-        # Load base configuration
-        base_cfg = hydra.compose(config_name="config", overrides=overrides)
+    # Resolve config path
+    path = Path(config_path_or_name)
+    if not path.suffix:
+        # Bare name: look in experiments/ directory
+        path = EXPERIMENTS_DIR / f"{config_path_or_name}.yaml"
 
-        # Load experiment configuration
-        exp_path = EXPERIMENTS_DIR / f"{config_name}.yaml"
-        if not exp_path.exists():
-            print(f"\n{'!' * 80}")
-            print(f"❌ Error: Experiment config '{exp_path}' not found.")
-            print("!" * 80)
-            print("\nAvailable experiments:")
-            if EXPERIMENTS_DIR.exists():
-                for f in sorted(EXPERIMENTS_DIR.glob("*.yaml")):
-                    print(f"  - {f.stem}")
-            print("!" * 80 + "\n")
-            sys.exit(1)
+    if not path.exists():
+        print(f"\nError: Experiment config not found at '{path}'")
+        print("\nAvailable experiments:")
+        if EXPERIMENTS_DIR.exists():
+            for f in sorted(EXPERIMENTS_DIR.glob("*.yaml")):
+                print(f"  - {f.stem}")
+        sys.exit(1)
 
-        # Load and merge experiment config
-        exp_cfg = OmegaConf.load(exp_path)
-        config = OmegaConf.merge(base_cfg, exp_cfg)
+    cfg = OmegaConf.load(path)
 
-        # Ensure experiment_name is set from config name if not specified
-        if "experiment_name" not in exp_cfg:
-            config.experiment_name = config_name
+    # Apply CLI overrides
+    if overrides:
+        override_cfg = OmegaConf.from_dotlist(overrides)
+        cfg = OmegaConf.merge(cfg, override_cfg)
 
-    return config
+    # Ensure experiment_name is always set
+    if "experiment_name" not in cfg:
+        cfg.experiment_name = path.stem
+
+    return cfg
 
 
 def list_available_experiments() -> None:
-    """
-    List all available experiment configurations.
-    """
+    """List all available experiment configurations."""
     print("\nAvailable experiments:")
     if EXPERIMENTS_DIR.exists():
         for f in sorted(EXPERIMENTS_DIR.glob("*.yaml")):

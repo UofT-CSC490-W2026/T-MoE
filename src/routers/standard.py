@@ -1,15 +1,10 @@
-"""
-Standard / Top-K router: linear gate -> softmax -> top-k selection.
-Uses optional load-balancing auxiliary loss (Switch Transformer style).
-"""
-
 from typing import Tuple, Dict, Any, Optional
 
 import torch
 from torch import nn
 import torch.nn.functional as F
 
-from configs import StandardRouterConfig, TopKRouterConfig, SwitchRouterConfig
+from src.configs import StandardRouterConfig, TopKRouterConfig, SwitchRouterConfig
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
 from src.metrics import RouterMetricsTracker

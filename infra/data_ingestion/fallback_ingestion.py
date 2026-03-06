@@ -335,7 +335,11 @@ class FallbackIngestion:
             if not local_file.is_file():
                 continue
 
-            s3_key = f"{self.s3_prefix}{timestamp}/{local_file.name}"
+            # Include dataset_name in S3 path so datasets are distinguishable
+            # OLD (broken): datasets/raw/<timestamp>/train.jsonl
+            # NEW (fixed):  datasets/raw/<dataset_name>/<timestamp>/train.jsonl
+            safe_name = self.dataset_name.replace("/", "_")
+            s3_key = f"{self.s3_prefix}{safe_name}/{timestamp}/{local_file.name}"
 
             # Check if file already exists (idempotency)
             existing_objects = s3_client.list_objects(

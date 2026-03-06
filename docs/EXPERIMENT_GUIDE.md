@@ -1,266 +1,230 @@
-# T-MoE Experiment System - Setup Guide
+# T-MoE Experiment Guide
 
-## 📋 Quick Setup
+## Setup
 
-### 1. Install Dependencies
+See [README.md](../README.md) for environment setup (venv/conda, pre-commit, cloud secrets).
 
-> [!IMPORTANT]
-> Use **Python 3.11**. **Python 3.14 is currently incompatible** with Hydra’s argument parser.
+---
 
-### 2. Configure WandB
-```bash
-wandb login
-export WANDB_ENTITY="your_team"
-export WANDB_PROJECT="your_project_name"
+## Configuration
+
+T-MoE uses **one YAML file per experiment**, located in `experiments/`.
+
+```
+experiments/
+└── gptneo_125m_metabolic.yaml   # Model + router + training + dataset settings
 ```
 
----
-
-## 🔧 Configuration
-
-T-MoE uses a two-tier configuration system:
-1. **Base Config (`config.yaml`)**: Contains global defaults (resource paths, partitions, etc.). **Do not modify this file for specific experiments.**
-2. **Experiment Config (`experiments/*.yaml`)**: Overwrites base settings for specific runs.
-
-### Model Catalog
-All backbone models are defined in `catalog/model_catalog.py`. Use the `model_key` in your experiment config:
-
-| Model Key | Parameters | Hidden Dim | Layers | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| `gpt-neo-125m` | 125M | 768 | 12 | GPT-Neo small |
-| `gpt-neo-350m` | 350M | 1024 | 24 | GPT-Neo medium |
-| `gpt-neo-1.3b` | 1.3B | 2048 | 24 | GPT-Neo large |
-| `gpt2` | 117M | 768 | 12 | GPT-2 small |
-| `gpt2-medium` | 345M | 1024 | 24 | GPT-2 medium |
-| `llama-7b` | 7B | 4096 | 32 | Llama 2 (Placeholder) |
-
-### Single Configuration File: `config.yaml`
-
-All experiment settings are in one file with these sections:
-
-1. **Experiment Metadata** - name, seed, execution environment
-2. **Model** - backbone type, MoE injection layers
-3. **Router** - routing strategy and parameters
-4. **Expert** - expert type and configuration (LoRA)
-5. **Training** - batch size, learning rate, checkpointing
-6. **Dataset** - uses `catalog/dataset_catalog.py` for dataset selection
-7. **Logging** - WandB configuration
-- `configs/dataset.py` - DatasetConfig (uses datacatalog)
-- `catalog/dataset_catalog.py` - Dataset catalog (wikitext-2, c4, etc.)
+The config is loaded with OmegaConf. Any key can be overridden at runtime using dotlist notation — no config file editing required for one-off runs.
 
 ---
 
-## 🚀 Usage
+## Running Experiments
 
-### Local Execution (Interactive)
+### Option A: Modal (Fast Iteration)
+
+Recommended for most experiments. Data is prepared once and cached in a persistent Modal Volume.
 
 ```bash
-# Basic run (using shorthand -c)
-python train.py -c gptneo_125m_lora
+# Stage 1: Tokenize dataset → Modal Volume (CPU, one-time)
+modal run run_modal_training.py::stage_data --config gptneo_125m_metabolic.yaml
 
-# Or using long flag --config
-python train.py --config gptneo_125m_lora
+# Stage 2: Train (GPU reads directly from Volume)
+modal run run_modal_training.py::stage_train --config gptneo_125m_metabolic.yaml
+
+# With overrides (no config edits needed)
+modal run run_modal_training.py::stage_train --config gptneo_125m_metabolic.yaml \
+    --overrides "training.lr=5e-4" "router.num_experts=8"
 ```
 
-### AWS Execution
+### Option B: AWS Batch (Large-Scale)
 
-1. **Edit config.yaml** (or your experiment config) for AWS settings:
-   ```yaml
-   execution_env: aws
-   compute:
-     aws:
-       data_root: s3://your-bucket/datasets
-       output_root: s3://your-bucket/outputs
-   ```
+```bash
+# Upload dataset to S3
+python run_pipeline.py
 
-2. **Run on EC2:**
-   ```bash
-   python train.py --config gptneo_125m_lora
-   ```
+# Submit training job to AWS Batch
+python run_aws_training.py --mode batch -c gptneo_125m_metabolic
+```
+
+### Option C: Local (Debugging)
+
+```bash
+# Prepare shards locally
+python -m scripts.prepare_data --config experiments/gptneo_125m_metabolic.yaml
+
+# Train locally
+python -m scripts.train --config experiments/gptneo_125m_metabolic.yaml
+```
 
 ---
 
-## 📂 Output Structure
+## Config Overrides
 
-All outputs follow this structure (both local and AWS):
+Any config value can be overridden without editing the YAML:
 
+```bash
+# Learning rate + batch size
+python -m scripts.train --config experiments/gptneo_125m_metabolic.yaml \
+    training.lr=5e-4 training.batch_size=16
+
+# Dataset swap
+python -m scripts.train --config experiments/gptneo_125m_metabolic.yaml \
+    dataset.dataset_key=wikitext-103
+
+# Router type
+python -m scripts.train --config experiments/gptneo_125m_metabolic.yaml \
+    router.type=standard router.num_experts=8
 ```
-{output_root}/experiments/<experiment_name>_<timestamp>/
-├── checkpoints/
-│   ├── checkpoint_step_500.pt
-│   ├── checkpoint_step_1000.pt
-│   ├── best_model.pt
-│   └── *.json (metadata)
-├── logs/
-│   └── training.log
-├── wandb/
-│   └── (wandb files)
-└── config.yaml (saved copy)
-```
-
-**Local:** `./outputs/experiments/...`
-**AWS:** `s3://your-bucket/outputs/experiments/...`
 
 ---
 
-## 🗂️ Dataset Catalog
+## Output Structure
 
-The system uses `catalog/dataset_catalog.py` for dataset management:
+All training outputs go to:
+
+```
+outputs/<experiment_name>_<YYYYMMDD_HHMMSS>/
+└── ckpt.pt     # Best checkpoint (overwritten on val_loss improvement)
+                # Contains: step, val_loss, lora+router state, optimizer state, config
+```
+
+On Modal, outputs are also written to the persistent Volume under `/data/outputs/`.
+
+---
+
+## Models
+
+Available models are registered in `src/models/`. The `model_key` in your YAML config selects the model.
+
+| model_key | Parameters | Hidden Dim | Layers |
+|---|---|---|---|
+| `gpt-neo-125m` | 125M | 768 | 12 |
+| `gpt-neo-350m` | 350M | 1024 | 24 |
+| `gpt-neo-1.3b` | 1.3B | 2048 | 24 |
+| `gpt-neo-2.7b` | 2.7B | 2560 | 32 |
+
+**Adding a new model (e.g. Llama):**
+
+1. Create `src/models/llama.py` with a `VARIANTS` dict and `@ModelRegistry.register("llama")`
+2. Import it in `src/models/__init__.py`
+3. That's it — `train.py`, `prepare_data.py`, and `model_lookup()` all resolve automatically.
+
+---
+
+## Datasets
+
+Available datasets are registered in `scripts/prepare_data.py`'s `DATASET_REGISTRY`.
+
+| dataset_key | Description |
+|---|---|
+| `wikitext-2` | Small, fast — good for debugging |
+| `wikitext-103` | ~50× larger than wikitext-2 |
+| `openwebtext` | Large web corpus (streaming) |
+| `c4` | Colossal Clean Crawled Corpus (streaming) |
+
+**Adding a new dataset:**
+
+Add an entry to `DATASET_REGISTRY` in `scripts/prepare_data.py` and `DATASET_CATALOG` in `src/configs/dataset.py`:
 
 ```python
-# Available datasets:
-- wikitext-2        # Small (2M tokens)
-- wikitext-103      # Large (103M tokens)
-- c4                # Colossal Clean Crawled Corpus
-- openwebtext       # Reddit outlinks
-- the_pile          # Diverse corpus
-- code              # GitHub code
-```
-
-**Usage in config.yaml:**
-```yaml
-dataset:
-  dataset_key: wikitext-2  # Uses catalog
-```
-
-**Custom dataset:**
-```yaml
-dataset:
-  custom_dataset_name: my-org/my-dataset
-  custom_dataset_config: subset
-  text_column: content
+"my-dataset": {
+    "hf_path": "org/dataset-name",
+    "hf_name": "subset",       # None if no subset
+    "text_column": "text",
+    "splits": {"train": "train", "val": "validation"},
+},
 ```
 
 ---
 
-## 🎯 Pipeline Overview
+## Routers
 
-### Local Pipeline
+Configure in the `router:` section of your experiment YAML.
 
-1. **Config** → Read `config.yaml`
-2. **Datacatalog** → Resolve dataset from `catalog/dataset_catalog.py`
-3. **Model** → Build with LoRA experts + router (using `configs/router.py`)
-4. **Train** → Run with AMP, checkpointing, WandB
-5. **Output** → Save to `./outputs/experiments/<name>_<timestamp>/`
-
-### AWS Pipeline
-
-1. **Config** → Read `config.yaml` with `execution_env=aws`
-2. **Datacatalog** → Resolve dataset (downloads to local cache)
-3. **Model** → Build (same as local)
-4. **Train** → Run on EC2 GPU
-5. **Output** → Save to `s3://bucket/outputs/experiments/<name>_<timestamp>/`
+| `router.type` | Description |
+|---|---|
+| `metabolic` | Metabolic router with fatigue dynamics |
+| `standard` | Top-K softmax router with optional aux loss |
+| `topk` | Top-K router, no load balancing |
+| `switch` | Switch (Top-1) router |
+| `dynmoe` | DynMoE sigmoid-gate router |
 
 ---
 
-## 📊 Monitoring
+## Common Sweeps
 
-**WandB Dashboard:**
-```
-https://wandb.ai/<your_username>/<your_project_name>
-```
+### LoRA Rank Sweep
 
-**Logs:**
-- Local: `./outputs/experiments/<name>_*/logs/`
-- AWS: `s3://bucket/outputs/experiments/<name>_*/logs/`
-
-**Checkpoints:**
-- Best model: `checkpoints/best_model.pt`
-- Latest: `checkpoints/checkpoint_step_<N>.pt`
-
----
-
-## 🔧 Example Workflows
-
-### 1. Router Comparison
-```yaml
-# config.yaml - TopK Router
-router:
-  type: TopKRouter
-  num_experts: 4
-  top_k: 1
-```
-
-```yaml
-# config.yaml - Metabolic Router
-router:
-  type: MetabolicRouter
-  num_experts: 8
-  top_k: 2
-  metabolic:
-    lambda_metabolic: 0.1
-    gamma_recovery: 0.01
-```
-
-### 2. LoRA Rank Sweep
 ```bash
 for rank in 8 16 32 64; do
-    python train.py \
-        --config gptneo_125m_lora \
+    python -m scripts.train \
+        --config experiments/gptneo_125m_metabolic.yaml \
         experiment_name=lora_rank_${rank} \
         expert.lora.rank=${rank} \
         expert.lora.alpha=${rank}
 done
 ```
 
-### 3. Dataset Sweep
+### Dataset Sweep
+
 ```bash
-for dataset in wikitext-2 c4 openwebtext; do
-    python train.py \
-        --config gptneo_125m_lora \
+for dataset in wikitext-2 wikitext-103 openwebtext; do
+    python -m scripts.train \
+        --config experiments/gptneo_125m_metabolic.yaml \
         experiment_name=dataset_${dataset} \
         dataset.dataset_key=${dataset}
 done
 ```
 
----
+### Router Comparison
 
-## 📝 Key Files
-
-**Main:**
-- `config.yaml` - Single comprehensive config
-- `train.py` - Main training script
-
-**Existing Configs (Used):**
-- `configs/base.py` - BaseConfig
-- `configs/router.py` - Router configs
-- `configs/dataset.py` - Dataset config
-- `catalog/dataset_catalog.py` - Dataset catalog
-
-**Source:**
-- `src/models/` - Model backbones
-- `src/experts/lora.py` - LoRA experts
-- `src/routers/` - Router implementations
-- `src/training/` - Trainer, checkpointing
-- `src/utils/experiment.py` - Builders (uses datacatalog)
-
-**Documentation:**
-- `docs/EXPERIMENT_GUIDE.md` - This file
+```bash
+for router in metabolic standard topk; do
+    python -m scripts.train \
+        --config experiments/gptneo_125m_metabolic.yaml \
+        experiment_name=router_${router} \
+        router.type=${router}
+done
+```
 
 ---
 
-## ❓ FAQ
+## Key Files
 
-**Q: How do I add a new dataset?**
-A: Add to `catalog/dataset_catalog.py`:
-```python
-DATASET_CATALOG["my-dataset"] = {
-    "name": "org/dataset-name",
-    "config": "subset",
-    "text_column": "text",
-    "streaming": False,
-    "description": "My dataset",
-}
+| File | Purpose |
+|---|---|
+| `experiments/*.yaml` | Per-experiment config |
+| `config.yaml` | Global defaults |
+| `scripts/prepare_data.py` | Tokenize + pack dataset to shards |
+| `scripts/train.py` | Main training loop |
+| `run_modal_training.py` | Modal orchestrator |
+| `run_aws_training.py` | AWS Batch orchestrator |
+| `src/models/gpt_neo.py` | GPT-Neo backbone + VARIANTS |
+| `src/routers/` | Router implementations |
+| `src/configs/model.py` | `model_lookup()` — resolves model keys via registry |
+| `src/configs/dataset.py` | `DATASET_CATALOG` |
+
+---
+
+## FAQ
+
+**Q: How do I change the dataset?**
+Set `dataset.dataset_key` in your YAML or pass it as a CLI override:
+```bash
+python -m scripts.train --config experiments/gptneo_125m_metabolic.yaml dataset.dataset_key=c4
 ```
 
-**Q: How do I change data paths?**
-A: Edit `config.yaml`:
-```yaml
-compute:
-  local:
-    data_root: ./data
-    output_root: ./outputs
+**Q: Where does the HuggingFace token need to be?**
+Set `HF_TOKEN` as an environment variable locally. On Modal, store it in the `tmoe-secrets` Workspace Secret.
+
+**Q: How do I resume training?**
+```bash
+python -m scripts.train --config experiments/gptneo_125m_metabolic.yaml --resume outputs/my_run/ckpt.pt
 ```
 
-**Q: How do I disable AWS?**
-A: Set `execution_env: local` in `config.yaml`.
+**Q: Do I need to re-run stage_data every run?**
+No. `stage_data` is idempotent — it skips if shards already exist on the Modal Volume.
+
+**Q: How do I disable WandB?**
+Set `logging.enabled: false` in your YAML, or unset `WANDB_API_KEY`.

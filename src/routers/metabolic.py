@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from typing import Tuple, Dict, Any, Optional
 import warnings
 
-from configs import MetabolicRouterConfig
+from src.configs import MetabolicRouterConfig
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
 from src.metrics import RouterMetricsTracker

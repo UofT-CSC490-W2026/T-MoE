@@ -1,7 +1,7 @@
 import pytest
 import torch
 from typing import Tuple
-from configs.router import MetabolicRouterConfig
+from src.configs.router import MetabolicRouterConfig
 
 
 @pytest.fixture

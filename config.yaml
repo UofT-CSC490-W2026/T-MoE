@@ -109,8 +109,6 @@ training:
 
   # Logging
   log_interval: 10
-  log_grad_norm: true
-  log_param_norm: true
 
 # ============================================================================
 # DATASET CONFIGURATION
@@ -170,9 +168,9 @@ device:
 # COMPUTE ENVIRONMENT CONFIGURATION
 # ============================================================================
 compute:
-  # Backend selection (NEW: determines execution platform)
+  # Backend: determines execution platform
+  # This is the single source of truth — do NOT set execution_env separately.
   backend: modal  # Options: aws, modal
-  execution_env: local  # Options: local, aws (deprecated, use backend instead)
 
   # ========================================
   # LOCAL EXECUTION (SLURM)

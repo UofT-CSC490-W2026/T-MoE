@@ -1,7 +1,7 @@
 import pytest
 import torch
 import torch.nn.functional as F
-from configs.router import MetabolicRouterConfig
+from src.configs.router import MetabolicRouterConfig
 from src.routers.metabolic import MetabolicRouter
 
 
@@ -10,7 +10,7 @@ class TestMetabolicRouterConfig:
 
     def test_default_config_initialization(self):
         """Verify default config values are sensible."""
-        config = MetabolicRouterConfig()
+        config = MetabolicRouterConfig(hidden_dim=512)
         assert config.router_type == "metabolic"
         assert config.hidden_dim > 0
         assert config.num_experts > 0

@@ -1,15 +1,6 @@
-"""
-Router Factory: Single source of truth for router instantiation.
-
-This module consolidates router creation logic to avoid duplication across:
-- TMoELayer._create_router()
-- injection_utils.create_tmoe_from_gpt_neo_mlp()
-- experiment.py:_get_router_class() + _build_router_config()
-"""
-
 from typing import Any
 
-from configs.router import MetabolicRouterConfig, StandardRouterConfig
+from src.configs.router import MetabolicRouterConfig, StandardRouterConfig
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
 from src.project_types import RouterType
