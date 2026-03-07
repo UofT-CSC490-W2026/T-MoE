@@ -35,7 +35,7 @@ Notes
 import os
 import subprocess
 import modal
-from modal import App, Image as ModalImage, Volume, Secret
+from modal import Image as ModalImage, Volume, Secret
 
 # =============================================================================
 # CONFIGURATION
@@ -44,8 +44,8 @@ from modal import App, Image as ModalImage, Volume, Secret
 # ── Model depth ──────────────────────────────────────────────────────────────
 #   d12  ~125M params   5 min on 8xH100    good for iterating on code changes
 #   d20  ~560M params   1.5 hr on 8xH100   budget speedrun (~$36)
-#   d24  ~768M params   3 hr on 8xH100     
-#   d26  ~1B params     6 hr on 8xH100 
+#   d24  ~768M params   3 hr on 8xH100
+#   d26  ~1B params     6 hr on 8xH100
 #   d32  ~1.9B params   41 hr on 8xH100
 DEPTH = 12
 
@@ -60,7 +60,7 @@ NUM_SHARDS = 20
 # "A100:8" = 8 A100 80GBs, ~10-20% slower than H100s but sometimes cheaper.
 # Single GPU works too — code auto-compensates with gradient accumulation.
 GPU_PRETRAIN = "H100:4"
-GPU_FINETUNE = "H100:4"   # SFT and RL don't need all 8 GPUs
+GPU_FINETUNE = "H100:4"  # SFT and RL don't need all 8 GPUs
 
 # ── Device batch size ─────────────────────────────────────────────────────────
 # Sequences per GPU per forward pass. Reduce if you hit OOM.
@@ -94,19 +94,19 @@ P3_PHASE2_NUM_ITERS = 4000
 # the path to here so the code finds everything without modification.
 VOLUME_MOUNT = "/vol"
 NANOCHAT_CACHE = f"{VOLUME_MOUNT}/nanochat_cache"  # mirrors $NANOCHAT_BASE_DIR
-BASE_DIR = "/data/.cache/nanochat" 
+BASE_DIR = "/data/.cache/nanochat"
 
 # ── Timeout ───────────────────────────────────────────────────────────────────
 # Modal kills a container after this many seconds of wall-clock time.
 # The pretrain timeout must be longer than your expected training time.
-PRETRAIN_TIMEOUT_SEC  = 60 * 60 * 6    # 6 hours
-FINETUNE_TIMEOUT_SEC  = 60 * 60 * 2    # 2 hours (SFT and RL are much shorter)
-DOWNLOAD_TIMEOUT_SEC  = 60 * 90        # 90 min for shard download
+PRETRAIN_TIMEOUT_SEC = 60 * 60 * 6  # 6 hours
+FINETUNE_TIMEOUT_SEC = 60 * 60 * 2  # 2 hours (SFT and RL are much shorter)
+DOWNLOAD_TIMEOUT_SEC = 60 * 90  # 90 min for shard download
 
 # ── Derived: GPU count ────────────────────────────────────────────────────────
 # Extract the integer from "H100:8" -> 8.  Used to pass --nproc_per_node.
-_N_PRETRAIN_GPUS  = int(GPU_PRETRAIN.split(":")[1]) if ":" in GPU_PRETRAIN else 1
-_N_FINETUNE_GPUS  = int(GPU_FINETUNE.split(":")[1]) if ":" in GPU_FINETUNE else 1
+_N_PRETRAIN_GPUS = int(GPU_PRETRAIN.split(":")[1]) if ":" in GPU_PRETRAIN else 1
+_N_FINETUNE_GPUS = int(GPU_FINETUNE.split(":")[1]) if ":" in GPU_FINETUNE else 1
 
 # Eval bundle URL (fixed, hosted by Karpathy)
 EVAL_BUNDLE_URL = "https://karpathy-public.s3.us-west-2.amazonaws.com/eval_bundle.zip"
@@ -140,10 +140,8 @@ secret = Secret.from_name("nanochat-secrets")
 image = (
     # NVIDIA CUDA 12.8 with Python 3.11
     ModalImage.from_registry("nvidia/cuda:12.8.1-devel-ubuntu24.04", add_python="3.11")
-
     # System dependencies
     .apt_install("git", "build-essential", "curl", "wget", "unzip")
-
     # Copy nanochat repo into the image
     .add_local_dir(
         local_path="./nanochat",
@@ -161,7 +159,6 @@ image = (
         ],
     )
     .workdir("/root/nanochat")
-
     # Install Rust and uv
     .run_commands(
         "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
@@ -172,11 +169,13 @@ image = (
     )
     .pip_install("uv")
     # Environment variables
-    .env({
-        "OMP_NUM_THREADS": "1",
-        "NANOCHAT_BASE_DIR": "/data/.cache/nanochat",
-        "HF_HOME": "/data/.cache/huggingface",
-    })
+    .env(
+        {
+            "OMP_NUM_THREADS": "1",
+            "NANOCHAT_BASE_DIR": "/data/.cache/nanochat",
+            "HF_HOME": "/data/.cache/huggingface",
+        }
+    )
     .run_commands("ls /root/nanochat/.venv/bin/python || echo 'VENV NOT FOUND'")
     .run_commands(
         "cd /root/nanochat && uv sync --extra gpu --no-install-project",
@@ -187,7 +186,10 @@ image = (
 # HELPERS
 # =============================================================================
 
-def _python(module: str, args: list | None = None, *, cwd: str = "/root/nanochat") -> None:
+
+def _python(
+    module: str, args: list | None = None, *, cwd: str = "/root/nanochat"
+) -> None:
     """Run `python -m {module} [args]` -- for non-distributed scripts."""
     args = args or []
     cmd = f"cd {cwd} && uv run python -m {module} {' '.join(args)}"
@@ -232,6 +234,7 @@ def _run(cmd: str) -> None:
 #     os.makedirs(f"{BASE_DIR}/eval_bundle", exist_ok=True)
 #     os.makedirs(f"{BASE_DIR}/report", exist_ok=True)
 
+
 def _setup_cache() -> None:
     """
     Create cache directories and symlink ~/.cache/nanochat -> the volume.
@@ -268,6 +271,7 @@ def _curl(url: str, dest: str) -> None:
 # STAGE 0: DATA DOWNLOAD
 # =============================================================================
 
+
 @app.function(
     image=image,
     secrets=[secret],
@@ -301,6 +305,7 @@ def stage_data(num_shards: int = NUM_SHARDS) -> None:
 # =============================================================================
 # STAGE 1: TOKENIZER TRAINING
 # =============================================================================
+
 
 @app.function(
     image=image,
@@ -348,6 +353,7 @@ def stage_tokenizer() -> None:
 # =============================================================================
 # STAGE 2: BASE MODEL PRETRAINING
 # =============================================================================
+
 
 @app.function(
     image=image,
@@ -437,7 +443,7 @@ def _run_pretrain_stage(
         f"--window-pattern={window_pattern}",
         f"--device-batch-size={device_batch_size}",
         f"--run={wandb_run}",
-        "--save-every=1000",    # checkpoint every 1k steps for resilience
+        "--save-every=1000",  # checkpoint every 1k steps for resilience
     ]
     if model_tag:
         train_args.append(f"--model-tag={model_tag}")
@@ -579,6 +585,7 @@ def part3_eval_2of3(
 # STAGE 3: POST-PRETRAIN EVALUATION
 # =============================================================================
 
+
 @app.function(
     image=image,
     secrets=[secret],
@@ -625,6 +632,7 @@ def stage_post_pretrain_eval() -> None:
 # =============================================================================
 # STAGE 4: SUPERVISED FINE-TUNING (SFT)
 # =============================================================================
+
 
 @app.function(
     image=image,
@@ -675,29 +683,30 @@ def stage_sft(wandb_run: str = WANDB_RUN) -> None:
     print("Running SFT...")
     _torchrun(
         "scripts.chat_sft",
-        [
-            f"--run={wandb_run}",
-            "--model-step=4357",
-            "--model-tag=d20"
-        ],
+        [f"--run={wandb_run}", "--model-step=4357", "--model-tag=d20"],
         nproc=_N_FINETUNE_GPUS,
     )
 
     # speedrun.sh: torchrun ... -m scripts.chat_eval -- -i sft
     # -i sft tells chat_eval to load the SFT checkpoint (not base or rl)
     print("Evaluating SFT checkpoint on task benchmarks...")
-    _torchrun("scripts.chat_eval", 
-              [
-                  "-i", "sft",
-               ], 
-              nproc=_N_FINETUNE_GPUS)
+    _torchrun(
+        "scripts.chat_eval",
+        [
+            "-i",
+            "sft",
+        ],
+        nproc=_N_FINETUNE_GPUS,
+    )
 
     volume.commit()
     print("SFT complete.")
 
+
 # =============================================================================
 # STAGE 5: REINFORCEMENT LEARNING (optional)
 # =============================================================================
+
 
 @app.function(
     image=image,
@@ -734,11 +743,7 @@ def stage_rl(wandb_run: str = WANDB_RUN) -> None:
     # speedrun.sh: torchrun ... -m scripts.chat_rl -- --run=$WANDB_RUN
     _torchrun(
         "scripts.chat_rl",
-        [
-            f"--run={wandb_run}",
-            "--model-step=4357",
-            "--model-tag=d20"
-        ],
+        [f"--run={wandb_run}", "--model-step=4357", "--model-tag=d20"],
         nproc=_N_FINETUNE_GPUS,
     )
 
@@ -753,6 +758,7 @@ def stage_rl(wandb_run: str = WANDB_RUN) -> None:
 # =============================================================================
 # FULL SPEEDRUN PIPELINE (main entrypoint)
 # =============================================================================
+
 
 @app.local_entrypoint()
 def main() -> None:
@@ -780,8 +786,10 @@ def main() -> None:
     w = 64
     print("\n" + "=" * w)
     print("nanochat Speedrun -- Modal Edition")
-    print(f"  Mirrors: runs/speedrun.sh")
-    print(f"  depth={DEPTH}  shards={NUM_SHARDS}  gpu={GPU_PRETRAIN}  wandb={WANDB_RUN}")
+    print("  Mirrors: runs/speedrun.sh")
+    print(
+        f"  depth={DEPTH}  shards={NUM_SHARDS}  gpu={GPU_PRETRAIN}  wandb={WANDB_RUN}"
+    )
     print("=" * w + "\n")
 
     # Stage 0: Data
@@ -798,7 +806,9 @@ def main() -> None:
     # speedrun.sh: python -m nanochat.report reset
     #              torchrun ... -m scripts.base_train -- --depth=24 ...
     print("[2/5] Pretraining base model (the long one)...")
-    stage_pretrain.remote(depth=DEPTH, device_batch_size=DEVICE_BATCH_SIZE, wandb_run=WANDB_RUN)
+    stage_pretrain.remote(
+        depth=DEPTH, device_batch_size=DEVICE_BATCH_SIZE, wandb_run=WANDB_RUN
+    )
 
     # Stage 3: Post-pretrain eval
     #              torchrun ... -m scripts.base_eval
@@ -822,6 +832,7 @@ def main() -> None:
 # =============================================================================
 # QUICK TEST
 # =============================================================================
+
 
 @app.function(
     image=image,
@@ -866,9 +877,9 @@ def quick_test() -> None:
             "--depth=12",
             "--device-batch-size=32",
             "--run=dummy",
-            "--core-metric-every=999999",   # skip CORE during training (it's slow)
-            "--sample-every=-1",            # skip intermediate samples
-            "--save-every=-1",              # skip intermediate checkpoints
+            "--core-metric-every=999999",  # skip CORE during training (it's slow)
+            "--sample-every=-1",  # skip intermediate samples
+            "--save-every=-1",  # skip intermediate checkpoints
         ],
         nproc=nproc,
     )
