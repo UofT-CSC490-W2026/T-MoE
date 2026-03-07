@@ -29,14 +29,29 @@ import os
 import subprocess
 
 from modal import App, Image, Volume, Secret
+from omegaconf import OmegaConf
 
 # ---------------------------------------------------------------------------
-# Configuration
+# GPU Configuration
+# Read GPU type AND count from the config at module load time so Modal's
+# @app.function(gpu=...) decorator picks them up before any function runs.
+#
+# Modal uses "A100:4" notation to provision 4× A100s for a single function.
+# The default config is modal_test.yaml; change this to your active experiment
+# if you're running a different config as the primary Modal job.
+#
+# To override without editing this file, set TMOE_GPU env var:
+#   TMOE_GPU="H100:2" modal run run_modal_training.py::stage_train --config ...
 # ---------------------------------------------------------------------------
-
-# GPU for training. Options: "A10G", "A100", "H100", "A100:8", "H100:8"
-# Single GPU is fine for experiments; upgrade for large-scale runs.
-GPU_TRAIN = os.environ.get("TMOE_GPU", "A10G")
+_DEFAULT_CONFIG = "experiments/modal_test.yaml"
+try:
+    _cfg = OmegaConf.load(_DEFAULT_CONFIG)
+    _gpu_type = OmegaConf.select(_cfg, "compute.modal.gpu", default="A10G")
+    _num_gpus = OmegaConf.select(_cfg, "distributed.num_gpus", default=1)
+    # Modal format: "A100:4" provisions 4 GPUs; "A10G" provisions 1.
+    GPU_TRAIN = f"{_gpu_type}:{_num_gpus}" if _num_gpus > 1 else _gpu_type
+except Exception:
+    GPU_TRAIN = os.environ.get("TMOE_GPU", "A10G")  # fallback
 
 # Volume name — shared between all stages so shards persist across runs.
 VOLUME_NAME = "tmoe-data"
@@ -61,12 +76,27 @@ SECRET_NAME = "tmoe-secrets"
 # Shared volume: persistent across stages and container restarts.
 volume = Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
+# Directories/patterns to exclude from the Modal image build.
+# .idea/ is critical — JetBrains IDEs mutate workspace.xml continuously,
+# which triggers Modal's "was modified during build process" error.
+_MODAL_IGNORE = [
+    ".idea",
+    ".git",
+    "__pycache__",
+    ".pytest_cache",
+    "outputs",
+    "cache",
+    "*.pyc",
+    ".venv",
+    ".env",
+]
+
 # Container image: install requirements, then map the rest of the code.
 image = (
     Image.debian_slim(python_version="3.11")
     .pip_install_from_requirements("requirements.txt")
     .env({"PYTHONPATH": "/app"})
-    .add_local_dir(".", remote_path="/app")
+    .add_local_dir(".", remote_path="/app", ignore=_MODAL_IGNORE)
 )
 
 app = App(
@@ -210,22 +240,65 @@ def stage_train(config: str = "gptneo_125m_metabolic.yaml", overrides: str = "")
     print(f"Output Dir : {out_dir}")
     print(f"{'=' * 60}\n")
 
-    # Build and run train command, explicitly passing output dir to Volume
-    cmd = [
-        sys.executable,
-        "-m",
-        "scripts.train",
-        "--config",
-        config_path,
-        "--output-dir",
-        str(out_dir),
-    ]
+    # Build and run train command
+    # Read num_gpus from config to decide between python and torchrun.
+    num_gpus = OmegaConf.select(cfg, "distributed.num_gpus", default=1)
+
+    if num_gpus > 1:
+        cmd = [
+            "torchrun",
+            "--standalone",
+            f"--nproc_per_node={num_gpus}",
+            "-m",
+            "scripts.train",
+            "--config",
+            config_path,
+            "--output-dir",
+            str(out_dir),
+        ]
+    else:
+        cmd = [
+            sys.executable,
+            "-m",
+            "scripts.train",
+            "--config",
+            config_path,
+            "--output-dir",
+            str(out_dir),
+        ]
+
     if overrides:
         override_list = [o.strip() for o in overrides.split(",")]
         cmd += override_list
 
-    subprocess.run(cmd, cwd="/app", check=True)
+    import json
+    import os
 
+    # Set error file so we can read the actual traceback if torchrun fails
+    error_file = "/tmp/torchelastic_error.json"
+    env = os.environ.copy()
+    env["TORCHELASTIC_ERROR_FILE"] = error_file
+
+    try:
+        subprocess.run(cmd, cwd="/app", check=True, env=env)
+    except subprocess.CalledProcessError as e:
+        print("\n" + "=" * 80)
+        print("TORCHRUN FAILED. Attempting to extract root cause traceback...")
+        if os.path.exists(error_file):
+            try:
+                with open(error_file, "r") as f:
+                    err_data = json.load(f)
+                    print("\nROOT CAUSE TRACEBACK:")
+                    for idx, err in err_data.get("message", {}).items():
+                        print(f"--- Rank {idx} ---")
+                        print(err.get("message", "No message"))
+                        print("---" * 20)
+            except Exception as read_e:
+                print(f"Could not read error file: {read_e}")
+        else:
+            print("Error file not found.")
+        print("=" * 80 + "\n")
+        raise e
     # Commit checkpoint to volume
     volume.commit()
     print(f"Stage 2 complete. Checkpoint saved to: {out_dir}")

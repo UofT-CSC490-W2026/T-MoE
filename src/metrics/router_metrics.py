@@ -169,10 +169,10 @@ class RouterMetricsTracker:
         """
         device = indices.device
 
-        # Aggregate usage across all tokens
-        usage = torch.zeros(self.num_experts, device=device)
+        # float32: scatter_add_ requires matching dtypes (weights may be bfloat16 under FSDP)
+        usage = torch.zeros(self.num_experts, device=device, dtype=torch.float32)
         flat_indices = indices.flatten()
-        flat_weights = weights.flatten()
+        flat_weights = weights.flatten().to(torch.float32)
         usage.scatter_add_(0, flat_indices, flat_weights)
 
         # Normalize to probability distribution
@@ -204,7 +204,7 @@ class RouterMetricsTracker:
             "fatigue_std": fatigue.std().item(),
             "fatigue_min": fatigue.min().item(),
             "fatigue_max": fatigue.max().item(),
-            "fatigue_per_expert": fatigue.clone().cpu().numpy(),
+            "fatigue_per_expert": fatigue.clone().cpu().float().numpy(),
         }
 
     def compute_usage_distribution(
@@ -222,18 +222,17 @@ class RouterMetricsTracker:
         """
         device = indices.device
 
-        # Count expert usage
-        usage_counts = torch.zeros(self.num_experts, device=device)
+        usage_counts = torch.zeros(self.num_experts, device=device, dtype=torch.float32)
         flat_indices = indices.flatten()
-        flat_weights = weights.flatten()
+        flat_weights = weights.flatten().to(torch.float32)
         usage_counts.scatter_add_(0, flat_indices, flat_weights)
 
         # Normalize to distribution
         usage_dist = usage_counts / (usage_counts.sum() + 1e-10)
 
         return {
-            "usage_counts": usage_counts.detach().cpu().numpy(),
-            "usage_distribution": usage_dist.detach().cpu().numpy(),
+            "usage_counts": usage_counts.detach().cpu().float().numpy(),
+            "usage_distribution": usage_dist.detach().cpu().float().numpy(),
         }
 
     def compute_gini_coefficient(
@@ -254,10 +253,9 @@ class RouterMetricsTracker:
         """
         device = indices.device
 
-        # Aggregate usage
-        usage = torch.zeros(self.num_experts, device=device)
+        usage = torch.zeros(self.num_experts, device=device, dtype=torch.float32)
         flat_indices = indices.flatten()
-        flat_weights = weights.flatten()
+        flat_weights = weights.flatten().to(torch.float32)
         usage.scatter_add_(0, flat_indices, flat_weights)
 
         # Sort usage in ascending order

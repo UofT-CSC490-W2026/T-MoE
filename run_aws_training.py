@@ -488,9 +488,13 @@ def run_batch_mode(args, pipeline_config, experiment_config) -> None:
 def run_container_mode(args, pipeline_config, experiment_config) -> None:
     """
     CONTAINER mode: runs inside Docker on Batch GPU instance.
-    Downloads dataset, trains, uploads outputs.
+    Downloads dataset, trains (single- or multi-GPU via config), uploads outputs.
     """
-    cache_dir = experiment_config.compute.aws.cache_dir
+    from omegaconf import OmegaConf
+
+    cache_dir = OmegaConf.select(
+        experiment_config, "compute.aws.cache_dir", default="/tmp/tmoe_data"
+    )
     download_dataset_from_s3(pipeline_config, cache_dir)
 
     output_dir, final_metrics = run_training(experiment_config, cache_dir)

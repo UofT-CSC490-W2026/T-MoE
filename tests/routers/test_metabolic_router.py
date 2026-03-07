@@ -27,39 +27,38 @@ class TestWeightNormalization:
 
     def test_magnitude_g_is_per_expert_scalar(self, standard_config, device):
         """
-        Verify g has shape (num_experts, 1), NOT (1, hidden_dim).
-        This catches the 'dim=1' bug where importance would be shared across experts
-        but unique per feature.
+        Verify prototype_magnitude has shape (num_experts,) — one learnable
+        scale per expert, decoupling direction from magnitude.
         """
         router = MetabolicRouter(standard_config).to(device)
 
         if not standard_config.normalize_weights:
             pytest.skip("weight_norm not enabled")
 
-        g_shape = None
-        for name, param in router.prototypes.named_parameters():
-            if "original0" in name:  # original0 is always the magnitude g
-                g_shape = param.shape
+        g = None
+        for name, param in router.named_parameters():
+            if "prototype_magnitude" in name:
+                g = param
                 break
 
-        assert g_shape is not None, "Could not find magnitude parameter 'original0'"
-        assert g_shape == (standard_config.num_experts, 1), (
-            f"BUG: g shape is {g_shape}, expected ({standard_config.num_experts}, 1). "
-            "This means dim=1 was used instead of dim=0."
+        assert g is not None, "Could not find learnable parameter 'prototype_magnitude'"
+        assert g.shape == (standard_config.num_experts,), (
+            f"BUG: g shape is {g.shape}, expected ({standard_config.num_experts},)."
         )
 
     def test_g_initializes_to_one(self, standard_config, device):
-        """Verify that g initializes to 1.0 (equal importance start)."""
+        """Verify that prototype_magnitude initializes to 1.0 (equal importance)."""
         router = MetabolicRouter(standard_config).to(device)
         if not standard_config.normalize_weights:
             pytest.skip("weight_norm not enabled")
 
         g = None
-        for name, param in router.prototypes.named_parameters():
-            if "original0" in name:
+        for name, param in router.named_parameters():
+            if "prototype_magnitude" in name:
                 g = param
                 break
 
+        assert g is not None
         assert torch.allclose(g, torch.ones_like(g), atol=1e-6)
 
     def test_alignment_is_bounded_cosine_similarity(self, standard_config, device):

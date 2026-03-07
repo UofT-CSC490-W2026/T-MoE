@@ -44,7 +44,12 @@ def test_training_integration():
     )
 
     # ── verify freeze ──
-    assert not backbone.c_fc.weight.requires_grad, "Backbone should be frozen"
+    # Base weights are stored as buffers (register_buffer) inside SharedLoRALayer,
+    # NOT as parameters. They don't appear in moe.parameters() and receive no gradients.
+    expert_0 = moe.expert_pool[0]
+    assert not expert_0.c_fc.shared_weight.requires_grad, (
+        "Expert base weights should be frozen (buffer)"
+    )
     assert any(p.requires_grad for p in moe.router.parameters()), (
         "Router should be trainable"
     )
@@ -62,7 +67,9 @@ def test_training_integration():
     opt.zero_grad()
     loss.backward()
 
-    assert backbone.c_fc.weight.grad is None, "Backbone should receive no gradients"
+    assert expert_0.c_fc.shared_weight.grad is None, (
+        "Base weight buffer should receive no gradients"
+    )
     assert any(
         p.grad is not None for p in moe.router.parameters() if p.requires_grad
     ), "Router should receive gradients"

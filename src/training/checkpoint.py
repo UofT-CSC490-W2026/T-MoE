@@ -6,6 +6,21 @@ import torch
 from torch import nn
 
 from src.project_types import ExecutionEnv
+from src.training.fsdp_utils import is_main_process
+
+
+def _get_state_dict(model: nn.Module) -> dict:
+    """Return full state dict, gathering shards under FSDP."""
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+    if not isinstance(model, FSDP):
+        return model.state_dict()
+
+    from torch.distributed.checkpoint.state_dict import get_state_dict, StateDictOptions
+
+    options = StateDictOptions(full_state_dict=True, cpu_offload=True)
+    sd, _ = get_state_dict(model, optimizers={}, options=options)
+    return sd
 
 
 class CheckpointManager:
@@ -69,9 +84,15 @@ class CheckpointManager:
         """
         metrics = metrics or {}
 
+        # Only rank 0 saves in distributed mode. All other ranks skip.
+        # This avoids redundant writes and race conditions when multiple
+        # ranks reach a checkpoint boundary simultaneously.
+        if not is_main_process():
+            return Path("/dev/null")  # No-op sentinel for non-rank-0 processes
+
         checkpoint = {
             "step": step,
-            "model_state_dict": model.state_dict(),
+            "model_state_dict": _get_state_dict(model),
             "optimizer_state_dict": optimizer.state_dict(),
             "metrics": metrics,
             "metadata": metadata or {},
@@ -165,9 +186,28 @@ class CheckpointManager:
         if not checkpoint_path or not checkpoint_path.exists():
             raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
 
-        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
-        model.load_state_dict(checkpoint["model_state_dict"])
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+        if isinstance(model, FSDP):
+            from torch.distributed.checkpoint.state_dict import (
+                set_state_dict,
+                StateDictOptions,
+            )
+
+            options = StateDictOptions(
+                full_state_dict=True, cpu_offload=True, strict=False
+            )
+            set_state_dict(
+                model,
+                optimizers={},
+                model_state_dict=checkpoint["model_state_dict"],
+                optim_state_dict={},
+                options=options,
+            )
+        else:
+            model.load_state_dict(checkpoint["model_state_dict"], strict=False)
 
         if optimizer is not None and "optimizer_state_dict" in checkpoint:
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

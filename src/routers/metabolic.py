@@ -53,26 +53,27 @@ class MetabolicRouter(BaseRouter):
             "n_active", torch.tensor(config.num_experts, dtype=torch.long)
         )
 
-        # Learnable Router Prototypes
-        self.prototypes = nn.Linear(config.hidden_dim, config.num_experts, bias=False)
-        nn.init.xavier_uniform_(
-            self.prototypes.weight
-        )  # TODO can we use Kaiming initialization instead?
+        # Learnable Router Gate
+        # We use nn.Linear instead of a raw nn.Parameter for the expert
+        # prototypes.  Under FSDP with use_orig_params=True, raw parameter
+        # references (self.prototypes) can point to empty placeholder tensors
+        # between all-gather operations.  nn.Linear's forward path goes
+        # through F.linear which FSDP intercepts correctly, ensuring the
+        # weight is always materialized during the forward pass.
+        #
+        # The gate maps hidden_dim → num_experts (no bias) and is
+        # functionally equivalent to: matmul(x, prototypes.T)
+        self.gate = nn.Linear(config.hidden_dim, config.num_experts, bias=False)
+        nn.init.xavier_uniform_(self.gate.weight)
 
-        # Normalize prototypes for cosine similarity if enabled (this is essential for cosine gating)
+        # Per-expert learnable magnitude for cosine similarity routing.
+        # Decouples direction (which tokens to specialize on, via gate.weight)
+        # from magnitude (how aggressively to claim tokens). Fatigue prevents
+        # any expert from dominating even with high learned magnitude.
         if self.normalize_weights:
-            self.prototypes = nn.utils.parametrizations.weight_norm(
-                self.prototypes, name="weight", dim=0
-            )
-            with torch.no_grad():
-                for name, param in self.prototypes.named_parameters():
-                    if "original0" in name:  # original0 == magnitude g
-                        # Verify it's the right shape: [num_experts] or [num_experts, 1]
-                        assert param.shape[0] == self.num_experts, (
-                            f"Expected magnitude shape [{self.num_experts}], got {param.shape}"
-                        )
-                        param.fill_(1.0)
-                        break
+            self.prototype_magnitude = nn.Parameter(torch.ones(config.num_experts))
+        else:
+            self.prototype_magnitude = None
 
         # Exploration Parameters
         self.noise_std = config.noise_std
@@ -101,16 +102,19 @@ class MetabolicRouter(BaseRouter):
         self.register_buffer("hardware_distance", torch.zeros(self.num_experts))
 
     def compute_alignment(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Compute alignment between input and expert prototypes.
-        """
-        # Normalize input for cosine similarity # TODO: might need to add clamping to prevent NaNs from zero vectors
+        """Compute alignment between input and expert prototypes via self.gate (FSDP-safe)."""
         if self.normalize_inputs:
             x = F.normalize(x, p=2, dim=-1, eps=1e-8)
 
-        # Compute alignment (weights are automatically normalized by weight_norm if enabled in __init__)
-        # which is effectively: g * cosine_similarity(x, v)
-        alignment = self.prototypes(x)
+        if self.normalize_weights:
+            w = self.gate.weight  # [num_experts, hidden_dim]
+            w_normalized = F.normalize(w, p=2, dim=-1, eps=1e-8)
+            if self.prototype_magnitude is not None:
+                # Per-expert magnitude: [num_experts] → [num_experts, 1] for broadcasting
+                w_normalized = w_normalized * self.prototype_magnitude.unsqueeze(-1)
+            alignment = F.linear(x, w_normalized)
+        else:
+            alignment = self.gate(x)
 
         return alignment
 
@@ -159,7 +163,7 @@ class MetabolicRouter(BaseRouter):
             weights: Routing weights [batch, seq, top_k]
         """
         flat_indices = indices.flatten()
-        flat_weights = weights.flatten()
+        flat_weights = weights.flatten().to(torch.float32)  # buffers are float32
         batch_tokens = flat_indices.numel() // self.top_k
 
         # Pre-aggregate usage inside the forward pass footprint

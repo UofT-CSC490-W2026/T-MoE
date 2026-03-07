@@ -32,9 +32,10 @@ class LoRAMoELayer(BaseMoELayer):
             num_experts=num_experts,
             top_k=router.top_k,
         )
-        self.base_layer = base_layer
-        for p in self.base_layer.parameters():
-            p.requires_grad = False
+        # NOTE: base_layer is NOT stored as a submodule. Its weights are already
+        # captured in each expert's SharedLoRALayer buffers (shared_weight/shared_bias)
+        # after load_from_mlp(). Storing it would waste ~4.7M frozen params per layer
+        # under FSDP (sharded/all-gathered but never used in forward).
 
         self.router = router
         self.expert_pool = ExpertPool(lora_config, num_experts, expert_type)
@@ -99,7 +100,7 @@ class LoRAMoELayer(BaseMoELayer):
         x_flat = x.view(-1, hidden)
         w_flat = weights.view(-1, weights.shape[-1])
         idx_flat = indices.view(-1, indices.shape[-1])
-        lora_delta = torch.zeros_like(x_flat)
+        combined = torch.zeros_like(x_flat)
 
         for expert_idx in range(self.expert_pool.num_experts):
             expert = self.expert_pool[expert_idx]
@@ -107,11 +108,13 @@ class LoRAMoELayer(BaseMoELayer):
             token_ids = mask.any(dim=1)
             if not token_ids.any():
                 continue
-            delta = expert(x_flat[token_ids])
-            expert_w = (w_flat * mask.float())[token_ids].sum(dim=1, keepdim=True)
-            lora_delta[token_ids] += delta * expert_w
+            expert_out = expert(x_flat[token_ids])
+            expert_w = (w_flat * mask.to(w_flat.dtype))[token_ids].sum(
+                dim=1, keepdim=True
+            )
+            combined[token_ids] += expert_out * expert_w
 
-        output = lora_delta.view(batch, seq, hidden)
+        output = combined.view(batch, seq, hidden)
 
         if return_metrics:
             if metrics is None:

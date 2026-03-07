@@ -4,7 +4,6 @@ from typing import Dict, Any, Optional
 
 import torch
 from torch import nn
-from torch.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 
 try:
@@ -20,17 +19,7 @@ from src.metrics.router_metrics import RouterMetricsTracker, GlobalSpecializatio
 
 
 class Trainer:
-    """
-    Production-grade trainer for T-MoE models.
-
-    Features:
-    - Gradient accumulation
-    - Mixed precision training (AMP)
-    - Checkpoint management (best/periodic)
-    - Early stopping
-    - Comprehensive logging (WandB)
-    - Router metrics tracking
-    """
+    """Production trainer for T-MoE with FSDP support, gradient accumulation, and WandB logging."""
 
     def __init__(
         self,
@@ -42,26 +31,16 @@ class Trainer:
         output_dir: str,
         device: str = "cuda",
     ):
-        """
-        Initialize trainer.
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
-        Args:
-            model: T-MoE model
-            train_dataloader: Training data loader
-            val_dataloader: Validation data loader (optional)
-            optimizer: Optimizer
-            config: Experiment configuration
-            output_dir: Output directory for checkpoints/logs
-            device: Device to train on
-        """
-        self.model = model.to(device)
+        self._is_fsdp = isinstance(model, FSDP)
+        self.model = model if self._is_fsdp else model.to(device)
         self.train_dataloader = train_dataloader
         self.val_dataloader = val_dataloader
         self.optimizer = optimizer
         self.config = config
         self.device = device
 
-        # Training config (MUST be set before _build_scheduler)
         self.max_steps = config.training.steps
         self.grad_accum_steps = getattr(
             config.training, "gradient_accumulation_steps", 1
@@ -71,30 +50,18 @@ class Trainer:
         self.save_interval = getattr(config.training, "save_interval", 500)
         self.clip_grad_norm = getattr(config.training, "clip_grad_norm", 1.0)
 
-        # Learning rate scheduler (depends on self.max_steps)
         self.scheduler = self._build_scheduler()
 
-        # Mixed precision
-        self.use_amp = getattr(config.training, "use_amp", True)
+        # Precision via COMPUTE_DTYPE — GradScaler only for float16
+        from src.training.precision import COMPUTE_DTYPE, needs_grad_scaler
 
-        # Determine device-aware mixed precision settings
-        if self.use_amp:
-            if self.device == "cuda":
-                self.scaler = GradScaler("cuda", enabled=True)
-                self.autocast_device = "cuda"
-            elif "cpu" in self.device:
-                # CPU mixed precision (BFloat16) doesn't use a scaler
-                self.scaler = GradScaler("cpu", enabled=False)
-                self.autocast_device = "cpu"
-                print(
-                    "ℹ️  CPU Mixed Precision enabled (using BFloat16, no scaling required)"
-                )
-            else:
-                self.scaler = GradScaler(enabled=False)
-                self.autocast_device = self.device
+        self.compute_dtype = COMPUTE_DTYPE
+        if needs_grad_scaler() and "cuda" in str(self.device):
+            from torch.amp import GradScaler
+
+            self.scaler = GradScaler("cuda", enabled=True)
         else:
-            self.scaler = GradScaler(enabled=False)
-            self.autocast_device = self.device
+            self.scaler = None
 
         # Early stopping
         self.early_stopping_patience = getattr(
@@ -103,44 +70,43 @@ class Trainer:
         self.early_stopping_counter = 0
         self.best_val_loss = float("inf")
 
-        # Output directory
+        # Output
         self.output_dir = Path(output_dir)
         self.checkpoint_dir = self.output_dir / "checkpoints"
-
-        # Managers and trackers
         self.checkpoint_manager = CheckpointManager(
             checkpoint_dir=str(self.checkpoint_dir),
             keep_last_n=getattr(config.training, "keep_last_n_checkpoints", 3),
             save_best=True,
             execution_env=config.execution_env,
         )
-
         self.train_metrics = TrainingMetricsTracker(window_size=100)
 
-        # Router metrics (if model has router)
+        # Cache moe_layers ref before FSDP __getattr__ can interfere
+        _unwrapped = model._fsdp_wrapped_module if self._is_fsdp else model
+        self._moe_layers_ref = getattr(_unwrapped, "moe_layers", {})
+
         self.router_metrics = None
         self.global_specialization_trackers = {}
-        if hasattr(model, "moe_layers") and model.moe_layers:
-            # Get first MoE layer's router
-            first_moe = list(model.moe_layers.values())[0]
+        if hasattr(_unwrapped, "moe_layers") and _unwrapped.moe_layers:
+            first_moe = list(_unwrapped.moe_layers.values())[0]
             if hasattr(first_moe, "router"):
                 self.router_metrics = RouterMetricsTracker(first_moe.router)
 
-            # Initialize global trackers for every layer
-            vocab_size = getattr(getattr(config, "model", None), "vocab_size", None)
+            vocab_size = getattr(
+                getattr(_unwrapped, "config", None), "vocab_size", None
+            )
             if vocab_size is None:
-                vocab_size = getattr(model, "config", getattr(model, "backbone", None))
+                backbone_cfg = getattr(
+                    getattr(_unwrapped, "backbone", None), "config", None
+                )
                 vocab_size = (
-                    getattr(vocab_size, "vocab_size", 50257)
-                    if vocab_size is not None
+                    getattr(backbone_cfg, "vocab_size", 50257)
+                    if backbone_cfg
                     else 50257
                 )
-            if vocab_size is None:
-                vocab_size = 50257
 
-            for layer_name, layer in model.moe_layers.items():
+            for layer_name, layer in _unwrapped.moe_layers.items():
                 if hasattr(layer, "router"):
-                    # Match the key format used by the model's return_metrics (e.g. "layer_1")
                     tracker_key = (
                         f"layer_{layer_name}"
                         if not str(layer_name).startswith("layer_")
@@ -154,7 +120,6 @@ class Trainer:
                         )
                     )
 
-        # Training state
         self.global_step = 0
         self.epoch = 0
 
@@ -210,81 +175,77 @@ class Trainer:
         train_iterator = iter(self.train_dataloader)
 
         print(f"Starting training for {self.max_steps} steps...")
-        print(f"Gradient accumulation steps: {self.grad_accum_steps}")
         print(
-            f"Effective batch size: {self.config.training.batch_size * self.grad_accum_steps}"
+            f"Gradient accumulation: {self.grad_accum_steps} | "
+            f"Effective batch: {self.config.training.batch_size * self.grad_accum_steps} | "
+            f"dtype: {self.compute_dtype}"
         )
-        print(f"Mixed precision: {self.use_amp}")
 
         while self.global_step < self.max_steps:
             step_start_time = time.time()
-
-            # Accumulate gradients
             accum_loss = 0.0
+
             for accum_step in range(self.grad_accum_steps):
                 try:
                     batch = next(train_iterator)
                 except StopIteration:
-                    # Reset iterator for new epoch
                     self.epoch += 1
                     train_iterator = iter(self.train_dataloader)
                     batch = next(train_iterator)
 
-                # Move batch to device
                 batch = {k: v.to(self.device) for k, v in batch.items()}
 
-                # Forward pass with AMP
-                with autocast(device_type=self.autocast_device, enabled=self.use_amp):
-                    logits, loss, moe_metrics = self.model(
-                        input_ids=batch["input_ids"],
-                        attention_mask=batch.get("attention_mask"),
-                        labels=batch[
-                            "labels"
-                        ],  # Now properly includes -100 for padding
-                        return_metrics=True,
-                    )
-
-                    if moe_metrics:
-                        for layer_name, layer_metrics in moe_metrics.items():
-                            if (
-                                layer_name in self.global_specialization_trackers
-                                and "indices" in layer_metrics
-                            ):
-                                self.global_specialization_trackers[layer_name].update(
-                                    token_ids=batch["input_ids"],
-                                    expert_indices=layer_metrics["indices"],
-                                )
-
-                    # Scale loss for gradient accumulation
-                    loss = loss / self.grad_accum_steps
-
-                # Backward pass
-                self.scaler.scale(loss).backward()
-                accum_loss += loss.item()
-
-            # Optimizer step
-            if self.clip_grad_norm > 0:
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(),
-                    self.clip_grad_norm,
+                logits, loss, moe_metrics = self.model(
+                    input_ids=batch["input_ids"],
+                    attention_mask=batch.get("attention_mask"),
+                    labels=batch["labels"],
+                    return_metrics=True,
                 )
 
-            # Step optimizer with gradient scaler
-            # GradScaler may skip optimizer.step() if gradients contain inf/NaN.
-            # Track the scale before/after to detect skipped steps.
-            old_scale = self.scaler.get_scale()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
-            new_scale = self.scaler.get_scale()
-            optimizer_stepped = (
-                old_scale <= new_scale
-            )  # scale decreases when step is skipped
+                if moe_metrics:
+                    for layer_name, layer_metrics in moe_metrics.items():
+                        if (
+                            layer_name in self.global_specialization_trackers
+                            and "indices" in layer_metrics
+                        ):
+                            self.global_specialization_trackers[layer_name].update(
+                                token_ids=batch["input_ids"],
+                                expert_indices=layer_metrics["indices"],
+                            )
+
+                loss = loss / self.grad_accum_steps
+
+                if self.scaler is not None:
+                    self.scaler.scale(loss).backward()
+                else:
+                    loss.backward()
+                accum_loss += loss.item()
+
+            # Gradient clipping
+            if self.clip_grad_norm > 0:
+                if self.scaler is not None:
+                    self.scaler.unscale_(self.optimizer)
+                if self._is_fsdp:
+                    self.model.clip_grad_norm_(self.clip_grad_norm)
+                else:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), self.clip_grad_norm
+                    )
+
+            # Optimizer step
+            if self.scaler is not None:
+                old_scale = self.scaler.get_scale()
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                optimizer_stepped = old_scale <= self.scaler.get_scale()
+            else:
+                self.optimizer.step()
+                optimizer_stepped = True
             self.optimizer.zero_grad()
 
-            # Update MoE router fatigue after optimizer step
-            if hasattr(self.model, "moe_layers") and self.model.moe_layers:
-                for moe_layer in self.model.moe_layers.values():
+            # Update MoE fatigue (cached ref, not through FSDP __getattr__)
+            if self._moe_layers_ref:
+                for moe_layer in self._moe_layers_ref.values():
                     if hasattr(moe_layer, "step"):
                         moe_layer.step()
                     if hasattr(moe_layer, "router") and hasattr(
@@ -292,58 +253,46 @@ class Trainer:
                     ):
                         moe_layer.router.clear_aux_state()
 
-            # Only step scheduler if optimizer actually updated weights
             if self.scheduler is not None and optimizer_stepped:
                 self.scheduler.step()
 
-            # Update metrics
+            # Metrics
             step_time = time.time() - step_start_time
-            batch_size = batch["input_ids"].shape[0]
-            seq_len = batch["input_ids"].shape[1]
-
             train_metrics = self.train_metrics.update(
                 loss=accum_loss,
-                batch_size=batch_size * self.grad_accum_steps,
-                seq_len=seq_len,
+                batch_size=batch["input_ids"].shape[0] * self.grad_accum_steps,
+                seq_len=batch["input_ids"].shape[1],
                 step_time=step_time,
             )
-
             self.global_step += 1
 
-            # Logging
             if self.global_step % self.log_interval == 0:
                 self._log_metrics(train_metrics, moe_metrics)
 
-            # Validation
             if self.val_dataloader and self.global_step % self.eval_interval == 0:
                 val_metrics = self.evaluate()
-
-                # Check for improvement
                 if self.early_stopping_patience:
                     if val_metrics["loss"] < self.best_val_loss:
                         self.best_val_loss = val_metrics["loss"]
                         self.early_stopping_counter = 0
                     else:
                         self.early_stopping_counter += 1
-
                     if self.early_stopping_counter >= self.early_stopping_patience:
-                        print(f"Early stopping triggered at step {self.global_step}")
+                        print(f"Early stopping at step {self.global_step}")
                         break
 
-            # Checkpointing
             if self.global_step % self.save_interval == 0:
-                is_best = train_metrics["loss"] < self.train_metrics.best_loss
                 self.checkpoint_manager.save_checkpoint(
                     model=self.model,
                     optimizer=self.optimizer,
                     scheduler=self.scheduler,
                     step=self.global_step,
                     metrics=train_metrics,
-                    is_best=is_best,
+                    is_best=train_metrics["loss"] < self.train_metrics.best_loss,
                     metadata={"epoch": self.epoch},
                 )
 
-        # Save final checkpoint
+        # Final checkpoint
         self.checkpoint_manager.save_checkpoint(
             model=self.model,
             optimizer=self.optimizer,
@@ -353,7 +302,6 @@ class Trainer:
             is_best=False,
             metadata={"epoch": self.epoch, "final": True},
         )
-
         print(f"Training complete! Best loss: {self.train_metrics.best_loss:.4f}")
         return train_metrics
 
@@ -366,21 +314,16 @@ class Trainer:
             Validation metrics
         """
         self.model.eval()
-
-        total_loss = 0.0
-        num_batches = 0
+        total_loss, num_batches = 0.0, 0
 
         for batch in self.val_dataloader:
             batch = {k: v.to(self.device) for k, v in batch.items()}
-
-            with autocast(device_type=self.autocast_device, enabled=self.use_amp):
-                _, loss, _ = self.model(
-                    input_ids=batch["input_ids"],
-                    attention_mask=batch.get("attention_mask"),
-                    labels=batch["labels"],  # Now properly includes -100 for padding
-                    return_metrics=False,
-                )
-
+            _, loss, _ = self.model(
+                input_ids=batch["input_ids"],
+                attention_mask=batch.get("attention_mask"),
+                labels=batch["labels"],
+                return_metrics=False,
+            )
             total_loss += loss.item()
             num_batches += 1
 
@@ -390,7 +333,6 @@ class Trainer:
             "perplexity": torch.exp(torch.tensor(avg_loss)).item(),
         }
 
-        # Log validation metrics
         if WANDB_AVAILABLE and wandb.run:
             wandb.log(
                 {f"val/{k}": v for k, v in metrics.items()}, step=self.global_step

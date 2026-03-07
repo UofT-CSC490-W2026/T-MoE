@@ -72,3 +72,14 @@ logging:
   enabled: false
   log_gradients: false
   log_interval: 50
+
+# Multi-GPU override for this test config
+distributed:
+  num_gpus: 4
+
+compute:
+  modal:
+    gpu: "A100"
+
+# Execution environment (used by CheckpointManager)
+execution_env: modal

@@ -57,19 +57,14 @@ class GPTNeoBackbone(BaseModelBackbone):
         variant: str = "125m",
         freeze_backbone: bool = True,
         moe_layer_indices: Optional[list[int]] = None,
-        device: str = "cuda",
+        device: str = "cpu",
     ):
         """
-        Initialize GPT-Neo backbone.
-
         Args:
             variant: Model variant (125m, 350m, 1.3b, 2.7b)
             freeze_backbone: Whether to freeze backbone parameters
             moe_layer_indices: Layer indices for MoE injection
-            device: Device to load model on
-
-        Raises:
-            ValueError: If variant not found
+            device: Device to load on ("cpu" for distributed, "cuda" for single-GPU)
         """
         if variant not in self.VARIANTS:
             available = ", ".join(self.VARIANTS.keys())
@@ -120,10 +115,10 @@ class GPTNeoBackbone(BaseModelBackbone):
         return list(cls.VARIANTS.keys())
 
     def load_pretrained(self) -> None:
-        """Load pre-trained GPT-Neo from HuggingFace."""
+        """Load in float32 — FSDP MixedPrecision casts uniformly during wrapping."""
         self.backbone = AutoModelForCausalLM.from_pretrained(
             self.model_name,
-            torch_dtype=torch.float32,
+            dtype=torch.float32,
         ).to(self.device)
 
         # Load vocab size from config
@@ -240,8 +235,11 @@ class GPTNeoBackbone(BaseModelBackbone):
                     layer_metrics = moe_layer.get_cached_metrics()
 
                 if layer_metrics is None:
-                    # Fallback: run a separate forward pass if no cache available
-                    # (e.g., first call or layer type doesn't support caching)
+                    # Fallback: approximate metrics using block input (pre-attention).
+                    # NOTE: hidden_states[layer_idx] is the block's input, not the
+                    # MLP's input (which is post-attention + layernorm). Routing
+                    # decisions may differ slightly. This path rarely triggers since
+                    # the cache is populated during the main forward pass.
                     layer_hidden = outputs.hidden_states[layer_idx]
                     _, layer_metrics = moe_layer(
                         layer_hidden, return_metrics=True, record_usage=False

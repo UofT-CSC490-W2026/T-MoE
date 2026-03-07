@@ -77,9 +77,9 @@ class StandardRouter(BaseRouter):
         P = probs.mean(dim=(0, 1))  # [N]
 
         # f_i = sum over tokens of routing weight to expert i, normalized
-        usage = torch.zeros(num_experts, device=probs.device)
+        usage = torch.zeros(num_experts, device=probs.device, dtype=torch.float32)
         flat_idx = indices.reshape(-1)
-        flat_w = weights.reshape(-1)
+        flat_w = weights.reshape(-1).to(torch.float32)
         usage.scatter_add_(0, flat_idx, flat_w)
         usage = usage / max(num_tokens, 1)
 
