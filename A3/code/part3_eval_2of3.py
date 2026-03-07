@@ -49,7 +49,9 @@ def extract_choice_letter(text: str, option_letters: List[str]) -> Optional[str]
     return m.group(1) if m else None
 
 
-def extract_value_token(text: str, candidate_values: Optional[List[str]] = None) -> Optional[str]:
+def extract_value_token(
+    text: str, candidate_values: Optional[List[str]] = None
+) -> Optional[str]:
     """Extract value token from model output with robust fallbacks."""
     upper = text.upper()
 
@@ -79,7 +81,9 @@ def extract_value_token(text: str, candidate_values: Optional[List[str]] = None)
     return None
 
 
-def parse_prediction(answer_text: str, option_values: List[str], option_letters: List[str]) -> Optional[str]:
+def parse_prediction(
+    answer_text: str, option_values: List[str], option_letters: List[str]
+) -> Optional[str]:
     """Return predicted letter from either letter output or direct value output."""
     letter = extract_choice_letter(answer_text, option_letters)
     if letter is not None:
@@ -202,10 +206,14 @@ def evaluate_one_model(
             else:
                 keyed_docs = sorted(rng.sample([0, 1, 2], 2))
                 target_doc = rng.choice(keyed_docs)
-                other_doc = keyed_docs[0] if keyed_docs[1] == target_doc else keyed_docs[1]
+                other_doc = (
+                    keyed_docs[0] if keyed_docs[1] == target_doc else keyed_docs[1]
+                )
 
             option_letters = [chr(ord("A") + i) for i in range(num_options)]
-            option_values = build_option_values(rng, target_value, other_value, num_options)
+            option_values = build_option_values(
+                rng, target_value, other_value, num_options
+            )
             correct_letter = option_letters[option_values.index(target_value)]
 
             if task_format == "direct":
@@ -215,7 +223,10 @@ def evaluate_one_model(
                     "Answer:"
                 )
             else:
-                options = "\n".join(f"{option_letters[i]}) {option_values[i]}" for i in range(num_options))
+                options = "\n".join(
+                    f"{option_letters[i]}) {option_values[i]}"
+                    for i in range(num_options)
+                )
                 suffix = (
                     f"\n\nQuestion: What is the value for key {target_key}?\n"
                     f"{options}\n"
@@ -224,7 +235,9 @@ def evaluate_one_model(
                 )
             suffix_tokens = tokenizer.encode(suffix)
 
-            trial_budget = effective_length - 1 - len(prefix_tokens) - len(suffix_tokens)
+            trial_budget = (
+                effective_length - 1 - len(prefix_tokens) - len(suffix_tokens)
+            )
             header_budget = sum(len(h) for h in doc_headers)
             body_budget = max(0, trial_budget - header_budget)
             if body_budget == 0:
@@ -237,13 +250,21 @@ def evaluate_one_model(
             for i in range(3):
                 fact_text: Optional[str] = None
                 if i == target_doc:
-                    fact_text = f"{target_fact} {target_fact}" if preset == "easy" else target_fact
+                    fact_text = (
+                        f"{target_fact} {target_fact}"
+                        if preset == "easy"
+                        else target_fact
+                    )
                 elif i == other_doc:
                     fact_text = other_fact
                 docs.extend(doc_headers[i])
-                docs.extend(build_doc_tokens(tokenizer, prose_tokens, doc_budgets[i], fact_text))
+                docs.extend(
+                    build_doc_tokens(tokenizer, prose_tokens, doc_budgets[i], fact_text)
+                )
 
-            prompt = [bos] + prefix_tokens + docs[: max(0, trial_budget)] + suffix_tokens
+            prompt = (
+                [bos] + prefix_tokens + docs[: max(0, trial_budget)] + suffix_tokens
+            )
             if show_example and not example_printed:
                 rendered_prompt = tokenizer.decode(prompt[1:])
                 print("\n--- Example trial prompt ---")
@@ -253,7 +274,11 @@ def evaluate_one_model(
                 example_printed = True
             try:
                 sample, _ = engine.generate_batch(
-                    prompt, num_samples=1, max_tokens=max_new_tokens, temperature=0.0, top_k=1
+                    prompt,
+                    num_samples=1,
+                    max_tokens=max_new_tokens,
+                    temperature=0.0,
+                    top_k=1,
                 )
             except Exception as exc:
                 failed = True
@@ -262,7 +287,9 @@ def evaluate_one_model(
             generated = sample[0][len(prompt) :]
             answer = tokenizer.decode(generated).strip()
             candidate_values_for_parse = [target_value, other_value] + option_values
-            parsed_value = extract_value_token(answer, candidate_values=candidate_values_for_parse)
+            parsed_value = extract_value_token(
+                answer, candidate_values=candidate_values_for_parse
+            )
             if parsed_value == target_value:
                 target_value_hits += 1
 
@@ -365,7 +392,9 @@ def run_phase(
     fun_qa_count: int,
     fun_qa_max_new_tokens: int,
 ) -> dict:
-    model, tokenizer, meta = load_model("base", device, phase="eval", model_tag=tag, step=step)
+    model, tokenizer, meta = load_model(
+        "base", device, phase="eval", model_tag=tag, step=step
+    )
     seq_len = meta["model_config"]["sequence_len"]
     print(f"[{phase_name}] loaded tag={tag} step={meta['step']} seq_len={seq_len}")
     engine = Engine(model, tokenizer)
@@ -401,7 +430,9 @@ def run_phase(
 
 
 def main():
-    p = argparse.ArgumentParser(description="Part 3 eval variant: 2 of 3 long docs contain key-value facts")
+    p = argparse.ArgumentParser(
+        description="Part 3 eval variant: 2 of 3 long docs contain key-value facts"
+    )
     p.add_argument("--phase1-tag", type=str, required=True)
     p.add_argument("--phase1-step", type=int, default=None)
     p.add_argument("--phase2-tag", type=str, required=True)
@@ -410,14 +441,35 @@ def main():
     p.add_argument("--trials", type=int, default=3)
     p.add_argument("--max-new-tokens", type=int, default=4)
     p.add_argument("--task-format", type=str, default="mcq", choices=["mcq", "direct"])
-    p.add_argument("--num-options", type=int, default=4, help="Number of MCQ options (2-6). Ignored for direct.")
+    p.add_argument(
+        "--num-options",
+        type=int,
+        default=4,
+        help="Number of MCQ options (2-6). Ignored for direct.",
+    )
     p.add_argument("--preset", type=str, default="easy", choices=["easy", "standard"])
     p.add_argument("--seed", type=int, default=1337)
-    p.add_argument("--show-example", action="store_true", help="Print one concrete trial prompt per model")
-    p.add_argument("--debug-trials", type=int, default=0, help="Print scoring details for first N trials per context")
-    p.add_argument("--fun-qa-count", type=int, default=2, help="Number of simple general QA prompts to sample per model")
+    p.add_argument(
+        "--show-example",
+        action="store_true",
+        help="Print one concrete trial prompt per model",
+    )
+    p.add_argument(
+        "--debug-trials",
+        type=int,
+        default=0,
+        help="Print scoring details for first N trials per context",
+    )
+    p.add_argument(
+        "--fun-qa-count",
+        type=int,
+        default=2,
+        help="Number of simple general QA prompts to sample per model",
+    )
     p.add_argument("--fun-qa-max-new-tokens", type=int, default=24)
-    p.add_argument("--device-type", type=str, default="", choices=["", "cuda", "cpu", "mps"])
+    p.add_argument(
+        "--device-type", type=str, default="", choices=["", "cuda", "cpu", "mps"]
+    )
     p.add_argument("--output-json", type=str, default="part3_eval_2of3_results.json")
     args = p.parse_args()
 
@@ -429,10 +481,14 @@ def main():
         args.max_new_tokens = max(args.max_new_tokens, 8)
     if args.task_format == "mcq" and not (2 <= args.num_options <= 6):
         raise ValueError("--num-options must be between 2 and 6 for mcq format.")
-    device_type = autodetect_device_type() if args.device_type == "" else args.device_type
+    device_type = (
+        autodetect_device_type() if args.device_type == "" else args.device_type
+    )
     ddp, _ddp_rank, _ddp_local_rank, ddp_world_size, device = compute_init(device_type)
     if ddp_world_size != 1:
-        raise RuntimeError("part3_eval_2of3 is single-process. Use python -m, not torchrun.")
+        raise RuntimeError(
+            "part3_eval_2of3 is single-process. Use python -m, not torchrun."
+        )
 
     out = {
         "config": {
@@ -450,7 +506,10 @@ def main():
     }
 
     try:
-        runs = [("phase1", args.phase1_tag, args.phase1_step), ("phase2", args.phase2_tag, args.phase2_step)]
+        runs = [
+            ("phase1", args.phase1_tag, args.phase1_step),
+            ("phase2", args.phase2_tag, args.phase2_step),
+        ]
         for name, tag, step in runs:
             res = run_phase(
                 phase_name=name,
@@ -473,7 +532,9 @@ def main():
             print(f"\n== {name} results ==")
             for row in res["rows"]:
                 if row.get("note"):
-                    acc_text = "n/a" if row["accuracy"] is None else f"{row['accuracy']:.3f}"
+                    acc_text = (
+                        "n/a" if row["accuracy"] is None else f"{row['accuracy']:.3f}"
+                    )
                     print(
                         f"  L={row['context_len']:>4} (effective {row['effective_context_len']:>4}) "
                         f"acc={acc_text} [{row['note']}]"
