@@ -1,0 +1,49 @@
+diff --git a/nanochat/gpt.py b/nanochat/gpt.py
+index 04ee5c5..c575e3a 100644
+--- a/nanochat/gpt.py
++++ b/nanochat/gpt.py
+@@ -140,12 +140,14 @@ class MLP(nn.Module):
+ class Block(nn.Module):
+     def __init__(self, config, layer_idx):
+         super().__init__()
++        self.mlp_1 = MLP(config)
+         self.attn = CausalSelfAttention(config, layer_idx)
+-        self.mlp = MLP(config)
++        self.mlp_2 = MLP(config)
+ 
+     def forward(self, x, ve, cos_sin, window_size, kv_cache):
++        x = x + 0.5 * self.mlp_1(norm(x))
+         x = x + self.attn(norm(x), ve, cos_sin, window_size, kv_cache)
+-        x = x + self.mlp(norm(x))
++        x = x + 0.5 * self.mlp_2(norm(x))
+         return x
+ 
+ 
+@@ -215,12 +217,14 @@ class GPT(nn.Module):
+         n_embd = self.config.n_embd
+         s = 3**0.5 * n_embd**-0.5 # sqrt(3) multiplier makes sure Uniform achieves the same std as Normal
+         for block in self.transformer.h:
+-            torch.nn.init.uniform_(block.attn.c_q.weight, -s, s) # weights use Uniform to avoid outliers
++            torch.nn.init.uniform_(block.attn.c_q.weight, -s, s)
+             torch.nn.init.uniform_(block.attn.c_k.weight, -s, s)
+             torch.nn.init.uniform_(block.attn.c_v.weight, -s, s)
+-            torch.nn.init.zeros_(block.attn.c_proj.weight) # projections are zero
+-            torch.nn.init.uniform_(block.mlp.c_fc.weight, -s, s)
+-            torch.nn.init.zeros_(block.mlp.c_proj.weight)
++            torch.nn.init.zeros_(block.attn.c_proj.weight)
++            torch.nn.init.uniform_(block.mlp_1.c_fc.weight, -s, s)
++            torch.nn.init.zeros_(block.mlp_1.c_proj.weight)
++            torch.nn.init.uniform_(block.mlp_2.c_fc.weight, -s, s)
++            torch.nn.init.zeros_(block.mlp_2.c_proj.weight)
+ 
+         # Per-layer scalars
+         self.resid_lambdas.fill_(1.0)   # 1.0 => typical residual connections at init
+@@ -377,7 +381,7 @@ class GPT(nn.Module):
+             dict(kind='adamw', params=embedding_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
+             dict(kind='adamw', params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
+             dict(kind='adamw', params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
+-            dict(kind='adamw', params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),  # higher beta1 for x0
++            dict(kind='adamw', params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),
+         ]
+         # Muon groups (matrix params, grouped by shape for stacking)
+         for shape in sorted({p.shape for p in matrix_params}):
