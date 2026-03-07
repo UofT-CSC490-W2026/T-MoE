@@ -53,11 +53,11 @@ expert:
 training:
   batch_size: 16
   lr: 5.0e-4
-  steps: 3000
+  steps: 750
   warmup_steps: 200
-  save_interval: 500
-  eval_interval: 200
-  log_interval: 50
+  save_interval: 125
+  eval_interval: 200    # eval every 200 steps — expensive, don't do it every log step
+  log_interval: 50      # log every 50 steps — cheap (just print metrics)
   optimizer: adamw
   early_stopping_patience: 100
   gradient_accumulation_steps: 4
@@ -72,3 +72,23 @@ logging:
   enabled: true
   log_gradients: false
   log_interval: 50
+
+# ============================================================================
+# DISTRIBUTED TRAINING CONFIGURATION
+# ============================================================================
+# Multi-GPU training: Set num_gpus > 1 to enable DDP via torchrun
+# - Local: Use torchrun command manually
+# - Modal: Automatically uses torchrun when num_gpus > 1
+# - AWS: Automatically uses torchrun when num_gpus > 1
+# strategy: ddp (default) — correct for ≤8B models that fit in a single GPU
+# strategy: fsdp          — use for 70B+ models that don't fit in one GPU
+distributed:
+  num_gpus: 4
+
+# ============================================================================
+# COMPUTE CONFIGURATION (for cloud backends)
+# ============================================================================
+# Modal: Specify GPU type when using Modal
+compute:
+  modal:
+    gpu: "A100:4"  # Modal GPU spec: "A100:4" = 4× A100, "A10G:1" = 1× A10G

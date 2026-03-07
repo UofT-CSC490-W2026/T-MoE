@@ -1,18 +1,22 @@
 # ============================================================================
-# T-MoE Experiment Configuration
+# T-MoE Experiment Configuration — Baseline Defaults
 # ============================================================================
-# Comprehensive configuration for T-MoE experiments
-# Supports both local and AWS execution environments
+# This file serves as the baseline fallback for all experiment configs.
+# Experiment YAMLs in experiments/ inherit these defaults and override as needed.
+#
+# Used by:
+#   - infra/config/config.py (data_ingestion, dataset, compute sections)
+#   - scripts/train.py (model, router, expert, training, dataset, logging)
+#   - run_aws_training.py, run_modal_training.py (compute sections)
 #
 # Usage:
-#   python train.py --config config.yaml
-#   python train.py --config config.yaml execution_env=aws
+#   python train.py --config experiments/my_experiment.yaml
+#   python train.py --config config.yaml  # Uses these defaults directly
 # ============================================================================
 
 # Experiment Metadata
 experiment_name: gptneo_lora_moe
 seed: 42
-execution_env: local  # Options: local, aws
 
 # ============================================================================
 # MODEL CONFIGURATION
@@ -91,23 +95,21 @@ training:
   # Gradient management
   gradient_accumulation_steps: 1
   clip_grad_norm: 1.0
-  use_amp: true  # Automatic Mixed Precision
-
-  # Learning rate schedule
-  lr_scheduler: cosine
-  lr_scheduler_kwargs:
-    eta_min: 1.0e-5
+  # Note: AMP is auto-detected via src.training.precision (float16/bfloat16)
 
   # Checkpointing
   save_interval: 500
   keep_last_n_checkpoints: 3
   save_best: true
 
+  # Optional: Model compilation (PyTorch 2.0+)
+  # compile: false  # Uncomment to enable torch.compile for faster training
+
   # Validation & Early Stopping
   eval_interval: 100
   early_stopping_patience: null  # null = disabled, int = number of eval steps
 
-  # Logging
+  # Logging (training loop)
   log_interval: 10
 
 # ============================================================================
@@ -132,11 +134,9 @@ dataset:
   eval_split: validation
   test_split: test
 
-  # DataLoader
-  num_workers: 4
-  prefetch_factor: 2
-  shuffle: true
-  drop_last: true
+  # DataLoader (used by scripts/train.py)
+  # Note: num_workers, prefetch_factor, shuffle, drop_last are auto-configured
+  # based on distributed mode and CUDA availability
 
 # ============================================================================
 # LOGGING CONFIGURATION (WandB)
@@ -157,26 +157,41 @@ logging:
   notes: null  # Optional notes for this run
 
 # ============================================================================
-# DEVICE CONFIGURATION
+# DISTRIBUTED TRAINING CONFIGURATION
 # ============================================================================
-device:
-  device: cuda  # Options: cuda, cpu, mps, auto
-  dtype: float32  # Options: float32, float16, bfloat16
-  compile: false  # Use torch.compile (PyTorch 2.0+)
+# Multi-GPU training: Set num_gpus > 1 to enable FSDP via torchrun
+# - Local: Use torchrun command manually (see train.py usage)
+# - Modal: Automatically uses torchrun when num_gpus > 1
+# - AWS: Automatically uses torchrun when num_gpus > 1
+distributed:
+  num_gpus: 1  # Set to number of GPUs (1 = single-GPU, 2+ = multi-GPU FSDP)
+
+# ============================================================================
+# DEVICE CONFIGURATION (Optional - auto-detected if not specified)
+# ============================================================================
+# Device selection is auto-detected by scripts/train.py:
+#   - Distributed: uses CUDA via FSDP
+#   - Single-GPU: auto-detects cuda/mps/cpu
+#   - Precision: auto-detected via src.training.precision
+#
+# Optional overrides (if needed):
+# device:
+#   compile: false  # Use torch.compile (PyTorch 2.0+) - set via training.compile
 
 # ============================================================================
 # COMPUTE ENVIRONMENT CONFIGURATION
 # ============================================================================
 compute:
   # Backend: determines execution platform
-  # This is the single source of truth — do NOT set execution_env separately.
+  # Used by: run_aws_training.py, run_modal_training.py
+  # Note: This is separate from scripts/train.py (which is backend-agnostic)
   backend: modal  # Options: aws, modal
 
   # ========================================
-  # LOCAL EXECUTION (SLURM)
+  # LOCAL EXECUTION
   # ========================================
   local:
-    # Paths
+    # Paths (used by local training workflows)
     data_root: ./data
     output_root: ./outputs
     cache_dir: ./cache

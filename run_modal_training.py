@@ -43,7 +43,7 @@ from omegaconf import OmegaConf
 # To override without editing this file, set TMOE_GPU env var:
 #   TMOE_GPU="H100:2" modal run run_modal_training.py::stage_train --config ...
 # ---------------------------------------------------------------------------
-_DEFAULT_CONFIG = "experiments/modal_test.yaml"
+_DEFAULT_CONFIG = "experiments/smoketest.yaml"
 try:
     _cfg = OmegaConf.load(_DEFAULT_CONFIG)
     _gpu_type = OmegaConf.select(_cfg, "compute.modal.gpu", default="A10G")
@@ -187,6 +187,7 @@ def stage_data(config: str = "gptneo_125m_metabolic.yaml", overrides: str = ""):
     gpu=GPU_TRAIN,
     memory=32768,
     timeout=60 * 60 * 12,  # 12 hours max run time
+    retries=2,  # Resume from volume-persisted checkpoint on spot preemption
 )
 def stage_train(config: str = "gptneo_125m_metabolic.yaml", overrides: str = ""):
     """

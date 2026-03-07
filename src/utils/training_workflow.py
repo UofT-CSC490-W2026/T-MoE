@@ -26,9 +26,13 @@ def execute_training_workflow(
     with torchrun (multi-GPU) or python (single-GPU). Uses the same
     scripts/train.py entrypoint as Modal and local runs.
 
+    Pipeline:
+      1. Tokenize + pack raw data into .bin shards (idempotent)
+      2. Train on the packed shards
+
     Args:
         experiment_config: OmegaConf config loaded by run_aws_training.py
-        cache_dir: Local directory where dataset shards were downloaded
+        cache_dir: Local directory where dataset was downloaded from S3
 
     Returns:
         (output_dir, metrics) — output directory path and final training metrics
@@ -48,36 +52,54 @@ def execute_training_workflow(
             f"Ensure experiment_name matches the YAML filename."
         )
 
+    dataset_key = OmegaConf.select(
+        experiment_config, "dataset.dataset_key", default="wikitext-2"
+    )
+    shard_dir = Path("/tmp/tmoe_shards") / dataset_key
+
     # Output directory inside container
     output_dir = Path("/tmp/tmoe_outputs") / config_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build the training command
-    num_gpus = OmegaConf.select(experiment_config, "distributed.num_gpus", default=1)
-    if num_gpus > 1:
-        cmd = [
-            "torchrun",
-            "--standalone",
-            f"--nproc_per_node={num_gpus}",
-            "-m",
-            "scripts.train",
-            "--config",
-            str(config_path),
-            "--output-dir",
-            str(output_dir),
-        ]
-    else:
-        cmd = [
+    # -----------------------------------------------------------------
+    # Step 1: Prepare shards (idempotent — skips if already done)
+    # -----------------------------------------------------------------
+    existing_shards = (
+        list(shard_dir.glob("train_shard_*.bin")) if shard_dir.exists() else []
+    )
+    if not existing_shards:
+        prep_cmd = [
             sys.executable,
             "-m",
-            "scripts.train",
+            "scripts.prepare_data",
             "--config",
             str(config_path),
-            "--output-dir",
-            str(output_dir),
+            "--out-dir",
+            str(shard_dir),
         ]
+        subprocess.run(prep_cmd, check=True)
 
-    subprocess.run(cmd, check=True)
+    # -----------------------------------------------------------------
+    # Step 2: Train
+    # -----------------------------------------------------------------
+    num_gpus = OmegaConf.select(experiment_config, "distributed.num_gpus", default=1)
+    base_cmd = (
+        ["torchrun", "--standalone", f"--nproc_per_node={num_gpus}"]
+        if num_gpus > 1
+        else [sys.executable]
+    )
+    train_cmd = base_cmd + [
+        "-m",
+        "scripts.train",
+        "--config",
+        str(config_path),
+        "--output-dir",
+        str(output_dir),
+        "--shard-dir",
+        str(shard_dir),
+    ]
+
+    subprocess.run(train_cmd, check=True)
 
     # Read the final checkpoint metrics if available
     metrics = _read_last_checkpoint_metrics(output_dir)

@@ -102,6 +102,69 @@ def debug_fsdp_wrapping(model: nn.Module) -> None:
     print("=== End ===\n")
 
 
+def wrap_model_for_distributed(
+    model: nn.Module, cfg, local_rank: int, device: torch.device
+) -> nn.Module:
+    """
+    Dispatch to DDP or FSDP based on distributed.strategy config.
+
+    DDP  (default) — use for models that fit in a single GPU:
+        GPT-Neo 125M, Llama 1B, 3B, 8B on A100 80GB
+    FSDP           — use when model DOES NOT fit in a single GPU:
+        Llama 70B, 405B (requires sharding params across GPUs)
+
+    Config:
+        distributed:
+          strategy: ddp    # or: fsdp
+          # FSDP-only options:
+          sharding_strategy: SHARD_GRAD_OP   # FULL_SHARD for 70B+
+          fsdp_wrap_target: LlamaDecoderLayer # module class to wrap per-block
+    """
+    dist_cfg = getattr(cfg, "distributed", {})
+    strategy = getattr(dist_cfg, "strategy", "ddp").lower()
+
+    if strategy == "fsdp":
+        return wrap_model_with_fsdp(model, cfg, device)
+
+    # Default: DDP
+    return wrap_model_with_ddp(model, local_rank)
+
+
+def wrap_model_with_ddp(model: nn.Module, local_rank: int) -> nn.Module:
+    """
+    Wrap model with DistributedDataParallel for multi-GPU training.
+
+    Use DDP (not FSDP) when:
+    - Model fits in a single GPU (all sizes up to ~7B on A100 80GB with LoRA)
+    - Backbone is mostly frozen + small trainable adapters (LoRA, router)
+
+    Why DDP over FSDP here:
+    - DDP preserves requires_grad flags correctly for mixed frozen/trainable modules
+    - No FlatParameter issues that corrupt the trainable param count
+    - No complex state dict API — just model.module.state_dict()
+    - Standard approach for all LoRA/PEFT fine-tuning work
+
+    find_unused_parameters=True is required because MoE top-k routing means
+    some experts are not selected every batch → their lora_A/lora_B have no grad.
+    """
+    from torch.nn.parallel import DistributedDataParallel as DDP
+
+    wrapped = DDP(
+        model,
+        device_ids=[local_rank],
+        output_device=local_rank,
+        find_unused_parameters=False,
+    )
+
+    if dist.is_initialized():
+        dist.barrier()
+
+    if is_main_process():
+        print(f"DDP enabled | device_ids=[{local_rank}] | find_unused_parameters=False")
+
+    return wrapped
+
+
 def wrap_model_with_fsdp(model: nn.Module, cfg, device: torch.device) -> nn.Module:
     """
     Wrap model with FSDP using per-GPTNeoBlock sharding.

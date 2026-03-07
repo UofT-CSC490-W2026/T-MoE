@@ -10,17 +10,37 @@ from src.training.fsdp_utils import is_main_process
 
 
 def _get_state_dict(model: nn.Module) -> dict:
-    """Return full state dict, gathering shards under FSDP."""
+    """
+    Return state dict for DDP, FSDP, or plain model.
+
+    DDP  — model.module holds full params on every rank → rank 0 saves directly.
+    FSDP — ALL ranks must call this (triggers all-gather). Uses deprecated
+           FSDP.state_dict_type() which is stable in PyTorch 2.x despite the
+           FutureWarning. The modern get_state_dict() API deadlocks in some configs.
+    Plain — model.state_dict() as normal.
+    """
+    from torch.nn.parallel import DistributedDataParallel as DDP
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
-    if not isinstance(model, FSDP):
-        return model.state_dict()
+    if isinstance(model, DDP):
+        return model.module.state_dict()
 
-    from torch.distributed.checkpoint.state_dict import get_state_dict, StateDictOptions
+    if isinstance(model, FSDP):
+        import warnings
+        from torch.distributed.fsdp import StateDictType, FullStateDictConfig
 
-    options = StateDictOptions(full_state_dict=True, cpu_offload=True)
-    sd, _ = get_state_dict(model, optimizers={}, options=options)
-    return sd
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            with FSDP.state_dict_type(
+                model,
+                StateDictType.FULL_STATE_DICT,
+                state_dict_config=FullStateDictConfig(
+                    offload_to_cpu=True, rank0_only=True
+                ),
+            ):
+                return model.state_dict()
+
+    return model.state_dict()
 
 
 class CheckpointManager:
@@ -36,6 +56,7 @@ class CheckpointManager:
         keep_last_n: int = 3,
         save_best: bool = True,
         execution_env: ExecutionEnv = ExecutionEnv.LOCAL,
+        trainable_only: bool = False,
     ):
         """
         Initialize checkpoint manager.
@@ -45,6 +66,8 @@ class CheckpointManager:
             keep_last_n: Number of most recent checkpoints to keep
             save_best: Whether to save best model separately
             execution_env: ExecutionEnv.LOCAL or ExecutionEnv.AWS
+            trainable_only: If True, save only LoRA and router parameters
+                            (skips frozen backbone weights → smaller checkpoints)
         """
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -52,6 +75,7 @@ class CheckpointManager:
         self.keep_last_n = keep_last_n
         self.save_best = save_best
         self.execution_env = execution_env
+        self.trainable_only = trainable_only
 
         self.checkpoints = []  # List of (step, path, metric) tuples
         self.best_metric = float("inf")
@@ -84,32 +108,54 @@ class CheckpointManager:
         """
         metrics = metrics or {}
 
-        # Only rank 0 saves in distributed mode. All other ranks skip.
-        # This avoids redundant writes and race conditions when multiple
-        # ranks reach a checkpoint boundary simultaneously.
-        if not is_main_process():
-            return Path("/dev/null")  # No-op sentinel for non-rank-0 processes
+        # FSDP: ALL ranks must participate in state dict gathering (all-gather op).
+        # DDP/plain: only rank 0 needs to do anything.
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
+        is_fsdp = isinstance(model, FSDP)
+
+        if is_fsdp:
+            # All ranks call _get_state_dict; non-rank-0 get empty dict (rank0_only=True)
+            model_state_dict = _get_state_dict(model)
+            if not is_main_process():
+                # Sync so rank 0 finishes saving before training resumes
+                import torch.distributed as dist
+
+                if dist.is_initialized():
+                    dist.barrier()
+                return Path("/dev/null")
+        else:
+            if not is_main_process():
+                return Path("/dev/null")  # DDP/plain: non-rank-0 skip entirely
+            model_state_dict = _get_state_dict(model)
+
+        # Filter to trainable params only (smaller checkpoint files)
+        if self.trainable_only:
+            model_state_dict = {
+                k: v
+                for k, v in model_state_dict.items()
+                if "lora_" in k or "router" in k
+            }
+
+        # Save checkpoint files (rank 0 only — non-rank-0 returned early above)
         checkpoint = {
             "step": step,
-            "model_state_dict": _get_state_dict(model),
+            "model_state_dict": model_state_dict,
             "optimizer_state_dict": optimizer.state_dict(),
             "metrics": metrics,
             "metadata": metadata or {},
         }
 
-        # Save scheduler state if provided
         if scheduler is not None:
             checkpoint["scheduler_state_dict"] = scheduler.state_dict()
 
-        # Save regular checkpoint with atomic write
+        # Atomic write
         checkpoint_path = self.checkpoint_dir / f"checkpoint_step_{step}.pt"
         temp_path = checkpoint_path.with_suffix(".pt.tmp")
-
         torch.save(checkpoint, temp_path)
-        temp_path.rename(checkpoint_path)  # Atomic operation
+        temp_path.rename(checkpoint_path)
 
-        # Save metadata as JSON for easy inspection
+        # Save metadata JSON for easy inspection
         metadata_path = self.checkpoint_dir / f"checkpoint_step_{step}.json"
         with open(metadata_path, "w") as f:
             json.dump(
@@ -129,14 +175,13 @@ class CheckpointManager:
         current_metric = metrics.get("loss", float("inf"))
         self.checkpoints.append((step, checkpoint_path, current_metric))
 
-        # Save best model if applicable
+        # Save best model
         if is_best and self.save_best:
             best_path = self.checkpoint_dir / "best_model.pt"
             torch.save(checkpoint, best_path)
             self.best_checkpoint_path = best_path
             self.best_metric = current_metric
 
-            # Save best metadata
             with open(self.checkpoint_dir / "best_model.json", "w") as f:
                 json.dump(
                     {
@@ -150,8 +195,14 @@ class CheckpointManager:
                     indent=2,
                 )
 
-        # Cleanup old checkpoints
         self._cleanup_old_checkpoints()
+
+        # FSDP: barrier so non-rank-0 processes wait until rank 0 finishes saving
+        if is_fsdp:
+            import torch.distributed as dist
+
+            if dist.is_initialized():
+                dist.barrier()
 
         return checkpoint_path
 
@@ -188,24 +239,27 @@ class CheckpointManager:
 
         checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
+        from torch.nn.parallel import DistributedDataParallel as DDP
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
-        if isinstance(model, FSDP):
-            from torch.distributed.checkpoint.state_dict import (
-                set_state_dict,
-                StateDictOptions,
-            )
+        if isinstance(model, DDP):
+            # Load into underlying module — DDP holds full params on every rank
+            model.module.load_state_dict(checkpoint["model_state_dict"], strict=False)
+        elif isinstance(model, FSDP):
+            # All ranks must participate in FSDP load
+            import warnings
+            from torch.distributed.fsdp import StateDictType, FullStateDictConfig
 
-            options = StateDictOptions(
-                full_state_dict=True, cpu_offload=True, strict=False
-            )
-            set_state_dict(
-                model,
-                optimizers={},
-                model_state_dict=checkpoint["model_state_dict"],
-                optim_state_dict={},
-                options=options,
-            )
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=FutureWarning)
+                with FSDP.state_dict_type(
+                    model,
+                    StateDictType.FULL_STATE_DICT,
+                    state_dict_config=FullStateDictConfig(
+                        offload_to_cpu=True, rank0_only=True
+                    ),
+                ):
+                    model.load_state_dict(checkpoint["model_state_dict"], strict=False)
         else:
             model.load_state_dict(checkpoint["model_state_dict"], strict=False)
 
