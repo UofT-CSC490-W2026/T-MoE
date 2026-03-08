@@ -153,14 +153,14 @@ def wrap_model_with_ddp(model: nn.Module, local_rank: int) -> nn.Module:
         model,
         device_ids=[local_rank],
         output_device=local_rank,
-        find_unused_parameters=False,
+        find_unused_parameters=True,
     )
 
     if dist.is_initialized():
         dist.barrier()
 
     if is_main_process():
-        print(f"DDP enabled | device_ids=[{local_rank}] | find_unused_parameters=False")
+        print(f"DDP enabled | device_ids=[{local_rank}] | find_unused_parameters=True")
 
     return wrapped
 

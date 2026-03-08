@@ -9,6 +9,24 @@ from src.project_types import ExecutionEnv
 from src.training.fsdp_utils import is_main_process
 
 
+def _get_base_model(model: nn.Module) -> nn.Module:
+    """Unwrap DDP/FSDP to reach the underlying model for parameter name inspection."""
+    from torch.nn.parallel import DistributedDataParallel as DDP
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+    if isinstance(model, DDP):
+        return model.module
+    if isinstance(model, FSDP):
+        return model._fsdp_wrapped_module
+    return model
+
+
+# Router state buffers that must survive checkpointing for correct resume.
+# Excludes: expert_ids (constant arange), hardware_distance (constant zeros),
+#           _pending_usage_sum / _pending_tokens (transient, zero after step()).
+_ROUTER_STATE_BUFFERS = frozenset({"fatigue", "birth_step", "num_steps", "n_active"})
+
+
 def _get_state_dict(model: nn.Module) -> dict:
     """
     Return state dict for DDP, FSDP, or plain model.
@@ -131,10 +149,14 @@ class CheckpointManager:
 
         # Filter to trainable params only (smaller checkpoint files)
         if self.trainable_only:
+            base_model = _get_base_model(model)
+            trainable_keys = {
+                k for k, p in base_model.named_parameters() if p.requires_grad
+            }
             model_state_dict = {
                 k: v
                 for k, v in model_state_dict.items()
-                if "lora_" in k or "router" in k
+                if k in trainable_keys or any(buf in k for buf in _ROUTER_STATE_BUFFERS)
             }
 
         # Save checkpoint files (rank 0 only — non-rank-0 returned early above)

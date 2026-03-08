@@ -102,7 +102,6 @@ class BaseMoELayer(nn.Module, ABC):
         """Clear cached routing state to free memory."""
         self._last_routing_weights = None
         self._last_routing_indices = None
-        return self.router
 
     def get_experts(self) -> nn.ModuleList:
         """Get the expert modules."""

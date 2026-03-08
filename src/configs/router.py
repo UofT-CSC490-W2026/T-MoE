@@ -57,6 +57,12 @@ class MetabolicRouterConfig(BaseRouterConfig):
     normalize_inputs: bool = True
     normalize_weights: bool = True
 
+    # Prototype magnitude clamp (prevents expert dominance via unbounded g_i).
+    # g_i is clamped to [magnitude_min, magnitude_max] during forward pass.
+    # Set magnitude_max=0 to disable clamping entirely.
+    magnitude_min: float = 0.1
+    magnitude_max: float = 5.0
+
 
 @dataclass
 class DynMoERouterConfig(BaseRouterConfig):

@@ -95,6 +95,16 @@ def test_shared_lora_layer_memory_sharing():
     )
 
 
+def test_shared_lora_layer_not_in_state_dict():
+    """shared_weight must be excluded from state_dict (persistent=False)."""
+    w = torch.randn(64, 32)
+    layer = SharedLoRALayer(w, None, rank=4, alpha=16)
+    sd = layer.state_dict()
+    assert "shared_weight" not in sd
+    assert "lora_A.weight" in sd
+    assert "lora_B.weight" in sd
+
+
 def test_shared_lora_layer_forward():
     w = torch.randn(64, 32)
     layer = SharedLoRALayer(w, None, rank=4, alpha=16)

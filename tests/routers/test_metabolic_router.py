@@ -161,5 +161,117 @@ class TestForwardPass:
         assert router._usage_pending is False
 
 
+class TestMagnitudeClamping:
+    """Tests for prototype magnitude clamping to prevent expert dominance."""
+
+    def test_magnitude_is_clamped_during_forward(self, device):
+        """Verify magnitude values are clamped within [min, max] during alignment."""
+        config = MetabolicRouterConfig(
+            hidden_dim=256,
+            num_experts=4,
+            top_k=2,
+            normalize_inputs=True,
+            normalize_weights=True,
+            magnitude_min=0.5,
+            magnitude_max=2.0,
+        )
+        router = MetabolicRouter(config).to(device)
+
+        # Set magnitude values outside the clamp range
+        with torch.no_grad():
+            router.prototype_magnitude.data = torch.tensor(
+                [0.1, 10.0, 1.0, 0.01], device=device
+            )
+
+        x = torch.randn(2, 4, 256, device=device)
+        alignment = router.compute_alignment(x)
+
+        # Alignment should still be computed without error
+        assert alignment.shape == (2, 4, 4)
+
+        # The actual magnitude used inside compute_alignment should be clamped,
+        # but the stored parameter is unchanged (STE-like clamp in forward only)
+        assert router.prototype_magnitude[1].item() == pytest.approx(10.0, abs=1e-5)
+        assert router.prototype_magnitude[3].item() == pytest.approx(0.01, abs=1e-5)
+
+    def test_magnitude_clamping_bounds_alignment(self, device):
+        """Verify clamped magnitudes produce bounded alignment vs unclamped."""
+        config_clamped = MetabolicRouterConfig(
+            hidden_dim=64,
+            num_experts=4,
+            top_k=2,
+            normalize_inputs=True,
+            normalize_weights=True,
+            magnitude_min=0.1,
+            magnitude_max=2.0,
+        )
+        config_unclamped = MetabolicRouterConfig(
+            hidden_dim=64,
+            num_experts=4,
+            top_k=2,
+            normalize_inputs=True,
+            normalize_weights=True,
+            magnitude_min=0.0,
+            magnitude_max=0,  # 0 disables clamping
+        )
+        router_c = MetabolicRouter(config_clamped).to(device)
+        router_u = MetabolicRouter(config_unclamped).to(device)
+
+        # Copy gate weights
+        router_u.gate.weight.data.copy_(router_c.gate.weight.data)
+        router_u.prototype_magnitude.data.copy_(router_c.prototype_magnitude.data)
+
+        # Set extreme magnitude on one expert
+        with torch.no_grad():
+            router_c.prototype_magnitude.data[0] = 100.0
+            router_u.prototype_magnitude.data[0] = 100.0
+
+        x = torch.randn(1, 1, 64, device=device)
+        align_c = router_c.compute_alignment(x)
+        align_u = router_u.compute_alignment(x)
+
+        # Clamped version's max should be much smaller than unclamped
+        assert align_c.abs().max() < align_u.abs().max()
+
+    def test_no_aux_loss(self, router):
+        """Metabolic router must return zero aux loss — fatigue IS the balance mechanism."""
+        aux = router.compute_aux_loss()
+        assert aux.item() == 0.0
+
+
+class TestConfidenceMetrics:
+    """Tests for the router confidence metrics in RouterMetricsTracker."""
+
+    def test_confidence_metrics_present(self, router, test_input):
+        """Verify confidence metrics are returned in compute_all_metrics."""
+        router.train()
+        weights, indices, metrics = router(test_input, return_metrics=True)
+        assert "router_confidence_mean" in metrics
+        assert "router_confidence_std" in metrics
+        assert "top1_dominance" in metrics
+
+    def test_confidence_in_valid_range(self, router, test_input):
+        """Confidence mean should be in (0, 1]."""
+        router.eval()
+        weights, indices, metrics = router(test_input, return_metrics=True)
+        assert 0 < metrics["router_confidence_mean"] <= 1.0
+        assert 0 < metrics["top1_dominance"] <= 1.0
+
+    def test_top1_dominance_equals_one_for_topk1(self, device):
+        """With top_k=1, top1_dominance should always be 1.0."""
+        config = MetabolicRouterConfig(
+            hidden_dim=64,
+            num_experts=4,
+            top_k=1,
+            normalize_inputs=True,
+            normalize_weights=True,
+        )
+        router = MetabolicRouter(config).to(device)
+        router.eval()
+        x = torch.randn(2, 4, 64, device=device)
+        weights, indices, metrics = router(x, return_metrics=True)
+        assert abs(metrics["top1_dominance"] - 1.0) < 1e-5
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

@@ -290,6 +290,37 @@ class RouterMetricsTracker:
         entropy = entropy_dict["expert_entropy"]
         return np.exp(entropy)
 
+    def compute_confidence_metrics(self, weights: torch.Tensor) -> Dict[str, float]:
+        """
+        Compute per-token routing confidence statistics.
+
+        Measures how decisively the router assigns tokens to experts.
+        High confidence (→1.0) means one expert dominates per token.
+        Low confidence (→1/top_k) means uniform weighting across selected experts.
+
+        Args:
+            weights: Routing weights [batch, seq, top_k]
+
+        Returns:
+            Dict with confidence metrics:
+            - router_confidence_mean: mean of max weight per token
+            - router_confidence_std: std of max weight per token
+            - top1_dominance: mean fraction of total weight on top-1 expert
+        """
+        # Max weight per token (how much weight goes to the most preferred expert)
+        max_w = weights.max(dim=-1).values  # [B, S]
+
+        # Top-1 dominance: fraction of weight on the strongest expert
+        # For top_k=1 this is always 1.0; for top_k=2 it shows how unequal the split is
+        weight_sum = weights.sum(dim=-1).clamp_min(1e-10)  # [B, S]
+        top1_dominance = max_w / weight_sum  # [B, S]
+
+        return {
+            "router_confidence_mean": max_w.mean().item(),
+            "router_confidence_std": max_w.std().item(),
+            "top1_dominance": top1_dominance.mean().item(),
+        }
+
     def compute_all_metrics(
         self,
         indices: torch.Tensor,
@@ -322,6 +353,9 @@ class RouterMetricsTracker:
             indices, weights
         )
         metrics["effective_experts"] = self.compute_effective_experts(indices, weights)
+
+        # Router confidence statistics
+        metrics.update(self.compute_confidence_metrics(weights))
 
         # Step counter (only for routers that track steps)
         if hasattr(self.router, "num_steps"):

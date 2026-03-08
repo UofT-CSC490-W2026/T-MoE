@@ -23,28 +23,21 @@ class GPTNeoBackbone(BaseModelBackbone):
     # Model variant configurations
     VARIANTS = {
         "125m": {
-            "hf_name": "EleutherAI/gpt-neo-125M",
+            "hf_name": "EleutherAI/gpt-neo-125m",
             "hidden_dim": 768,
             "num_layers": 12,
             "num_heads": 12,
             "description": "GPT-Neo 125M parameters",
         },
-        "350m": {
-            "hf_name": "EleutherAI/gpt-neo-350M",
-            "hidden_dim": 1024,
-            "num_layers": 24,
-            "num_heads": 16,
-            "description": "GPT-Neo 350M parameters",
-        },
         "1.3b": {
-            "hf_name": "EleutherAI/gpt-neo-1.3B",
+            "hf_name": "EleutherAI/gpt-neo-1.3b",
             "hidden_dim": 2048,
             "num_layers": 24,
             "num_heads": 16,
             "description": "GPT-Neo 1.3B parameters",
         },
         "2.7b": {
-            "hf_name": "EleutherAI/gpt-neo-2.7B",
+            "hf_name": "EleutherAI/gpt-neo-2.7b",
             "hidden_dim": 2560,
             "num_layers": 32,
             "num_heads": 20,

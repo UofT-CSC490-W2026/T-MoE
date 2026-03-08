@@ -1,15 +1,25 @@
 from typing import Any
 
-from src.configs.router import MetabolicRouterConfig, StandardRouterConfig
+from src.configs.router import (
+    MetabolicRouterConfig,
+    StandardRouterConfig,
+    TopKRouterConfig,
+    SwitchRouterConfig,
+    DynMoERouterConfig,
+)
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
 from src.project_types import RouterType
 
 
-# Mapping of router type strings to their config classes
+# Mapping of router type strings → config classes.
+# Keys must match the string literals used in @RouterRegistry.register(...) decorators.
 ROUTER_CONFIG_CLASSES = {
-    RouterType.METABOLIC: MetabolicRouterConfig,
-    RouterType.STANDARD: StandardRouterConfig,
+    "metabolic": MetabolicRouterConfig,
+    "standard": StandardRouterConfig,
+    "topk": TopKRouterConfig,
+    "switch": SwitchRouterConfig,
+    "dynmoe": DynMoERouterConfig,
 }
 
 
@@ -45,7 +55,7 @@ def create_router(
         ... )
     """
     if router_type not in ROUTER_CONFIG_CLASSES:
-        available = list(ROUTER_CONFIG_CLASSES.keys())
+        available = sorted(ROUTER_CONFIG_CLASSES.keys())
         raise ValueError(
             f"Unknown router type: '{router_type}'. Available: {available}"
         )

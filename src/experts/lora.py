@@ -92,7 +92,8 @@ class SharedLoRALayer(nn.Module):
     LoRA layer with shared frozen weights across experts — avoids per-expert cloning.
     Prefer over LoRALayer for large models (Llama 3B+) to avoid OOM.
 
-    shared_weight is a buffer: moves with .to(device), excluded from optimizer.
+    `shared_weight` is a non-persistent buffer: moves with `.to(device)`, excluded from
+    optimizer AND `state_dict`. Reconstructed via `load_from_mlp` on model load.
     """
 
     def __init__(
@@ -102,22 +103,24 @@ class SharedLoRALayer(nn.Module):
         rank: int,
         alpha: int,
         dropout: float = 0.0,
+        init_scale: float = 0.01,
     ):
         super().__init__()
         out_features, in_features = shared_weight.shape
         self.scaling = alpha / rank
 
-        self.register_buffer("shared_weight", shared_weight.detach())
+        self.register_buffer("shared_weight", shared_weight.detach(), persistent=False)
         self.register_buffer(
             "shared_bias",
             shared_bias.detach() if shared_bias is not None else None,
+            persistent=False,
         )
 
         self.lora_A = nn.Linear(in_features, rank, bias=False)
         self.lora_B = nn.Linear(rank, out_features, bias=False)
         self.lora_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
-        nn.init.kaiming_uniform_(self.lora_A.weight, a=0.01)
+        nn.init.kaiming_uniform_(self.lora_A.weight, a=init_scale)
         nn.init.zeros_(self.lora_B.weight)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

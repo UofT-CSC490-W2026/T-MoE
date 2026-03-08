@@ -45,6 +45,10 @@ class MetabolicRouter(BaseRouter):
         self.normalize_inputs = config.normalize_inputs
         self.normalize_weights = config.normalize_weights
 
+        # Magnitude clamping (prevents expert dominance via unbounded g_i)
+        self.magnitude_min = config.magnitude_min
+        self.magnitude_max = config.magnitude_max
+
         # Adaptive Cost Scaling (Equation 3)
         self.n_start = config.num_experts  # Initial expert count for scaling
 
@@ -110,8 +114,17 @@ class MetabolicRouter(BaseRouter):
             w = self.gate.weight  # [num_experts, hidden_dim]
             w_normalized = F.normalize(w, p=2, dim=-1, eps=1e-8)
             if self.prototype_magnitude is not None:
+                # Clamp magnitude to [min, max] to prevent expert dominance.
+                # This is a structural bound — no aux loss needed.
+                # magnitude_max=0 disables clamping entirely.
+                if self.magnitude_max > 0:
+                    mag = self.prototype_magnitude.clamp(
+                        min=self.magnitude_min, max=self.magnitude_max
+                    )
+                else:
+                    mag = self.prototype_magnitude
                 # Per-expert magnitude: [num_experts] → [num_experts, 1] for broadcasting
-                w_normalized = w_normalized * self.prototype_magnitude.unsqueeze(-1)
+                w_normalized = w_normalized * mag.unsqueeze(-1)
             alignment = F.linear(x, w_normalized)
         else:
             alignment = self.gate(x)
@@ -127,8 +140,11 @@ class MetabolicRouter(BaseRouter):
         potential = alignment
 
         # 1. Metabolic Fatigue Penalty (Heavy-Tailed with SoftSign)
+        # Cast to float32 before SoftSign: under FSDP mixed precision the fatigue
+        # buffer is cast to bfloat16, which has insufficient range for accumulated
+        # fatigue values across thousands of steps.
         if self.lambda_metabolic > 0:
-            fatigue_term = F.softsign(self.fatigue)
+            fatigue_term = F.softsign(self.fatigue.float())
             potential = potential - (
                 self.lambda_metabolic * fatigue_term.view(1, 1, -1)
             )
@@ -171,8 +187,11 @@ class MetabolicRouter(BaseRouter):
             flat_indices, weights=flat_weights, minlength=self.num_experts
         )
 
+        # usage is float32 (from bincount with float32 weights).
+        # _pending_usage_sum may be bfloat16 under FSDP; cast to match so
+        # PyTorch does not silently downcast the accumulation.
         if self._usage_pending:
-            self._pending_usage_sum.add_(usage)
+            self._pending_usage_sum.add_(usage.to(self._pending_usage_sum.dtype))
             self._pending_tokens.add_(batch_tokens)
         else:
             self._pending_usage_sum.copy_(usage)
@@ -212,9 +231,18 @@ class MetabolicRouter(BaseRouter):
         # - Balanced expert (U=1/N): fatigue → 0  (no interference)
         # - Overloaded expert (U>1/N): fatigue → positive (penalty)
         # - Neglected expert (U<1/N): fatigue → negative (bonus)
-        excess_usage = usage - (1.0 / self.num_experts)
+        #
+        # Arithmetic is always done in float32 regardless of buffer storage dtype.
+        # Under FSDP mixed precision, self.fatigue is a bfloat16 buffer. Because
+        # fatigue errors accumulate multiplicatively over T steps via the (1-γ) EMA,
+        # even small per-step rounding errors (bfloat16 ≈ 0.4% relative error) grow
+        # to ~O(T · ε_bf16 · Δ) over a 3000-step run. Computing in float32 and
+        # writing back keeps per-step error below float32 machine epsilon (~1e-7).
+        excess_usage = usage.float() - (1.0 / self.num_experts)
         with torch.no_grad():
-            self.fatigue.mul_(1 - self.gamma_recovery).add_(eta_eff * excess_usage)
+            f = self.fatigue.float()
+            f.mul_(1 - self.gamma_recovery).add_(eta_eff * excess_usage)
+            self.fatigue.copy_(f)
 
     def forward(
         self,
@@ -300,8 +328,12 @@ class MetabolicRouter(BaseRouter):
 
         # Apply accumulated usage to fatigue
         with torch.no_grad():
-            # Get exact batched-averaged token usage fraction
-            usage_avg = self._pending_usage_sum / max(self._pending_tokens.item(), 1)
+            # Promote to float32 before division: _pending_usage_sum may be bfloat16
+            # under FSDP and dividing in bfloat16 loses 2-3 decimal places of precision
+            # in the usage fraction (which is small: ~1/N per expert).
+            usage_avg = self._pending_usage_sum.float() / max(
+                self._pending_tokens.item(), 1
+            )
 
             # update_fatigue now accepts pre-aggregated float usage
             self.update_fatigue(usage_avg)
@@ -333,6 +365,11 @@ class MetabolicRouter(BaseRouter):
     def compute_aux_loss(self) -> torch.Tensor:
         """
         MetabolicRouter does not use auxiliary load-balancing loss.
+
+        Load balancing is achieved entirely through fatigue dynamics (Equation 2),
+        which is the core design thesis of this router. Adding differentiable
+        auxiliary loss would undermine the fatigue-based feedback control and
+        reintroduce the very mechanism this router was designed to replace.
 
         Returns:
             Zero tensor on the correct device
@@ -389,6 +426,8 @@ class MetabolicRouter(BaseRouter):
             "temperature": self.temperature,
             "normalize_inputs": self.normalize_inputs,
             "normalize_weights": self.normalize_weights,
+            "magnitude_min": self.magnitude_min,
+            "magnitude_max": self.magnitude_max,
         }
 
         return state

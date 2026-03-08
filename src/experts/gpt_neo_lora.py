@@ -63,6 +63,7 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
             rank=self.config.rank,
             alpha=self.config.alpha,
             dropout=self.config.dropout,
+            init_scale=self.config.init_scale,
         )
 
         proj_w, proj_b = _extract_linear_weight(proj_layer)
@@ -72,5 +73,6 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
             rank=self.config.rank,
             alpha=self.config.alpha,
             dropout=self.config.dropout,
+            init_scale=self.config.init_scale,
         )
         # Weights are naturally frozen due to SharedLoRALayer using register_buffer
