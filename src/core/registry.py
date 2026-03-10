@@ -27,8 +27,6 @@ class Registry:
                     f"Overwriting existing registration for '{name}' in {self.name} registry"
                 )
             self._registry[name] = cls
-            # Store the registration name on the class for introspection
-            cls._registry_name = name
             return cls
 
         return decorator

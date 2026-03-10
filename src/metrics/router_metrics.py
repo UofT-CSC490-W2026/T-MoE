@@ -26,24 +26,18 @@ class GlobalSpecializationTracker:
         self.usage_counts = torch.zeros(
             (int(vocab_size), int(num_experts)),
             dtype=torch.long,
-            device=torch.device(device) if isinstance(device, str) else device,
+            device=device,
         )
         self.total_tokens = 0
 
     def update(self, token_ids: torch.Tensor, expert_indices: torch.Tensor):
-        """
-        Update global counts.
-        token_ids: [batch, seq]
-        expert_indices: [batch, seq, top_k]
-        """
         with torch.no_grad():
             batch, seq, top_k = expert_indices.shape
 
-            # Flatten inputs
-            flat_tokens = token_ids.view(-1)  # [batch * seq]
-            flat_experts = expert_indices.reshape(-1, top_k)  # [batch * seq, top_k]
+            flat_tokens = token_ids.view(-1)
+            flat_experts = expert_indices.reshape(-1, top_k)
 
-            # Filter out padding tokens (-100 usually, or just < 0 and >= vocab_size)
+            # Filter out padding tokens
             valid_mask = (flat_tokens >= 0) & (flat_tokens < self.vocab_size)
             valid_tokens = flat_tokens[valid_mask].cpu()
             valid_experts = flat_experts[valid_mask].cpu()
@@ -51,13 +45,8 @@ class GlobalSpecializationTracker:
             if len(valid_tokens) == 0:
                 return
 
-            # Accumulate
-            # We add 1 for each expert selection (a token selected top_k experts, so it adds 1 to each of those experts)
-            # Flatten again for scatter/bincount
-            expanded_tokens = valid_tokens.unsqueeze(1).expand(-1, top_k).flatten()
+            expanded_tokens = valid_tokens.unsqueeze(1).expand(-1, top_k).reshape(-1)
             flattened_experts = valid_experts.flatten()
-
-            # Use 1D indices for bincount
             linear_indices = expanded_tokens * self.num_experts + flattened_experts
             counts = torch.bincount(
                 linear_indices, minlength=self.vocab_size * self.num_experts
@@ -66,16 +55,56 @@ class GlobalSpecializationTracker:
             self.usage_counts += counts.view(self.vocab_size, self.num_experts)
             self.total_tokens += valid_tokens.numel()
 
+    def sync_and_compute(
+        self, device: str, is_distributed: bool = False
+    ) -> Dict[str, float]:
+        """
+        All-reduce usage_counts across DDP ranks, then compute metrics.
+
+        Non-destructive: each rank keeps its own local accumulation intact.
+        At log time we reduce a temporary copy so the next accumulation window
+        starts fresh on each rank's local data (no double-counting).
+
+        Must be called by ALL ranks simultaneously (collective operation).
+        Only rank 0 needs to use the returned metrics.
+
+        Args:
+            device: CUDA device string for the all-reduce (e.g. "cuda:0").
+            is_distributed: Whether distributed training is active.
+
+        Returns:
+            Metrics dict computed from the globally-reduced histogram.
+        """
+        if not is_distributed:
+            return self.compute_metrics()
+
+        import torch.distributed as dist
+
+        # All-reduce a GPU copy of usage_counts — O(vocab × experts) = ~3.2 MB for 125M
+        counts_gpu = self.usage_counts.to(device)
+        dist.all_reduce(counts_gpu, op=dist.ReduceOp.SUM)
+        counts_synced = counts_gpu.cpu()
+
+        # All-reduce total_tokens so global_tokens_seen is correct
+        tok_t = torch.tensor(self.total_tokens, dtype=torch.long, device=device)
+        dist.all_reduce(tok_t, op=dist.ReduceOp.SUM)
+        total_synced = tok_t.item()
+
+        # Temporarily swap in synced data, compute metrics, restore local state
+        orig_counts, orig_total = self.usage_counts, self.total_tokens
+        self.usage_counts = counts_synced
+        self.total_tokens = total_synced
+        result = self.compute_metrics()
+        self.usage_counts = orig_counts
+        self.total_tokens = orig_total
+
+        return result
+
     def compute_metrics(self) -> Dict[str, float]:
-        """
-        Compute true H(E|T), H(E), Specialization Score, and Collapse Score.
-        Returns empty dict if no tokens have been processed.
-        """
         if self.total_tokens == 0:
             return {}
 
         with torch.no_grad():
-            # 1. Active tokens mask (only consider tokens we've actually seen)
             token_counts = self.usage_counts.sum(dim=1)
             active_mask = token_counts > 0
 
@@ -85,24 +114,21 @@ class GlobalSpecializationTracker:
             active_usage = self.usage_counts[active_mask].float()
             active_token_counts = token_counts[active_mask].float()
 
-            # 2. P(E|T) - Probability of choosing expert E given token T
+            # P(E|T)
             p_e_given_t = active_usage / active_usage.sum(dim=1, keepdim=True)
 
-            # 3. H(E|T) - Conditional Entropy
+            # H(E|T) — weighted by token frequency
             entropy_e_given_t = -(p_e_given_t * torch.log(p_e_given_t + 1e-10)).sum(
                 dim=1
             )
-
-            # Weight by token frequency to get expected conditional entropy
             p_t = active_token_counts / active_token_counts.sum()
             expected_conditional_entropy = (p_t * entropy_e_given_t).sum()
 
-            # 4. H(E) - Marginal Entropy
+            # H(E)
             total_expert_usage = self.usage_counts.sum(dim=0).float()
             p_e = total_expert_usage / total_expert_usage.sum()
             marginal_entropy = -(p_e * torch.log(p_e + 1e-10)).sum()
 
-            # 5. Scores
             if marginal_entropy.item() < 1e-5:
                 specialization_score = 0.0
                 collapse_score = 1.0
@@ -123,65 +149,33 @@ class GlobalSpecializationTracker:
 
 class RouterMetricsTracker:
     """
-    Comprehensive metrics tracker for Metabolic Router.
+    Per-router metrics tracker (all router types).
 
-    Tracks:
-    - Expert entropy and routing diversity
-    - Fatigue statistics (mean, std, min, max, per-expert)
-    - Usage distribution and counts
-    - Gini coefficient for load balancing
-    - Effective number of experts
-
-    Usage:
-        tracker = RouterMetricsTracker(router)
-        metrics = tracker.compute_all_metrics(indices, weights)
-        tracker.log_to_wandb(metrics, step=100)
+    Tracks entropy, usage distribution, Gini, effective experts,
+    confidence, and fatigue stats (metabolic router only).
     """
 
     def __init__(self, router):
-        """
-        Initialize metrics tracker.
-
-        Args:
-            router: MetabolicRouter instance to track
-        """
         self.router = router
         self.num_experts = router.num_experts
-
-        # Cache index tensor for Gini coefficient computation (avoid repeated allocations)
         self.gini_index = torch.arange(1, self.num_experts + 1, dtype=torch.float32)
+
+    def _compute_usage(
+        self, indices: torch.Tensor, weights: torch.Tensor
+    ) -> torch.Tensor:
+        """Aggregate routing weights into per-expert usage vector [num_experts]."""
+        usage = torch.zeros(
+            self.num_experts, device=indices.device, dtype=torch.float32
+        )
+        usage.scatter_add_(0, indices.flatten(), weights.flatten().to(torch.float32))
+        return usage
 
     def compute_expert_entropy(
         self, indices: torch.Tensor, weights: torch.Tensor
     ) -> Dict[str, float]:
-        """
-        Compute Shannon entropy of expert routing distribution.
-
-        Higher entropy = more diverse routing
-        Lower entropy = concentrated routing
-
-        Args:
-            indices: Expert indices [batch, seq, top_k]
-            weights: Routing weights [batch, seq, top_k]
-
-        Returns:
-            Dict with 'expert_entropy' and 'expert_entropy_normalized'
-        """
-        device = indices.device
-
-        # float32: scatter_add_ requires matching dtypes (weights may be bfloat16 under FSDP)
-        usage = torch.zeros(self.num_experts, device=device, dtype=torch.float32)
-        flat_indices = indices.flatten()
-        flat_weights = weights.flatten().to(torch.float32)
-        usage.scatter_add_(0, flat_indices, flat_weights)
-
-        # Normalize to probability distribution
+        usage = self._compute_usage(indices, weights)
         usage_prob = usage / (usage.sum() + 1e-10)
-
-        # Shannon entropy: -sum(p * log(p))
         entropy = -(usage_prob * torch.log(usage_prob + 1e-10)).sum()
-
-        # Normalized entropy: divide by max entropy (log(num_experts))
         max_entropy = np.log(self.num_experts)
         normalized_entropy = entropy / max_entropy
 
@@ -191,12 +185,6 @@ class RouterMetricsTracker:
         }
 
     def compute_fatigue_stats(self) -> Dict[str, Any]:
-        """
-        Compute comprehensive fatigue statistics.
-
-        Returns:
-            Dict with mean, std, min, max, and per-expert fatigue
-        """
         fatigue = self.router.fatigue
 
         return {
@@ -204,30 +192,13 @@ class RouterMetricsTracker:
             "fatigue_std": fatigue.std().item(),
             "fatigue_min": fatigue.min().item(),
             "fatigue_max": fatigue.max().item(),
-            "fatigue_per_expert": fatigue.clone().cpu().float().numpy(),
+            "fatigue_per_expert": fatigue.cpu().float().numpy(),
         }
 
     def compute_usage_distribution(
         self, indices: torch.Tensor, weights: torch.Tensor
     ) -> Dict[str, Any]:
-        """
-        Compute expert usage counts and distribution.
-
-        Args:
-            indices: Expert indices [batch, seq, top_k]
-            weights: Routing weights [batch, seq, top_k]
-
-        Returns:
-            Dict with usage_counts and usage_distribution
-        """
-        device = indices.device
-
-        usage_counts = torch.zeros(self.num_experts, device=device, dtype=torch.float32)
-        flat_indices = indices.flatten()
-        flat_weights = weights.flatten().to(torch.float32)
-        usage_counts.scatter_add_(0, flat_indices, flat_weights)
-
-        # Normalize to distribution
+        usage_counts = self._compute_usage(indices, weights)
         usage_dist = usage_counts / (usage_counts.sum() + 1e-10)
 
         return {
@@ -251,20 +222,10 @@ class RouterMetricsTracker:
         Returns:
             Gini coefficient in [0, 1]
         """
-        device = indices.device
-
-        usage = torch.zeros(self.num_experts, device=device, dtype=torch.float32)
-        flat_indices = indices.flatten()
-        flat_weights = weights.flatten().to(torch.float32)
-        usage.scatter_add_(0, flat_indices, flat_weights)
-
-        # Sort usage in ascending order
+        usage = self._compute_usage(indices, weights)
         sorted_usage, _ = torch.sort(usage)
-
-        # Compute Gini coefficient
         n = self.num_experts
-        # Use cached index tensor (ensure device compatibility)
-        index = self.gini_index.to(device)
+        index = self.gini_index.to(indices.device)
         gini = (2 * (index * sorted_usage).sum()) / (n * sorted_usage.sum() + 1e-10) - (
             n + 1
         ) / n
@@ -272,22 +233,11 @@ class RouterMetricsTracker:
         return gini.item()
 
     def compute_effective_experts(
-        self, indices: torch.Tensor, weights: torch.Tensor
+        self, indices: torch.Tensor, weights: torch.Tensor, entropy: float = None
     ) -> float:
-        """
-        Compute effective number of experts (exponential of entropy).
-
-        This metric answers: "How many experts are effectively being used?"
-
-        Args:
-            indices: Expert indices [batch, seq, top_k]
-            weights: Routing weights [batch, seq, top_k]
-
-        Returns:
-            Effective number of experts in [1, num_experts]
-        """
-        entropy_dict = self.compute_expert_entropy(indices, weights)
-        entropy = entropy_dict["expert_entropy"]
+        """Effective number of experts = exp(entropy). Range: [1, num_experts]."""
+        if entropy is None:
+            entropy = self.compute_expert_entropy(indices, weights)["expert_entropy"]
         return np.exp(entropy)
 
     def compute_confidence_metrics(self, weights: torch.Tensor) -> Dict[str, float]:
@@ -326,71 +276,36 @@ class RouterMetricsTracker:
         indices: torch.Tensor,
         weights: torch.Tensor,
     ) -> Dict[str, Any]:
-        """
-        Compute all metrics in one pass.
-
-        Args:
-            indices: Expert indices [batch, seq, top_k]
-            weights: Routing weights [batch, seq, top_k]
-
-        Returns:
-            Complete metrics dictionary
-        """
         metrics = {}
-
-        # Expert entropy
-        metrics.update(self.compute_expert_entropy(indices, weights))
-
-        # Fatigue statistics (only for routers that track fatigue, e.g. MetabolicRouter)
+        entropy_metrics = self.compute_expert_entropy(indices, weights)
+        metrics.update(entropy_metrics)
         if hasattr(self.router, "fatigue"):
             metrics.update(self.compute_fatigue_stats())
-
-        # Usage distribution
         metrics.update(self.compute_usage_distribution(indices, weights))
-
-        # Routing diversity
         metrics["routing_diversity_gini"] = self.compute_gini_coefficient(
             indices, weights
         )
-        metrics["effective_experts"] = self.compute_effective_experts(indices, weights)
-
-        # Router confidence statistics
+        metrics["effective_experts"] = self.compute_effective_experts(
+            indices, weights, entropy=entropy_metrics["expert_entropy"]
+        )
         metrics.update(self.compute_confidence_metrics(weights))
-
-        # Step counter (only for routers that track steps)
         if hasattr(self.router, "num_steps"):
             metrics["num_steps"] = self.router.num_steps.item()
-
         return metrics
 
     def log_to_wandb(
         self, metrics: Dict[str, Any], step: int, prefix: str = "router"
     ) -> None:
-        """
-        Log metrics to Weights & Biases.
+        if not WANDB_AVAILABLE or not wandb.run:
+            return
 
-        Args:
-            metrics: Metrics dictionary from compute_all_metrics()
-            step: Training step number
-            prefix: Metric name prefix (default: "router")
-        """
-        if not WANDB_AVAILABLE:
-            return  # WandB not installed
-
-        if not wandb.run:
-            return  # WandB not initialized
-
-        # Prepare scalar metrics for logging
-        scalar_metrics = {}
-
-        for key, value in metrics.items():
-            if isinstance(value, (int, float, np.integer, np.floating)):
-                scalar_metrics[f"{prefix}/{key}"] = value
-
-        # Log scalars
+        scalar_metrics = {
+            f"{prefix}/{key}": value
+            for key, value in metrics.items()
+            if isinstance(value, (int, float, np.integer, np.floating))
+        }
         wandb.log(scalar_metrics, step=step)
 
-        # Log histograms for array data
         if "fatigue_per_expert" in metrics:
             wandb.log(
                 {
@@ -410,35 +325,3 @@ class RouterMetricsTracker:
                 },
                 step=step,
             )
-
-        # Specialization metrics (logged as scalars when present)
-        for key in (
-            "specialization_score",
-            "collapse_score",
-            "marginal_entropy",
-            "conditional_entropy",
-        ):
-            if key in metrics:
-                wandb.log({f"{prefix}/{key}": metrics[key]}, step=step)
-
-    def to_dict(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Convert metrics to JSON-serializable dictionary (for checkpointing).
-
-        Args:
-            metrics: Metrics dictionary from compute_all_metrics()
-
-        Returns:
-            JSON-serializable dictionary
-        """
-        serializable = {}
-
-        for key, value in metrics.items():
-            if isinstance(value, np.ndarray):
-                serializable[key] = value.tolist()
-            elif isinstance(value, (np.integer, np.floating)):
-                serializable[key] = float(value)
-            else:
-                serializable[key] = value
-
-        return serializable

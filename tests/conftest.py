@@ -22,13 +22,10 @@ def standard_config() -> MetabolicRouterConfig:
         num_experts=8,
         top_k=2,
         lambda_metabolic=0.1,
-        mu_silicon=0.0,
         gamma_recovery=0.01,
         beta_cost=0.04,
         warmup_steps=100,
         temperature=1.0,
-        normalize_inputs=True,
-        normalize_weights=True,
     )
 
 
@@ -40,7 +37,6 @@ def minimal_config() -> MetabolicRouterConfig:
         num_experts=2,
         top_k=1,
         lambda_metabolic=0.0,
-        mu_silicon=0.0,
         gamma_recovery=0.0,
         beta_cost=0.0,
         warmup_steps=0,

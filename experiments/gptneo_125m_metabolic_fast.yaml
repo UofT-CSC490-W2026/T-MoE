@@ -33,12 +33,9 @@ router:
   # Metabolic parameters (tune these for router experiments)
   metabolic:
     lambda_metabolic: 0.5     # λ: penalty strength
-    mu_silicon: 0.0           # silicon tax (disabled)
     gamma_recovery: 0.05      # γ: recovery rate
     beta_cost: 0.4           # β: cost rate (β/γ = 8.0)
     warmup_steps: 50          # shorter warmup for fast iteration
-    normalize_inputs: true
-    normalize_weights: true
     magnitude_min: 0.1
     magnitude_max: 5.0
 
@@ -80,12 +77,10 @@ logging:
 # DISTRIBUTED TRAINING — SINGLE OR DUAL GPU FOR FAST ITERATION
 # ============================================================================
 distributed:
-  num_gpus: 1                # single GPU for fastest iteration (or 2 for 2× speedup)
   strategy: ddp
 
-# ============================================================================
-# COMPUTE CONFIGURATION
-# ============================================================================
+# Read by run_modal_training.py at import time to provision the container.
+# Change CONFIG at the top of run_modal_training.py to activate a different experiment.
 compute:
   modal:
-    gpu: "A100:1"             # single A100 for cost efficiency (or "A100:2" for 2× speed)
+    gpu: "A100:1"

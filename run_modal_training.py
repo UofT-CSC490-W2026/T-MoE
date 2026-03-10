@@ -1,180 +1,163 @@
 """
 run_modal_training.py — Modal Cloud Orchestrator for T-MoE
 
-Usage (individual stages):
-    # Stage 1: Tokenize & pack dataset → Modal Volume (runs on cheap CPU)
-    modal run run_modal_training.py::stage_data --config gptneo_125m_metabolic.yaml
+To switch experiments: change CONFIG at the top of this file.
+GPU spec and count are read automatically from compute.modal.gpu in that YAML.
 
-    # Stage 2: Train on GPU, reads shards directly from Volume
-    modal run run_modal_training.py::stage_train --config gptneo_125m_metabolic.yaml
-
-    # With CLI overrides (same as local):
-    modal run run_modal_training.py::stage_train --config gptneo_125m_metabolic.yaml \\
-        --overrides "training.lr=1e-4" "training.batch_size=8"
-
-Prerequisites:
-    1. modal setup  (first time only)
-    2. Create a Modal Workspace Secret named "tmoe-secrets" with:
-       - HF_TOKEN            = your HuggingFace access token
-       - WANDB_API_KEY        = your WandB API key
-       - WANDB_PROJECT        = your WandB project (e.g. tmoe)
-       - WANDB_ENTITY         = your WandB entity / team  (optional)
-       - AWS_ACCESS_KEY_ID    = your AWS key  (only needed if using S3)
-       - AWS_SECRET_ACCESS_KEY = your AWS secret  (only needed if using S3)
+Usage:
+    modal run run_modal_training.py                         # full pipeline
+    modal run run_modal_training.py --skip-data             # train only
+    modal run run_modal_training.py::stage_data             # data prep only
+    modal run run_modal_training.py::stage_train            # training only
+    modal run run_modal_training.py::stage_train \
+        --overrides "training.lr=3e-4,training.steps=3000" # hyperparameter sweep
 """
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import sys
 
-from modal import App, Image, Volume, Secret
+from modal import App, Image, Secret, Volume
 from omegaconf import OmegaConf
 
-# ---------------------------------------------------------------------------
-# GPU Configuration
-# Read GPU type AND count from the config at module load time so Modal's
-# @app.function(gpu=...) decorator picks them up before any function runs.
-#
-# Modal uses "A100:4" notation to provision 4× A100s for a single function.
-# The default config is modal_test.yaml; change this to your active experiment
-# if you're running a different config as the primary Modal job.
-#
-# To override without editing this file, set TMOE_GPU env var:
-#   TMOE_GPU="H100:2" modal run run_modal_training.py::stage_train --config ...
-# ---------------------------------------------------------------------------
-_DEFAULT_CONFIG = "experiments/smoketest.yaml"
+# =============================================================================
+# CONFIGURATION — change this one line to switch experiments
+# =============================================================================
+
+CONFIG = "experiments/gptneo_125m_metabolic_v4.yaml"
+
+# GPU spec is read from compute.modal.gpu in the active config.
+# Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
 try:
-    _cfg = OmegaConf.load(_DEFAULT_CONFIG)
-    _gpu_type = OmegaConf.select(_cfg, "compute.modal.gpu", default="A10G")
-    _num_gpus = OmegaConf.select(_cfg, "distributed.num_gpus", default=1)
-    # Modal format: "A100:4" provisions 4 GPUs; "A10G" provisions 1.
-    GPU_TRAIN = f"{_gpu_type}:{_num_gpus}" if _num_gpus > 1 else _gpu_type
+    _cfg = OmegaConf.load(CONFIG)
+    GPU = str(OmegaConf.select(_cfg, "compute.modal.gpu", default="A100:4"))
 except Exception:
-    GPU_TRAIN = os.environ.get("TMOE_GPU", "A10G")  # fallback
+    GPU = "A100:4"
 
-# Volume name — shared between all stages so shards persist across runs.
+_N_GPUS = int(GPU.split(":")[1]) if ":" in GPU else 1
+
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Volume / image / app
+# ---------------------------------------------------------------------------
 VOLUME_NAME = "tmoe-data"
-
-# Where the volume is mounted inside the container.
 VOLUME_MOUNT = "/vol"
-
-# Subdirectories inside the volume.
-SHARDS_DIR = f"{VOLUME_MOUNT}/data"  # pre-tokenized .bin shards per dataset
-OUTPUTS_DIR = f"{VOLUME_MOUNT}/outputs"  # checkpoints and logs
-
-# Local path where experiment YAML files live in the mounted repo image.
-EXPERIMENTS_DIR = "/app/experiments"
-
-# Modal Secret name — create this once in the Modal web dashboard.
+SHARDS_DIR = f"{VOLUME_MOUNT}/data"
+OUTPUTS_DIR = f"{VOLUME_MOUNT}/outputs"
 SECRET_NAME = "tmoe-secrets"
 
-# ---------------------------------------------------------------------------
-# Modal App Setup
-# ---------------------------------------------------------------------------
-
-# Shared volume: persistent across stages and container restarts.
 volume = Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
-# Directories/patterns to exclude from the Modal image build.
-# .idea/ is critical — JetBrains IDEs mutate workspace.xml continuously,
-# which triggers Modal's "was modified during build process" error.
-_MODAL_IGNORE = [
-    ".idea",
-    ".git",
-    "__pycache__",
-    ".pytest_cache",
-    "outputs",
-    "cache",
-    "*.pyc",
-    ".venv",
-    ".env",
-]
-
-# Container image: install requirements, then map the rest of the code.
 image = (
     Image.debian_slim(python_version="3.11")
     .pip_install_from_requirements("requirements.txt")
     .env({"PYTHONPATH": "/app"})
-    .add_local_dir(".", remote_path="/app", ignore=_MODAL_IGNORE)
+    .add_local_dir(
+        ".",
+        remote_path="/app",
+        ignore=[
+            ".idea",
+            ".git",
+            "__pycache__",
+            ".pytest_cache",
+            "outputs",
+            "cache",
+            "*.pyc",
+            ".venv",
+            ".env",
+        ],
+    )
 )
 
-app = App(
-    name="tmoe",
-    image=image,
-    secrets=[Secret.from_name(SECRET_NAME)],
-)
+app = App(name="tmoe", image=image, secrets=[Secret.from_name(SECRET_NAME)])
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _config_path(config: str) -> str:
+    """Resolve config to absolute path inside the container (/app/...)."""
+    if config.startswith("experiments/") or config.startswith("/"):
+        return f"/app/{config}" if not config.startswith("/") else config
+    return f"/app/experiments/{config}"
+
+
+def _load_cfg(config_path: str, overrides: str):
+    cfg = OmegaConf.load(config_path)
+    if overrides:
+        parts = [o.strip() for o in overrides.split(",") if o.strip()]
+        cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(parts))
+    return cfg
+
+
+def _override_list(overrides: str) -> list[str]:
+    if not overrides:
+        return []
+    return [o.strip() for o in overrides.split(",") if o.strip()]
 
 
 # ---------------------------------------------------------------------------
-# Stage 1: Data Preparation (CPU — cheap)
+# Stage 1: Data Preparation (CPU — cheap, run once per dataset)
 # ---------------------------------------------------------------------------
 
 
 @app.function(
     volumes={VOLUME_MOUNT: volume},
-    cpu=4,
-    memory=8192,
-    timeout=60 * 60,  # 1 hour max for large datasets
+    cpu=8,
+    memory=32768,
+    timeout=18000,  # 5h: ~10 min download + ~30 min tokenization + buffer
 )
-def stage_data(config: str = "gptneo_125m_metabolic.yaml", overrides: str = ""):
+def stage_data(config: str = CONFIG, force: bool = False):  # noqa: B008
     """
-    Stage 1: Download dataset from HuggingFace, tokenize, and pack into
-    binary shards. Saves shards to the persistent Modal Volume.
-
-    This runs on a cheap CPU container — no GPU/hour cost here.
-    The data only needs to be prepared ONCE per dataset.
-
-    Args:
-        config:    Filename of the experiment YAML (e.g. gptneo_125m_metabolic.yaml)
-        overrides: Optional list of OmegaConf overrides e.g. ["dataset.dataset_key=c4"]
+    Tokenize and pack dataset into binary shards on the Modal Volume.
+    Idempotent: skips if training shards already exist (--force to redo).
     """
-    import sys
+    import glob
 
-    sys.path.insert(0, "/app")
-
-    from omegaconf import OmegaConf
-    from pathlib import Path
-
-    # Load config
-    config_path = f"/app/experiments/{config}"
-    cfg = OmegaConf.load(config_path)
-    if overrides:
-        override_list = [o.strip() for o in overrides.split(",")]
-        override_cfg = OmegaConf.from_dotlist(override_list)
-        cfg = OmegaConf.merge(cfg, override_cfg)
-
+    cfg_path = _config_path(config)
+    cfg = OmegaConf.load(cfg_path)
     dataset_key = cfg.dataset.dataset_key
-    out_dir = Path(SHARDS_DIR) / dataset_key
 
-    # Check if shards already exist (idempotent — skip if already done)
-    existing = list(out_dir.glob("train_shard_*.bin")) if out_dir.exists() else []
-    if existing:
-        print(f"Shards already exist in {out_dir} ({len(existing)} found). Skipping.")
+    if glob.glob(f"{SHARDS_DIR}/{dataset_key}/**/train_shard_*.bin") and not force:
+        n = len(glob.glob(f"{SHARDS_DIR}/{dataset_key}/**/train_shard_*.bin"))
+        print(
+            f"[stage_data] {n} shard(s) already in {SHARDS_DIR}/{dataset_key}/. Skipping (--force to redo)."
+        )
         volume.commit()
         return
 
-    print(f"Preparing dataset '{dataset_key}' → {out_dir}")
+    # Compute tokenizer-aware shard dir: /vol/data/<dataset>/<vocab_size>/
+    # This lets different tokenizer families share the same volume without collision.
+    from src.configs.dataset import get_shard_dir
 
-    # Run prepare_data.py inside the container
-    cmd = [
-        sys.executable,
-        "-m",
-        "scripts.prepare_data",
-        "--config",
-        config_path,
-        "--out-dir",
-        str(out_dir),
-    ]
-    if overrides:
-        override_list = [o.strip() for o in overrides.split(",")]
-        cmd += override_list  # Extra CLI overrides pass through
+    out_dir = str(get_shard_dir(dataset_key, cfg.model.model_key, base=SHARDS_DIR))
 
-    subprocess.run(cmd, cwd="/app", check=True, capture_output=False)
-
-    # Commit to volume so the next stage sees the shards
+    print(f"[stage_data] Preparing '{dataset_key}' → {out_dir}")
+    # Route HF cache to the Volume so dataset downloads persist across runs.
+    hf_cache = f"{VOLUME_MOUNT}/hf_cache"
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.prepare_data",
+            "--config",
+            cfg_path,
+            "--out-dir",
+            out_dir,
+            "--num-proc",
+            "8",
+        ],
+        cwd="/app",
+        check=True,
+        env={**os.environ, "HF_DATASETS_CACHE": hf_cache, "HF_HOME": hf_cache},
+    )
     volume.commit()
-    print(f"Stage 1 complete. Shards saved to: {out_dir}")
+    print(f"[stage_data] Done → {out_dir}")
 
 
 # ---------------------------------------------------------------------------
@@ -184,149 +167,89 @@ def stage_data(config: str = "gptneo_125m_metabolic.yaml", overrides: str = ""):
 
 @app.function(
     volumes={VOLUME_MOUNT: volume},
-    gpu=GPU_TRAIN,
+    gpu=GPU,  # provisioned from the constant above
     memory=32768,
-    timeout=60 * 60 * 12,  # 12 hours max run time
-    retries=2,  # Resume from volume-persisted checkpoint on spot preemption
+    timeout=60 * 60 * 12,
+    retries=2,
 )
-def stage_train(config: str = "gptneo_125m_metabolic.yaml", overrides: str = ""):
+def stage_train(config: str = CONFIG, overrides: str = ""):  # noqa: B008
     """
-    Stage 2: Train the T-MoE model. Reads shards directly from the persistent
-    Modal Volume — no S3 downloads, no tokenization lag. Saves ckpt.pt back
-    to the Volume.
+    Train T-MoE. GPU count is always _N_GPUS (derived from GPU at top of file).
 
     Args:
-        config:    Filename of the experiment YAML (e.g. gptneo_125m_metabolic.yaml)
-        overrides: Optional OmegaConf overrides e.g. ["training.lr=1e-4"]
+        config:    Experiment YAML (defaults to CONFIG at top of file).
+        overrides: Comma-separated OmegaConf overrides, e.g. "training.lr=3e-4".
     """
-    import sys
+    cfg_path = _config_path(config)
+    cfg = _load_cfg(cfg_path, overrides)
+    out_dir = f"{OUTPUTS_DIR}/{cfg.experiment_name}"
 
-    sys.path.insert(0, "/app")
-
-    config_path = f"/app/experiments/{config}"
-
-    # Symlink the volume shard dir into the expected local path
-    from pathlib import Path
-
-    local_data_dir = Path("/app/data")
-    volume_data_dir = Path(SHARDS_DIR)
-
-    local_data_dir.parent.mkdir(parents=True, exist_ok=True)
-    if local_data_dir.exists() or local_data_dir.is_symlink():
-        import shutil
-
-        if local_data_dir.is_dir() and not local_data_dir.is_symlink():
-            shutil.rmtree(local_data_dir)
+    # Symlink /app/data/shards → /vol/data so train.py finds shards at
+    # data/shards/{dataset_key}/ as expected.
+    os.makedirs("/app/data", exist_ok=True)
+    local_shards = "/app/data/shards"
+    if os.path.lexists(local_shards):
+        if os.path.islink(local_shards):
+            os.unlink(local_shards)
         else:
-            local_data_dir.unlink()
+            import shutil
 
-    local_data_dir.symlink_to(volume_data_dir)
-    print(f"Symlinked {local_data_dir} → {volume_data_dir}")
+            shutil.rmtree(local_shards)
+    os.symlink(SHARDS_DIR, local_shards)
 
-    # Output dir inside the volume
-    from omegaconf import OmegaConf
+    # Use actual GPU count from hardware — avoids stale _N_GPUS from cached YAML in container.
+    import torch
 
-    cfg = OmegaConf.load(config_path)
-    if overrides:
-        override_list = [o.strip() for o in overrides.split(",")]
-        cfg = OmegaConf.merge(cfg, OmegaConf.from_dotlist(override_list))
+    n_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
 
-    out_dir = Path(OUTPUTS_DIR) / cfg.experiment_name
+    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
+    print(f"[stage_train] Experiment : {cfg.experiment_name}")
+    print(f"[stage_train] GPU        : {gpu_name} × {n_gpus}  (config: {GPU})")
+    print(f"[stage_train] Output     : {out_dir}")
 
-    print(f"\n{'=' * 60}")
-    print(f"Experiment : {cfg.experiment_name}")
-    print(f"Config     : {config}")
-    if overrides:
-        print(f"Overrides  : {overrides}")
-    print(f"Output Dir : {out_dir}")
-    print(f"{'=' * 60}\n")
+    cmd = (
+        (
+            [
+                "torchrun",
+                "--standalone",
+                f"--nproc_per_node={n_gpus}",
+                "-m",
+                "scripts.train",
+            ]
+            if n_gpus > 1
+            else [sys.executable, "-m", "scripts.train"]
+        )
+        + ["--config", cfg_path, "--output-dir", out_dir]
+        + _override_list(overrides)
+    )
 
-    # Build and run train command
-    # Read num_gpus from config to decide between python and torchrun.
-    num_gpus = OmegaConf.select(cfg, "distributed.num_gpus", default=1)
-
-    if num_gpus > 1:
-        cmd = [
-            "torchrun",
-            "--standalone",
-            f"--nproc_per_node={num_gpus}",
-            "-m",
-            "scripts.train",
-            "--config",
-            config_path,
-            "--output-dir",
-            str(out_dir),
-        ]
-    else:
-        cmd = [
-            sys.executable,
-            "-m",
-            "scripts.train",
-            "--config",
-            config_path,
-            "--output-dir",
-            str(out_dir),
-        ]
-
-    if overrides:
-        override_list = [o.strip() for o in overrides.split(",")]
-        cmd += override_list
-
-    import json
-    import os
-
-    # Set error file so we can read the actual traceback if torchrun fails
     error_file = "/tmp/torchelastic_error.json"
-    env = os.environ.copy()
-    env["TORCHELASTIC_ERROR_FILE"] = error_file
-
     try:
-        subprocess.run(cmd, cwd="/app", check=True, env=env)
-    except subprocess.CalledProcessError as e:
-        print("\n" + "=" * 80)
-        print("TORCHRUN FAILED. Attempting to extract root cause traceback...")
+        subprocess.run(
+            cmd,
+            cwd="/app",
+            check=True,
+            env={**os.environ, "TORCHELASTIC_ERROR_FILE": error_file},
+        )
+    except subprocess.CalledProcessError:
         if os.path.exists(error_file):
-            try:
-                with open(error_file, "r") as f:
-                    err_data = json.load(f)
-                    print("\nROOT CAUSE TRACEBACK:")
-                    for idx, err in err_data.get("message", {}).items():
-                        print(f"--- Rank {idx} ---")
-                        print(err.get("message", "No message"))
-                        print("---" * 20)
-            except Exception as read_e:
-                print(f"Could not read error file: {read_e}")
-        else:
-            print("Error file not found.")
-        print("=" * 80 + "\n")
-        raise e
-    # Commit checkpoint to volume
+            with open(error_file) as f:
+                for rank, msg in json.load(f).get("message", {}).items():
+                    print(f"\n--- Rank {rank} ---\n{msg.get('message', '')}")
+        raise
+
     volume.commit()
-    print(f"Stage 2 complete. Checkpoint saved to: {out_dir}")
+    print(f"[stage_train] Done → {out_dir}")
 
 
 # ---------------------------------------------------------------------------
-# Convenience: Run all stages sequentially
+# Full pipeline
 # ---------------------------------------------------------------------------
 
 
 @app.local_entrypoint()
-def main(
-    config: str = "gptneo_125m_metabolic.yaml",
-    skip_data: bool = False,
-    overrides: str = "",
-):
-    """
-    Run the full pipeline sequentially: Stage 1 (data) → Stage 2 (train).
-
-    Usage:
-        modal run run_modal_training.py --config gptneo_125m_metabolic.yaml
-        modal run run_modal_training.py --config gptneo_125m_metabolic.yaml --skip-data
-    """
+def main(config: str = CONFIG, skip_data: bool = False, overrides: str = ""):  # noqa: B008
+    """Run Stage 1 (data) then Stage 2 (train). Edit CONFIG/GPU at top of file."""
     if not skip_data:
-        print("=== Stage 1: Data Preparation ===")
-        stage_data.remote(config=config, overrides=overrides)
-
-    print("=== Stage 2: Training ===")
+        stage_data.remote(config=config)
     stage_train.remote(config=config, overrides=overrides)
-    print("Pipeline complete.")

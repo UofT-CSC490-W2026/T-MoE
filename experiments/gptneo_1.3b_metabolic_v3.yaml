@@ -55,12 +55,9 @@ router:
   # d/dF[SoftSign(F)] = 1/(1+|F|)² = 0.25 — still responsive to changes.
   metabolic:
     lambda_metabolic: 0.5     # λ: penalty ceiling ±0.5 (bounded by SoftSign)
-    mu_silicon: 0.0           # silicon tax disabled (single-node training)
     gamma_recovery: 0.05      # γ: recovery rate — 1/γ ≈ 20 step memory
     beta_cost: 0.4            # β: cost rate — β/γ = 8.0 (SoftSign sweet spot)
     warmup_steps: 500         # longer warmup for larger model
-    normalize_inputs: true
-    normalize_weights: true
     magnitude_min: 0.1        # floor: prevents expert from becoming invisible
     magnitude_max: 3.0        # tighter ceiling for 1.3B (stronger gradients)
 
@@ -104,12 +101,10 @@ logging:
 # DISTRIBUTED TRAINING
 # ============================================================================
 distributed:
-  num_gpus: 4
   strategy: ddp   # DDP is sufficient for 1.3B — FSDP only needed for 7B+
 
-# ============================================================================
-# COMPUTE CONFIGURATION
-# ============================================================================
+# Read by run_modal_training.py at import time to provision the container.
+# Change CONFIG at the top of run_modal_training.py to activate a different experiment.
 compute:
   modal:
     gpu: "H100:4"

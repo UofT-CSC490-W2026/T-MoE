@@ -75,3 +75,53 @@ def test_training_integration():
     ), "Router should receive gradients"
 
     opt.step()
+
+    # ── router.step() applies deferred fatigue and increments counter ──
+    fatigue_before = moe.router.fatigue.clone()
+    moe.router.step()
+    assert moe.router.num_steps.item() == 1
+    assert not moe.router._usage_pending
+
+    # Fatigue should have changed (tokens were routed during forward)
+    assert not torch.allclose(moe.router.fatigue, fatigue_before), (
+        "Fatigue should update after router.step()"
+    )
+
+    # ── multi-step: fatigue accumulates and recovers ──
+    moe.router.gamma_recovery = 0.0  # disable recovery to verify accumulation
+    moe.router.beta_cost = 1.0
+
+    fatigue_step1 = moe.router.fatigue.clone()
+    out = moe(x)
+    out.mean().backward()
+    opt.step()
+    moe.router.step()
+
+    # At least one expert should have changed fatigue
+    assert not torch.allclose(moe.router.fatigue, fatigue_step1)
+
+
+def test_gradient_accumulation_defers_fatigue():
+    """Fatigue should only update once per optimizer.step(), not per forward pass."""
+    hidden_dim = 64
+    cfg = MetabolicRouterConfig(hidden_dim=hidden_dim, num_experts=4, top_k=2)
+    lora_cfg = LoRAConfig(hidden_dim=hidden_dim, rank=4, alpha=16)
+    moe = LoRAMoELayer.from_pretrained_mlp(
+        mlp=MockMLP(hidden_dim, 256),
+        router=MetabolicRouter(cfg),
+        lora_config=lora_cfg,
+        num_experts=4,
+    )
+    moe.train()
+
+    x = torch.randn(4, 8, hidden_dim)
+    # Two forward passes (simulating grad accumulation)
+    moe(x)
+    moe(x)
+
+    # Usage should be pending (accumulated across both forwards)
+    assert moe.router._usage_pending
+    assert moe.router.num_steps.item() == 0  # step() not called yet
+
+    moe.router.step()
+    assert moe.router.num_steps.item() == 1  # single step despite two forwards

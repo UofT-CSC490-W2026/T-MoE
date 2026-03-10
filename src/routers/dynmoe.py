@@ -31,7 +31,6 @@ class DynMoERouter(BaseRouter):
 
         self.metrics_tracker = RouterMetricsTracker(self)
 
-        # Last forward pass data for aux loss
         self._last_probs: Optional[torch.Tensor] = None
         self._last_indices: Optional[torch.Tensor] = None
         self._last_weights: Optional[torch.Tensor] = None
@@ -39,11 +38,9 @@ class DynMoERouter(BaseRouter):
     def forward(
         self, x: torch.Tensor, return_metrics: bool = False, **kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[Dict[str, Any]]]:
-        # logits: [batch, seq, num_experts]
         logits = self.gate(x) / self.temperature
         probs = torch.sigmoid(logits)
 
-        # Take top_k candidates, then apply threshold mask
         topk_probs, topk_indices = torch.topk(probs, self.top_k, dim=-1)
         mask = topk_probs >= self.gate_threshold
 
@@ -76,14 +73,14 @@ class DynMoERouter(BaseRouter):
         ):
             return torch.tensor(0.0, device=self.gate.weight.device)
 
-        probs = self._last_probs  # [B, S, N]
-        indices = self._last_indices  # [B, S, K]
-        weights = self._last_weights  # [B, S, K]
+        probs = self._last_probs
+        indices = self._last_indices
+        weights = self._last_weights
 
         bsz, seq_len, num_experts = probs.shape
         num_tokens = bsz * seq_len
 
-        P = probs.mean(dim=(0, 1))  # [N]
+        P = probs.mean(dim=(0, 1))
         usage = torch.zeros(num_experts, device=probs.device, dtype=torch.float32)
         flat_idx = indices.reshape(-1)
         flat_w = weights.reshape(-1).to(torch.float32)

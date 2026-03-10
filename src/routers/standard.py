@@ -12,11 +12,6 @@ from src.metrics import RouterMetricsTracker
 
 @RouterRegistry.register("standard")
 class StandardRouter(BaseRouter):
-    """
-    Standard Top-K router: one linear layer produces logits, then softmax and
-    top-k selection. Optional auxiliary load-balancing loss.
-    """
-
     def __init__(self, config: StandardRouterConfig):
         super().__init__(config)
         self.use_aux_loss = config.use_aux_loss
@@ -28,7 +23,6 @@ class StandardRouter(BaseRouter):
 
         self.metrics_tracker = RouterMetricsTracker(self)
 
-        # Last forward pass data for aux loss (set in forward when training)
         self._last_probs: Optional[torch.Tensor] = None
         self._last_indices: Optional[torch.Tensor] = None
         self._last_weights: Optional[torch.Tensor] = None
@@ -36,7 +30,6 @@ class StandardRouter(BaseRouter):
     def forward(
         self, x: torch.Tensor, return_metrics: bool = False, **kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[Dict[str, Any]]]:
-        # logits: [batch, seq, num_experts]
         logits = self.gate(x) / self.temperature
         probs = F.softmax(logits, dim=-1)
 
@@ -64,19 +57,15 @@ class StandardRouter(BaseRouter):
         ):
             return torch.tensor(0.0, device=self.gate.weight.device)
 
-        # Load balancing: alpha * N * sum_i (f_i * P_i)
-        # f_i = fraction of tokens routed to expert i, P_i = mean prob of expert i
-        probs = self._last_probs  # [B, S, N]
-        indices = self._last_indices  # [B, S, K]
-        weights = self._last_weights  # [B, S, K]
+        # aux = α * N * Σ_i (f_i * P_i), f_i = normalized routing weight, P_i = mean gate prob
+        probs = self._last_probs
+        indices = self._last_indices
+        weights = self._last_weights
 
         bsz, seq_len, num_experts = probs.shape
         num_tokens = bsz * seq_len
 
-        # P_i = mean over tokens of prob(expert i)
-        P = probs.mean(dim=(0, 1))  # [N]
-
-        # f_i = sum over tokens of routing weight to expert i, normalized
+        P = probs.mean(dim=(0, 1))
         usage = torch.zeros(num_experts, device=probs.device, dtype=torch.float32)
         flat_idx = indices.reshape(-1)
         flat_w = weights.reshape(-1).to(torch.float32)
@@ -98,11 +87,6 @@ class StandardRouter(BaseRouter):
 
 @RouterRegistry.register("topk")
 class TopKRouter(StandardRouter):
-    """
-    Top-K router: same as StandardRouter but no load-balancing aux loss.
-    Use for baseline / ablation.
-    """
-
     def __init__(self, config: TopKRouterConfig):
         super().__init__(config)
         self.use_aux_loss = False
@@ -113,10 +97,6 @@ class TopKRouter(StandardRouter):
 
 @RouterRegistry.register("switch")
 class SwitchRouter(StandardRouter):
-    """
-    Switch (Top-1) router: same as StandardRouter but forces top_k=1.
-    """
-
     def __init__(self, config: SwitchRouterConfig):
         super().__init__(config)
         if self.top_k != 1:

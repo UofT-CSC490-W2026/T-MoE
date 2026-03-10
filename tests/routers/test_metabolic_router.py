@@ -32,9 +32,6 @@ class TestWeightNormalization:
         """
         router = MetabolicRouter(standard_config).to(device)
 
-        if not standard_config.normalize_weights:
-            pytest.skip("weight_norm not enabled")
-
         g = None
         for name, param in router.named_parameters():
             if "prototype_magnitude" in name:
@@ -49,8 +46,6 @@ class TestWeightNormalization:
     def test_g_initializes_to_one(self, standard_config, device):
         """Verify that prototype_magnitude initializes to 1.0 (equal importance)."""
         router = MetabolicRouter(standard_config).to(device)
-        if not standard_config.normalize_weights:
-            pytest.skip("weight_norm not enabled")
 
         g = None
         for name, param in router.named_parameters():
@@ -170,8 +165,6 @@ class TestMagnitudeClamping:
             hidden_dim=256,
             num_experts=4,
             top_k=2,
-            normalize_inputs=True,
-            normalize_weights=True,
             magnitude_min=0.5,
             magnitude_max=2.0,
         )
@@ -200,8 +193,6 @@ class TestMagnitudeClamping:
             hidden_dim=64,
             num_experts=4,
             top_k=2,
-            normalize_inputs=True,
-            normalize_weights=True,
             magnitude_min=0.1,
             magnitude_max=2.0,
         )
@@ -209,8 +200,6 @@ class TestMagnitudeClamping:
             hidden_dim=64,
             num_experts=4,
             top_k=2,
-            normalize_inputs=True,
-            normalize_weights=True,
             magnitude_min=0.0,
             magnitude_max=0,  # 0 disables clamping
         )
@@ -263,8 +252,6 @@ class TestConfidenceMetrics:
             hidden_dim=64,
             num_experts=4,
             top_k=1,
-            normalize_inputs=True,
-            normalize_weights=True,
         )
         router = MetabolicRouter(config).to(device)
         router.eval()

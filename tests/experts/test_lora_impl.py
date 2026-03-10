@@ -199,7 +199,6 @@ def test_lora_moe_layer_changes_after_perturb(lora_config):
     x = torch.randn(2, 5, 32)
     expected = base_mlp(x)
 
-    # Perturb expert 0 (both layers so the delta propagates)
     e0 = layer.expert_pool[0]
     nn.init.ones_(e0.c_fc.lora_B.weight)
     nn.init.ones_(e0.c_fc.lora_A.weight)
@@ -208,3 +207,28 @@ def test_lora_moe_layer_changes_after_perturb(lora_config):
 
     out = layer(x)
     assert not torch.allclose(out, expected)
+
+
+def test_consolidate_shared_weights_aliases_buffers(lora_config):
+    """After consolidation, experts 1..N-1 share expert 0's weight buffers."""
+    base_mlp = MockMLP()
+    pool = ExpertPool(lora_config, num_experts=4)
+    pool.load_from_mlp(base_mlp)
+    pool.consolidate_shared_weights()
+
+    e0 = pool.experts[0]
+    for expert in pool.experts[1:]:
+        assert (
+            expert.c_fc._buffers["shared_weight"].data_ptr()
+            == e0.c_fc._buffers["shared_weight"].data_ptr()
+        ), "Experts should share the same weight buffer after consolidation"
+
+
+def test_gptneo_lora_forward_raises_before_load():
+    """forward() must raise if load_from_mlp() was never called."""
+    from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
+    from src.experts.lora import LoRAConfig
+
+    expert = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
+    with pytest.raises(RuntimeError, match="load_from_mlp"):
+        expert(torch.randn(2, 4, 32))

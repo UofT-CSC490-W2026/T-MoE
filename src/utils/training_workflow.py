@@ -19,29 +19,11 @@ def execute_training_workflow(
     experiment_config,
     cache_dir: str,
 ) -> Tuple[str, dict]:
-    """
-    Run T-MoE training from within an AWS Batch container.
-
-    Reads distributed.num_gpus from the config to decide whether to launch
-    with torchrun (multi-GPU) or python (single-GPU). Uses the same
-    scripts/train.py entrypoint as Modal and local runs.
-
-    Pipeline:
-      1. Tokenize + pack raw data into .bin shards (idempotent)
-      2. Train on the packed shards
-
-    Args:
-        experiment_config: OmegaConf config loaded by run_aws_training.py
-        cache_dir: Local directory where dataset was downloaded from S3
-
-    Returns:
-        (output_dir, metrics) — output directory path and final training metrics
-    """
+    """Run T-MoE training from within an AWS Batch container. Returns (output_dir, metrics)."""
     import subprocess
     from omegaconf import OmegaConf
-
-    # Resolve the config file path (re-serialize so scripts/train.py can load it)
     from src.project_types import EXPERIMENTS_DIR
+    from src.configs.dataset import get_shard_dir
 
     config_name = experiment_config.get("experiment_name", "experiment")
     config_path = EXPERIMENTS_DIR / f"{config_name}.yaml"
@@ -55,7 +37,10 @@ def execute_training_workflow(
     dataset_key = OmegaConf.select(
         experiment_config, "dataset.dataset_key", default="wikitext-2"
     )
-    shard_dir = Path("/tmp/tmoe_shards") / dataset_key
+    model_key = OmegaConf.select(
+        experiment_config, "model.model_key", default="gpt-neo-125m"
+    )
+    shard_dir = get_shard_dir(dataset_key, model_key, base="/tmp/tmoe_shards")
 
     # Output directory inside container
     output_dir = Path("/tmp/tmoe_outputs") / config_name
@@ -64,10 +49,7 @@ def execute_training_workflow(
     # -----------------------------------------------------------------
     # Step 1: Prepare shards (idempotent — skips if already done)
     # -----------------------------------------------------------------
-    existing_shards = (
-        list(shard_dir.glob("train_shard_*.bin")) if shard_dir.exists() else []
-    )
-    if not existing_shards:
+    if next(shard_dir.glob("train_shard_*.bin"), None) is None:
         prep_cmd = [
             sys.executable,
             "-m",
@@ -82,7 +64,9 @@ def execute_training_workflow(
     # -----------------------------------------------------------------
     # Step 2: Train
     # -----------------------------------------------------------------
-    num_gpus = OmegaConf.select(experiment_config, "distributed.num_gpus", default=1)
+    import torch
+
+    num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     base_cmd = (
         ["torchrun", "--standalone", f"--nproc_per_node={num_gpus}"]
         if num_gpus > 1
@@ -110,7 +94,7 @@ def _read_last_checkpoint_metrics(output_dir: Path) -> dict:
     """Read metrics from the most recent checkpoint JSON, if available."""
     import json
 
-    checkpoints = sorted(output_dir.rglob("checkpoint_step_*.json"))
+    checkpoints = sorted((output_dir / "checkpoints").glob("checkpoint_step_*.json"))
     if not checkpoints:
         return {"loss": float("inf"), "best_loss": float("inf")}
     with open(checkpoints[-1]) as f:

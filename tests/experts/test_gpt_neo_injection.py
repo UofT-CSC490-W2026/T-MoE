@@ -18,7 +18,12 @@ class MockGPTNeo(nn.Module):
         self.hidden_size = config.hidden_size
 
     def forward(
-        self, input_ids, attention_mask=None, labels=None, output_hidden_states=False
+        self,
+        input_ids,
+        attention_mask=None,
+        labels=None,
+        output_hidden_states=False,
+        **kwargs,
     ):
         batch, seq = input_ids.shape
         # Create mock hidden states

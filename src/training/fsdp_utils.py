@@ -20,7 +20,7 @@ import torch.nn as nn
 
 
 def init_distributed() -> Tuple[bool, int, int, int]:
-    """Initialize NCCL process group. Returns (is_distributed, rank, local_rank, world_size)."""
+    """Returns (is_distributed, rank, local_rank, world_size)."""
     if "RANK" not in os.environ:
         return False, 0, 0, 1
 
@@ -61,16 +61,13 @@ def is_main_process() -> bool:
 
 
 def get_model_for_attr_access(model: nn.Module) -> nn.Module:
-    """Unwrap FSDP for attribute access. Prefer caching refs before wrapping."""
-    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+    """Unwrap DDP. For FSDP, access attrs before wrapping."""
+    from torch.nn.parallel import DistributedDataParallel as DDP
 
-    if isinstance(model, FSDP):
-        return model._fsdp_wrapped_module
-    return model
+    return model.module if isinstance(model, DDP) else model
 
 
 def debug_fsdp_wrapping(model: nn.Module) -> None:
-    """Walk module tree and report FSDP-wrapped nodes."""
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
     print("\n=== FSDP Module Tree ===")
@@ -94,7 +91,7 @@ def debug_fsdp_wrapping(model: nn.Module) -> None:
         print(f"  depth={depth} | name={name!r} | wrapping={inner_cls}")
 
     nested = any(
-        d1 > d2 and n2 in n1
+        d1 > d2 and n1.startswith(n2 + ".")
         for (d1, n1, _) in fsdp_modules
         for (d2, n2, _) in fsdp_modules
     )
@@ -127,10 +124,10 @@ def wrap_model_for_distributed(
         return wrap_model_with_fsdp(model, cfg, device)
 
     # Default: DDP
-    return wrap_model_with_ddp(model, local_rank)
+    return wrap_model_with_ddp(model, local_rank, cfg)
 
 
-def wrap_model_with_ddp(model: nn.Module, local_rank: int) -> nn.Module:
+def wrap_model_with_ddp(model: nn.Module, local_rank: int, cfg=None) -> nn.Module:
     """
     Wrap model with DistributedDataParallel for multi-GPU training.
 
@@ -144,23 +141,31 @@ def wrap_model_with_ddp(model: nn.Module, local_rank: int) -> nn.Module:
     - No complex state dict API — just model.module.state_dict()
     - Standard approach for all LoRA/PEFT fine-tuning work
 
-    find_unused_parameters=True is required because MoE top-k routing means
-    some experts are not selected every batch → their lora_A/lora_B have no grad.
+    find_unused_parameters: with top-k routing and large batches, all experts will
+    be selected every step — set False (default) to eliminate the autograd graph
+    traversal overhead. Only enable for tiny-batch debugging where an expert might
+    receive zero tokens in a single step.
     """
     from torch.nn.parallel import DistributedDataParallel as DDP
+
+    find_unused = getattr(
+        getattr(cfg, "distributed", {}), "find_unused_parameters", False
+    )
 
     wrapped = DDP(
         model,
         device_ids=[local_rank],
         output_device=local_rank,
-        find_unused_parameters=True,
+        find_unused_parameters=find_unused,
     )
 
     if dist.is_initialized():
         dist.barrier()
 
     if is_main_process():
-        print(f"DDP enabled | device_ids=[{local_rank}] | find_unused_parameters=True")
+        print(
+            f"DDP enabled | device_ids=[{local_rank}] | find_unused_parameters={find_unused}"
+        )
 
     return wrapped
 

@@ -58,7 +58,6 @@ class LoRAMoELayer(BaseMoELayer):
         return layer
 
     def get_cached_metrics(self) -> Optional[Dict[str, Any]]:
-        """Return metrics from most recent forward pass."""
         if (
             hasattr(self, "_last_routing_weights")
             and self._last_routing_weights is not None
@@ -74,7 +73,6 @@ class LoRAMoELayer(BaseMoELayer):
         return None
 
     def step(self) -> None:
-        """Delegate to router's step method (applies fatigue)."""
         if hasattr(self.router, "step"):
             self.router.step()
 
@@ -119,7 +117,7 @@ class LoRAMoELayer(BaseMoELayer):
         if return_metrics:
             if metrics is None:
                 metrics = {}
-            metrics["weights"] = weights
-            metrics["indices"] = indices
+            metrics["weights"] = weights.detach()
+            metrics["indices"] = indices.detach()
             return output, metrics
         return output

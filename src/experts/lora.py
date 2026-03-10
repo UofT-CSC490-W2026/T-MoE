@@ -58,8 +58,9 @@ class LoRALayer(nn.Module):
         nn.init.kaiming_uniform_(self.lora_A.weight, a=init_scale)
         nn.init.zeros_(self.lora_B.weight)
 
-        self.base_weight: Optional[nn.Parameter] = None
-        self.base_bias: Optional[nn.Parameter] = None
+        # Non-persistent buffers: move with .to(device), excluded from state_dict + optimizer.
+        self.register_buffer("base_weight", None, persistent=False)
+        self.register_buffer("base_bias", None, persistent=False)
 
     def load_base_weight(
         self,
@@ -72,9 +73,9 @@ class LoRALayer(nn.Module):
                 f"Weight shape {weight.shape} does not match "
                 f"expected ({self.out_features}, {self.in_features})"
             )
-        self.base_weight = nn.Parameter(weight.detach().clone(), requires_grad=False)
+        self.register_buffer("base_weight", weight.detach().clone(), persistent=False)
         if bias is not None:
-            self.base_bias = nn.Parameter(bias.detach().clone(), requires_grad=False)
+            self.register_buffer("base_bias", bias.detach().clone(), persistent=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.base_weight is not None:
