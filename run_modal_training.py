@@ -27,7 +27,7 @@ from omegaconf import OmegaConf
 # CONFIGURATION — change this one line to switch experiments
 # =============================================================================
 
-CONFIG = "experiments/gptneo_125m_metabolic_v4.yaml"
+CONFIG = "experiments/gptneo_125m_standard_v3.yaml"
 
 # GPU spec is read from compute.modal.gpu in the active config.
 # Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
@@ -204,7 +204,7 @@ def stage_train(config: str = CONFIG, overrides: str = ""):  # noqa: B008
 
     gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
     print(f"[stage_train] Experiment : {cfg.experiment_name}")
-    print(f"[stage_train] GPU        : {gpu_name} × {n_gpus}  (config: {GPU})")
+    print(f"[stage_train] GPU        : {gpu_name} × {n_gpus}")
     print(f"[stage_train] Output     : {out_dir}")
 
     cmd = (

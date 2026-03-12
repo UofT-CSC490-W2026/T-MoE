@@ -122,7 +122,7 @@ class GPTNeoBackbone(BaseModelBackbone):
                 attention_mask=attention_mask,
                 labels=labels,
                 output_hidden_states=False,
-                use_cache=False,  # prevents KV-cache state changes that cause torch.compile recompilation
+                use_cache=False,  # no KV cache — reduces memory and avoids recompilation with compile=True
             )
 
         logits = outputs.logits

@@ -38,18 +38,14 @@ class MetabolicRouterConfig(BaseRouterConfig):
     temperature: float = 1.0
     noise_std: float = 0.1
 
-    # Metabolic parameters
-    lambda_metabolic: float = 0.1
-    gamma_recovery: float = 0.01
-    beta_cost: float = 0.04
-    # Global λ warmup: ramp fatigue penalty 0 → λ over these steps.
-    # Prevents the gate locking into biased routing before fatigue builds up.
-    warmup_steps: int = 100
-
-    # Prototype magnitude clamp (prevents expert dominance via unbounded g_i).
-    # Set magnitude_max=0 to disable clamping entirely (useful for ablations).
-    magnitude_min: float = 0.1
-    magnitude_max: float = 5.0
+    # λ in cosine space [-1, 1]: trained gate advantages ≈ 0.3–0.6 on real data.
+    # λ=1.0 exceeds the practical maximum → provably forces rebalancing via raw F_i.
+    lambda_metabolic: float = 1.0
+    gamma_recovery: float = 0.05
+    beta_cost: float = 0.4
+    # Global λ warmup: ramp fatigue penalty 0 → λ over warmup_steps.
+    # Prevents gate locking into biased routing before fatigue builds up.
+    warmup_steps: int = 400
 
 
 @dataclass

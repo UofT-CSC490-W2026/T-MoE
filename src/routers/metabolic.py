@@ -16,19 +16,30 @@ MIN_TEMPERATURE = 1e-3
 @RouterRegistry.register(RouterType.METABOLIC.value)
 class MetabolicRouter(BaseRouter):
     """
-    Metabolic Router: fatigue-based load balancing without auxiliary loss.
+    Metabolic Router v5: fatigue-based load balancing without auxiliary loss.
 
     Formula:
-        potential_i = cosine_sim(x, w_i) * g_i - λ * warmup_scale * softsign(F_i) + noise
+        potential_i = cos(x, w_i) - λ * warmup_scale * F_i
         F_i = (1 - γ) * F_i + β * (U_i - 1/N)
 
     Where:
-        g_i  - learnable per-expert magnitude (prototype_magnitude)
         F_i  - fatigue buffer per expert (EMA of excess usage)
         U_i  - fraction of tokens routed to expert i (uniform token count)
         λ    - fatigue penalty strength (lambda_metabolic)
         γ    - fatigue recovery rate (gamma_recovery)
         β    - fatigue accumulation rate (beta_cost)
+
+    Escape hatches closed vs v1-v4:
+        1. g_i removed: cosine similarity ∈ [-1, 1] is the hard bound on gate signal.
+           No learnable scale the optimizer can inflate to overpower the penalty.
+        2. Raw F_i (no SoftSign): penalty grows proportionally with imbalance.
+           For any finite gate advantage (bounded by cosine range 2.0), F_i will grow
+           until λ × F_i exceeds it — guaranteed equilibrium for λ ≥ max trained advantage.
+
+    λ calibration (cosine space, no LN):
+        At equilibrium for 2x overloaded expert: F_eq = β/γ × 1/N ≈ 1.0
+        penalty = λ × 1.0. Trained gate advantages in practice ≈ 0.3–0.6.
+        λ=1.0 exceeds the practical maximum → provably forces rebalancing.
     """
 
     def __init__(self, config: MetabolicRouterConfig):
@@ -45,47 +56,31 @@ class MetabolicRouter(BaseRouter):
         self.warmup_steps = config.warmup_steps
         self.temperature = config.temperature
         self.noise_std = config.noise_std
-        self.magnitude_min = config.magnitude_min
-        self.magnitude_max = config.magnitude_max
 
         # Gate: cosine similarity between input and expert prototypes.
-        # nn.Linear is FSDP-safe (vs raw Parameter - FSDP all-gather intercepts F.linear).
+        # nn.Linear is FSDP-safe (vs raw Parameter — FSDP all-gather intercepts F.linear).
         self.gate = nn.Linear(config.hidden_dim, config.num_experts, bias=False)
         nn.init.xavier_uniform_(self.gate.weight)
 
-        # Per-expert learnable magnitude: decouples direction (specialization) from
-        # scale (aggressiveness). Clamped to [magnitude_min, magnitude_max] during
-        # forward to prevent any expert from dominating via unbounded scale.
-        self.prototype_magnitude = nn.Parameter(torch.ones(config.num_experts))
-
         # Fatigue buffer: EMA of excess usage per expert.
-        # Explicitly fp32 - under FSDP bf16, accumulated rounding errors grow as
+        # Explicitly fp32 — under FSDP bf16, accumulated rounding errors grow as
         # O(T * ε_bf16) over thousands of steps via the (1-γ) EMA.
         self.register_buffer("fatigue", torch.zeros(self.num_experts))
         self.register_buffer("num_steps", torch.tensor(0, dtype=torch.long))
 
         # Deferred usage accumulators for gradient accumulation support.
-        # Usage is applied once per optimizer step (in step()), not per forward pass.
         self.register_buffer("_pending_usage_sum", torch.zeros(self.num_experts))
         self.register_buffer("_pending_tokens", torch.tensor(0, dtype=torch.long))
         self._usage_pending = False
-        # Python-int mirror of num_steps for warmup math - avoids GPU→CPU sync
-        # (.item()) on every training forward. Kept in sync with the buffer in step().
         self._step_count: int = 0
 
         self.metrics_tracker = RouterMetricsTracker(self)
 
     def compute_alignment(self, x: torch.Tensor) -> torch.Tensor:
+        """Pure cosine similarity in [-1, 1]."""
         x = F.normalize(x, p=2, dim=-1, eps=1e-8)
         w = F.normalize(self.gate.weight, p=2, dim=-1, eps=1e-8)
-        # magnitude_max=0 disables clamping (useful for ablations).
-        if self.magnitude_max > 0:
-            mag = self.prototype_magnitude.clamp(
-                min=self.magnitude_min, max=self.magnitude_max
-            )
-        else:
-            mag = self.prototype_magnitude
-        return F.linear(x, w * mag.unsqueeze(-1))
+        return F.linear(x, w)
 
     def compute_routing_potential(
         self, alignment: torch.Tensor, noise_std: float = 0.0, lambda_scale: float = 1.0
@@ -93,15 +88,15 @@ class MetabolicRouter(BaseRouter):
         potential = alignment
 
         if self.lambda_metabolic > 0 and lambda_scale > 0:
-            # Cast fatigue to fp32: under FSDP bf16 the buffer may be downcast,
-            # losing precision in the penalty signal.
-            fatigue_term = F.softsign(self.fatigue.float())
+            # Raw F_i: penalty grows proportionally with imbalance (no SoftSign ceiling).
+            # Cast to fp32: under FSDP bf16 the buffer may be downcast.
             potential = potential - (
-                self.lambda_metabolic * lambda_scale * fatigue_term.view(1, 1, -1)
+                self.lambda_metabolic
+                * lambda_scale
+                * self.fatigue.float().view(1, 1, -1)
             )
 
         if noise_std > 0:
-            # Gumbel noise: avoids per-call distribution object overhead vs torch.distributions
             u = torch.empty_like(potential).uniform_(1e-10, 1.0 - 1e-10)
             potential = potential + noise_std * (-torch.log(-torch.log(u)))
 
@@ -111,12 +106,6 @@ class MetabolicRouter(BaseRouter):
         flat_indices = indices.flatten()
         batch_tokens = flat_indices.numel() // self.top_k
 
-        # Uniform token weight (1/top_k per selection) rather than softmax weights.
-        # Token count measures compute load (routing frequency) - the correct signal
-        # for load balancing. Softmax weights add noise from logit magnitudes.
-        # bincount without weights counts selections per expert; dividing by top_k
-        # normalises to the same scale as 1/top_k-weighted bincount, without
-        # allocating an O(batch*seq*top_k) constant tensor every forward pass.
         usage = (
             torch.bincount(flat_indices, minlength=self.num_experts)
             .float()
@@ -159,8 +148,6 @@ class MetabolicRouter(BaseRouter):
             noise_std = self.noise_std if self.training else 0.0
 
         # Global λ warmup: ramp fatigue penalty 0 → λ over warmup_steps.
-        # Lets the gate converge to good routing directions before fatigue feedback
-        # kicks in - without this, fatigue can lock in a biased pattern in early steps.
         if self.warmup_steps > 0 and self.training:
             lambda_scale = min(1.0, self._step_count / self.warmup_steps)
         else:
@@ -186,10 +173,7 @@ class MetabolicRouter(BaseRouter):
         return weights, top_k_indices, metrics
 
     def step(self) -> None:
-        """
-        Apply pending usage to fatigue and increment step counter.
-        Call after optimizer.step(), once per logical batch.
-        """
+        """Apply pending usage to fatigue. Call after optimizer.step(), once per logical batch."""
         if not self._usage_pending:
             return
 
@@ -204,11 +188,10 @@ class MetabolicRouter(BaseRouter):
             self._usage_pending = False
 
     def compute_aux_loss(self) -> torch.Tensor:
-        """Always zero - fatigue IS the load balancing mechanism."""
+        """Always zero — fatigue IS the load balancing mechanism."""
         return torch.tensor(0.0, device=self.fatigue.device)
 
     def reset_state(self) -> None:
-        """Reset all expert state buffers to initial values."""
         with torch.no_grad():
             self.fatigue.zero_()
             self.num_steps.zero_()
@@ -235,8 +218,6 @@ class MetabolicRouter(BaseRouter):
             "beta_cost": self.beta_cost,
             "warmup_steps": self.warmup_steps,
             "temperature": self.temperature,
-            "magnitude_min": self.magnitude_min,
-            "magnitude_max": self.magnitude_max,
         }
         return state
 

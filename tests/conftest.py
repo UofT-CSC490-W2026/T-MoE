@@ -21,9 +21,9 @@ def standard_config() -> MetabolicRouterConfig:
         hidden_dim=256,
         num_experts=8,
         top_k=2,
-        lambda_metabolic=0.1,
-        gamma_recovery=0.01,
-        beta_cost=0.04,
+        lambda_metabolic=0.5,
+        gamma_recovery=0.05,
+        beta_cost=0.4,
         warmup_steps=100,
         temperature=1.0,
     )
