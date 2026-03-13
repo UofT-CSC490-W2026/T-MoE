@@ -4,10 +4,16 @@ import json
 import argparse
 from collections import Counter
 
-from nanochat.common import compute_init, compute_cleanup, autodetect_device_type, get_base_dir
+from nanochat.common import (
+    compute_init,
+    compute_cleanup,
+    autodetect_device_type,
+    get_base_dir,
+)
 from nanochat.checkpoint_manager import load_model
 from nanochat.engine import Engine
 from tasks.gsm8k import GSM8K, extract_answer
+
 
 def detect_repetition(text, ngram_size=4, threshold=3):
     """
@@ -21,7 +27,7 @@ def detect_repetition(text, ngram_size=4, threshold=3):
     # Count n-gram occurrences
     ngrams = []
     for i in range(len(words) - ngram_size + 1):
-        ngram = " ".join(words[i:i + ngram_size])
+        ngram = " ".join(words[i : i + ngram_size])
         ngrams.append(ngram)
 
     counts = Counter(ngrams)
@@ -33,7 +39,11 @@ def detect_repetition(text, ngram_size=4, threshold=3):
     repetition_score = most_common_count / len(ngrams)
 
     is_repetitive = most_common_count >= threshold
-    return is_repetitive, round(repetition_score, 4), most_common_phrase if is_repetitive else ""
+    return (
+        is_repetitive,
+        round(repetition_score, 4),
+        most_common_phrase if is_repetitive else "",
+    )
 
 
 def detect_format_compliance(text):
@@ -60,7 +70,7 @@ def detect_answer_proximity(text, ref_answer):
     try:
         ref_val = float(ref_answer.replace(",", ""))
         # Find all numbers in the text
-        numbers = re.findall(r'\-?[\d,]+\.?\d*', text)
+        numbers = re.findall(r"\-?[\d,]+\.?\d*", text)
         for num_str in numbers:
             try:
                 num_val = float(num_str.replace(",", ""))
@@ -81,7 +91,9 @@ def detect_answer_proximity(text, ref_answer):
     }
 
 
-def classify_error(output, ref_answer, is_correct, format_info, rep_info, proximity_info):
+def classify_error(
+    output, ref_answer, is_correct, format_info, rep_info, proximity_info
+):
     """
     Classify the error into a category for clustering.
     Categories:
@@ -116,7 +128,7 @@ def classify_error(output, ref_answer, is_correct, format_info, rep_info, proxim
 
     # Check if output seems truncated (ends mid-sentence, no period/####)
     stripped = output.strip()
-    if stripped and not stripped[-1] in '.!?':
+    if stripped and stripped[-1] not in ".!?":
         return "truncated"
 
     return "no_answer"
@@ -128,17 +140,17 @@ def estimate_reasoning_steps(text):
     Looks for patterns like equations, "Step X", numbered lists, etc.
     """
     # Count lines that look like calculation steps
-    lines = text.strip().split('\n')
+    lines = text.strip().split("\n")
     step_count = 0
     for line in lines:
         line = line.strip()
         if not line:
             continue
         # Lines with = sign (equations)
-        if '=' in line and any(c.isdigit() for c in line):
+        if "=" in line and any(c.isdigit() for c in line):
             step_count += 1
         # Lines starting with numbers or "Step"
-        elif re.match(r'^(\d+[\.\):]|Step\s)', line, re.IGNORECASE):
+        elif re.match(r"^(\d+[\.\):]|Step\s)", line, re.IGNORECASE):
             step_count += 1
     return step_count
 
@@ -149,11 +161,11 @@ def compute_problem_difficulty(question):
     Returns a difficulty category: easy, medium, hard
     """
     # Count numbers mentioned in the question
-    numbers = re.findall(r'\d+', question)
+    numbers = re.findall(r"\d+", question)
     num_count = len(numbers)
 
     # Count sentences (rough proxy for complexity)
-    sentences = re.split(r'[.?!]', question)
+    sentences = re.split(r"[.?!]", question)
     sentence_count = len([s for s in sentences if s.strip()])
 
     # Large numbers suggest harder arithmetic
@@ -167,7 +179,6 @@ def compute_problem_difficulty(question):
         return "medium"
 
 
-
 def dump_mistakes(source, model_tag, step, max_questions):
     device_type = autodetect_device_type()
     ddp, _ddp_rank, _ddp_local_rank, ddp_world_size, device = compute_init(device_type)
@@ -176,7 +187,9 @@ def dump_mistakes(source, model_tag, step, max_questions):
         raise RuntimeError("This dump script must be run single-process.")
 
     print(f"Loading {source} model (tag: {model_tag})...")
-    model, tokenizer, meta = load_model(source, device, phase="eval", model_tag=model_tag, step=step)
+    model, tokenizer, meta = load_model(
+        source, device, phase="eval", model_tag=model_tag, step=step
+    )
     engine = Engine(model, tokenizer)
 
     # Load GSM8K test set
@@ -206,18 +219,22 @@ def dump_mistakes(source, model_tag, step, max_questions):
         is_correct = bool(task.evaluate(conversation, output_str))
 
         # Extract question and reference answer
-        question_str = conversation['messages'][0]['content']
-        assistant_content = conversation['messages'][1]['content']
+        question_str = conversation["messages"][0]["content"]
+        assistant_content = conversation["messages"][1]["content"]
         if isinstance(assistant_content, list):
             expected_full = "".join(
-                p['text'] if p['type'] == 'text' else f"<<{p['text']}>>"
+                p["text"] if p["type"] == "text" else f"<<{p['text']}>>"
                 for p in assistant_content
             )
         else:
             expected_full = str(assistant_content)
 
         # Get the reference numerical answer
-        last_text_part = assistant_content[-1]['text'] if isinstance(assistant_content, list) else str(assistant_content)
+        last_text_part = (
+            assistant_content[-1]["text"]
+            if isinstance(assistant_content, list)
+            else str(assistant_content)
+        )
         ref_answer = extract_answer(last_text_part)
 
         # ── Run all EDA diagnostics ──
@@ -225,35 +242,41 @@ def dump_mistakes(source, model_tag, step, max_questions):
         is_rep, rep_score, rep_phrase = detect_repetition(output_str)
         rep_info = (is_rep, rep_score, rep_phrase)
         proximity_info = detect_answer_proximity(output_str, ref_answer)
-        error_category = classify_error(output_str, ref_answer, is_correct, format_info, rep_info, proximity_info)
+        error_category = classify_error(
+            output_str, ref_answer, is_correct, format_info, rep_info, proximity_info
+        )
         reasoning_steps = estimate_reasoning_steps(output_str)
         difficulty = compute_problem_difficulty(question_str)
 
-        results.append({
-            "id": i,
-            "question": question_str,
-            "expected_answer": ref_answer,
-            "expected_full_solution": expected_full,
-            "generated_output": output_str,
-            "correct": is_correct,
-            "output_length": len(output_str),
-            "output_word_count": len(output_str.split()),
-            # EDA fields
-            "error_category": error_category,
-            "difficulty": difficulty,
-            "reasoning_steps_detected": reasoning_steps,
-            "format_compliance": format_info,
-            "repetition": {
-                "is_repetitive": is_rep,
-                "repetition_score": rep_score,
-                "repeated_phrase": rep_phrase,
-            },
-            "answer_proximity": proximity_info,
-        })
+        results.append(
+            {
+                "id": i,
+                "question": question_str,
+                "expected_answer": ref_answer,
+                "expected_full_solution": expected_full,
+                "generated_output": output_str,
+                "correct": is_correct,
+                "output_length": len(output_str),
+                "output_word_count": len(output_str.split()),
+                # EDA fields
+                "error_category": error_category,
+                "difficulty": difficulty,
+                "reasoning_steps_detected": reasoning_steps,
+                "format_compliance": format_info,
+                "repetition": {
+                    "is_repetitive": is_rep,
+                    "repetition_score": rep_score,
+                    "repeated_phrase": rep_phrase,
+                },
+                "answer_proximity": proximity_info,
+            }
+        )
 
         if (i + 1) % 10 == 0:
             correct_so_far = sum(1 for r in results if r["correct"])
-            print(f"  [{i+1}/{num_questions}] Accuracy so far: {correct_so_far}/{i+1} ({100*correct_so_far/(i+1):.1f}%)")
+            print(
+                f"  [{i + 1}/{num_questions}] Accuracy so far: {correct_so_far}/{i + 1} ({100 * correct_so_far / (i + 1):.1f}%)"
+            )
 
     total = len(results)
     correct_count = sum(1 for r in results if r["correct"])
@@ -262,7 +285,7 @@ def dump_mistakes(source, model_tag, step, max_questions):
     category_counts = Counter(r["error_category"] for r in results)
 
     # Difficulty breakdown
-    difficulty_counts = Counter(r["difficulty"] for r in results)
+
     difficulty_accuracy = {}
     for diff in ["easy", "medium", "hard"]:
         diff_items = [r for r in results if r["difficulty"] == diff]
@@ -275,13 +298,19 @@ def dump_mistakes(source, model_tag, step, max_questions):
             }
 
     # Format compliance stats
-    format_with_hash = sum(1 for r in results if r["format_compliance"]["has_hash_marker"])
+    format_with_hash = sum(
+        1 for r in results if r["format_compliance"]["has_hash_marker"]
+    )
     repetition_count = sum(1 for r in results if r["repetition"]["is_repetitive"])
 
     # Average output length
     avg_length = sum(r["output_length"] for r in results) / total if total > 0 else 0
-    avg_word_count = sum(r["output_word_count"] for r in results) / total if total > 0 else 0
-    avg_reasoning_steps = sum(r["reasoning_steps_detected"] for r in results) / total if total > 0 else 0
+    avg_word_count = (
+        sum(r["output_word_count"] for r in results) / total if total > 0 else 0
+    )
+    avg_reasoning_steps = (
+        sum(r["reasoning_steps_detected"] for r in results) / total if total > 0 else 0
+    )
 
     summary = {
         "model_source": source,
@@ -291,7 +320,9 @@ def dump_mistakes(source, model_tag, step, max_questions):
         "accuracy": round(correct_count / total, 4) if total > 0 else 0,
         "error_category_distribution": dict(category_counts),
         "difficulty_breakdown": difficulty_accuracy,
-        "format_compliance_rate": round(format_with_hash / total, 4) if total > 0 else 0,
+        "format_compliance_rate": round(format_with_hash / total, 4)
+        if total > 0
+        else 0,
         "repetition_rate": round(repetition_count / total, 4) if total > 0 else 0,
         "avg_output_length_chars": round(avg_length, 1),
         "avg_output_word_count": round(avg_word_count, 1),
@@ -306,40 +337,52 @@ def dump_mistakes(source, model_tag, step, max_questions):
     print("\n" + "=" * 60)
     print(f"  GSM8K EDA Summary — {source} (tag: {model_tag})")
     print("=" * 60)
-    print(f"  Accuracy: {correct_count}/{total} ({100*correct_count/total:.1f}%)")
-    print(f"  Format compliance (has ####): {format_with_hash}/{total} ({100*format_with_hash/total:.1f}%)")
-    print(f"  Repetition loops: {repetition_count}/{total} ({100*repetition_count/total:.1f}%)")
+    print(f"  Accuracy: {correct_count}/{total} ({100 * correct_count / total:.1f}%)")
+    print(
+        f"  Format compliance (has ####): {format_with_hash}/{total} ({100 * format_with_hash / total:.1f}%)"
+    )
+    print(
+        f"  Repetition loops: {repetition_count}/{total} ({100 * repetition_count / total:.1f}%)"
+    )
     print(f"  Avg output length: {avg_length:.0f} chars, {avg_word_count:.0f} words")
     print(f"  Avg reasoning steps: {avg_reasoning_steps:.1f}")
-    print(f"\n  Error categories:")
+    print("\n  Error categories:")
     for cat, count in category_counts.most_common():
-        print(f"    {cat:20s}: {count:4d} ({100*count/total:.1f}%)")
-    print(f"\n  Difficulty breakdown:")
+        print(f"    {cat:20s}: {count:4d} ({100 * count / total:.1f}%)")
+    print("\n  Difficulty breakdown:")
     for diff in ["easy", "medium", "hard"]:
         if diff in difficulty_accuracy:
             d = difficulty_accuracy[diff]
-            print(f"    {diff:8s}: {d['correct']}/{d['total']} ({100*d['accuracy']:.1f}%)")
+            print(
+                f"    {diff:8s}: {d['correct']}/{d['total']} ({100 * d['accuracy']:.1f}%)"
+            )
     print("=" * 60)
 
     cat_printed = 0
     print("\n  [Visual Examples of Mistakes]")
     print("-" * 60)
-    for cat in ["format_error", "near_miss", "repetition_loop", "wrong_answer", "truncated"]:
+    for cat in [
+        "format_error",
+        "near_miss",
+        "repetition_loop",
+        "wrong_answer",
+        "truncated",
+    ]:
         cat_results = [r for r in results if r["error_category"] == cat]
         if cat_results:
             ex = cat_results[0]
             print(f"\n  ➤ CATEGORY: {cat.upper()} (Problem #{ex['id']})")
             print(f"  Q: {ex['question']}")
             print(f"  Expected Number: {ex['expected_answer']}")
-            
+
             # Print output, truncated if too long
-            out_str = ex['generated_output']
+            out_str = ex["generated_output"]
             if len(out_str) > 300:
                 print(f"  Model Output: {out_str[:300]}...\n  [...truncated...]")
             else:
                 print(f"  Model Output: {out_str}")
             cat_printed += 1
-            
+
     if cat_printed == 0:
         print("  No mistake examples to show.")
     print("=" * 60)
@@ -356,11 +399,18 @@ def dump_mistakes(source, model_tag, step, max_questions):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="GSM8K Mistakes Dump + EDA for Part 3 & 4")
+    parser = argparse.ArgumentParser(
+        description="GSM8K Mistakes Dump + EDA for Part 3 & 4"
+    )
     parser.add_argument("--source", type=str, required=True, choices=["sft", "rl"])
     parser.add_argument("--model-tag", type=str, default=None)
     parser.add_argument("--step", type=int, default=None)
-    parser.add_argument("--num-samples", type=int, default=200, help="Number of GSM8K problems to evaluate")
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=200,
+        help="Number of GSM8K problems to evaluate",
+    )
     args = parser.parse_args()
 
     dump_mistakes(args.source, args.model_tag, args.step, args.num_samples)
