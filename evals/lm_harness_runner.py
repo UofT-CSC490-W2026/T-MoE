@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Dict, Sequence
+
+import torch
+
+from evals.loading import load_model_for_eval
+from evals.perplexity import _load_tokenizer_for_model
+from evals.results_schema import build_results_payload, write_results_json
+
+ZERO_SHOT_TASKS: tuple[str, ...] = (
+    "hellaswag",
+    "piqa",
+    "winogrande",
+    "arc_easy",
+    "arc_challenge",
+)
+FIVE_SHOT_TASKS: tuple[str, ...] = ("mmlu",)
+
+PRIMARY_METRICS: dict[str, tuple[str, ...]] = {
+    "hellaswag": ("acc_norm,none", "acc_norm"),
+    "piqa": ("acc,none", "acc"),
+    "winogrande": ("acc,none", "acc"),
+    "arc_easy": ("acc_norm,none", "acc_norm"),
+    "arc_challenge": ("acc_norm,none", "acc_norm"),
+    "mmlu": ("acc,none", "acc"),
+}
+
+
+def _build_harness_model(model: Any, tokenizer: Any, *, device: str, batch_size: int | str):
+    from lm_eval.models.huggingface import HFLM
+
+    return HFLM(
+        pretrained=model.backbone,
+        tokenizer=tokenizer,
+        backend="causal",
+        device=device,
+        batch_size=batch_size,
+    )
+
+
+def _simple_evaluate(**kwargs):
+    from lm_eval.evaluator import simple_evaluate
+
+    return simple_evaluate(**kwargs)
+
+
+def _extract_primary_metric(raw_results: Dict[str, Any], task_name: str) -> float:
+    task_metrics = raw_results.get("results", {}).get(task_name, {})
+    for metric_name in PRIMARY_METRICS[task_name]:
+        if metric_name in task_metrics:
+            return float(task_metrics[metric_name])
+    available = sorted(task_metrics.keys())
+    raise KeyError(
+        f"Could not find expected metric for task '{task_name}'. Available metrics: {available}"
+    )
+
+
+def _collect_mmlu_breakdown(raw_results: Dict[str, Any]) -> Dict[str, float]:
+    breakdown: Dict[str, float] = {}
+    for task_name, metrics in raw_results.get("results", {}).items():
+        if not task_name.startswith("mmlu_") or task_name == "mmlu":
+            continue
+        for metric_name in PRIMARY_METRICS["mmlu"]:
+            if metric_name in metrics:
+                breakdown[task_name] = float(metrics[metric_name])
+                break
+    return breakdown
+
+
+def run_lm_harness_eval(
+    config: Any,
+    checkpoint_path: str | Path,
+    *,
+    output_path: str | Path | None = None,
+    device: str = "cuda",
+    batch_size: int | str = 1,
+    limit: int | float | None = None,
+    zero_shot_tasks: Sequence[str] = ZERO_SHOT_TASKS,
+    five_shot_tasks: Sequence[str] = FIVE_SHOT_TASKS,
+) -> Dict[str, Any]:
+    model, checkpoint_info = load_model_for_eval(
+        config=config,
+        checkpoint_path=checkpoint_path,
+        device=device,
+        dtype=torch.bfloat16 if device.startswith("cuda") else None,
+    )
+    tokenizer = _load_tokenizer_for_model(config)
+    harness_model = _build_harness_model(
+        model,
+        tokenizer,
+        device=device,
+        batch_size=batch_size,
+    )
+
+    zero_shot_eval = (
+        _simple_evaluate(
+            model=harness_model,
+            tasks=list(zero_shot_tasks),
+            num_fewshot=0,
+            batch_size=batch_size,
+            device=device,
+            limit=limit,
+            log_samples=False,
+        )
+        if zero_shot_tasks
+        else {"results": {}}
+    )
+    five_shot_eval = (
+        _simple_evaluate(
+            model=harness_model,
+            tasks=list(five_shot_tasks),
+            num_fewshot=5,
+            batch_size=batch_size,
+            device=device,
+            limit=limit,
+            log_samples=False,
+        )
+        if five_shot_tasks
+        else {"results": {}}
+    )
+
+    results: Dict[str, float] = {}
+    for task_name in zero_shot_tasks:
+        results[task_name] = _extract_primary_metric(zero_shot_eval, task_name)
+    for task_name in five_shot_tasks:
+        results[task_name] = _extract_primary_metric(five_shot_eval, task_name)
+
+    payload = build_results_payload(
+        task="lm_harness",
+        checkpoint_path=checkpoint_path,
+        checkpoint_info=checkpoint_info,
+        config=config,
+        results=results,
+        metadata={
+            "device": device,
+            "batch_size": batch_size,
+            "limit": limit,
+            "dtype": str(next(model.parameters()).dtype).replace("torch.", ""),
+            "torch_version": torch.__version__,
+            "shots": {
+                "zero_shot": list(zero_shot_tasks),
+                "five_shot": list(five_shot_tasks),
+            },
+            "mmlu_subjects": _collect_mmlu_breakdown(five_shot_eval),
+            "raw_results": {
+                "zero_shot": zero_shot_eval,
+                "five_shot": five_shot_eval,
+            },
+        },
+    )
+
+    if output_path is not None:
+        write_results_json(payload, output_path)
+    return payload

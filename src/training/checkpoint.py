@@ -29,6 +29,88 @@ def _log_state_dict_result(result, label: str) -> None:
         )
 
 
+def _remap_legacy_moe_key(key: str) -> str | None:
+    """
+    Translate older MoE checkpoint keys into the current injected-backbone layout.
+
+    Older checkpoints stored trainable MoE weights under:
+      moe_layers.{layer}.router...
+      moe_layers.{layer}.experts.{expert}.fc1/fc2...
+
+    The current model stores them under:
+      backbone.transformer.h.{layer}.mlp.router...
+      backbone.transformer.h.{layer}.mlp.expert_pool.experts.{expert}.c_fc/c_proj...
+
+    Legacy frozen base_weight/base_bias buffers are intentionally dropped because
+    the current SharedLoRALayer reconstructs them from the pretrained MLP and they
+    are non-persistent in state_dict.
+    """
+    def _map_expert_suffix(prefix_parts: list[str], suffix_parts: list[str]) -> str | None:
+        if len(suffix_parts) < 3:
+            return ".".join(prefix_parts + suffix_parts)
+
+        expert_idx, legacy_block, *tail = suffix_parts
+        if tail and tail[0] in {"base_weight", "base_bias"}:
+            return None
+
+        block_map = {"fc1": "c_fc", "fc2": "c_proj"}
+        mapped_block = block_map.get(legacy_block)
+        if mapped_block is None:
+            return ".".join(prefix_parts + suffix_parts)
+
+        return ".".join(prefix_parts + [expert_idx, mapped_block] + tail)
+
+    if key.startswith("moe_layers."):
+        parts = key.split(".")
+        if len(parts) < 4:
+            return key
+
+        _, layer_idx, section, *rest = parts
+
+        if section == "router":
+            return ".".join(
+                ["backbone", "transformer", "h", layer_idx, "mlp", "router"] + rest
+            )
+
+        if section == "experts":
+            return _map_expert_suffix(
+                [
+                    "backbone",
+                    "transformer",
+                    "h",
+                    layer_idx,
+                    "mlp",
+                    "expert_pool",
+                    "experts",
+                ],
+                rest,
+            )
+
+    if ".mlp.experts." in key:
+        prefix, suffix = key.split(".mlp.experts.", maxsplit=1)
+        mapped = _map_expert_suffix(
+            prefix.split(".") + ["mlp", "expert_pool", "experts"],
+            suffix.split("."),
+        )
+        return mapped
+
+    return key
+
+
+def _remap_legacy_moe_state_dict(state_dict: dict) -> tuple[dict, bool]:
+    remapped = {}
+    changed = False
+    for key, value in state_dict.items():
+        mapped_key = _remap_legacy_moe_key(key)
+        if mapped_key is None:
+            changed = True
+            continue
+        if mapped_key != key:
+            changed = True
+        remapped[mapped_key] = value
+    return remapped, changed
+
+
 # Router state buffers that must survive checkpointing for correct resume.
 # Transient accumulators (_pending_*) are excluded — they're zero after step().
 _ROUTER_STATE_BUFFERS = frozenset(
@@ -220,6 +302,11 @@ class CheckpointManager:
             raise FileNotFoundError(f"No checkpoint found at {checkpoint_path}")
 
         checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+        model_state_dict, remapped_legacy_keys = _remap_legacy_moe_state_dict(
+            checkpoint["model_state_dict"]
+        )
+        if remapped_legacy_keys and is_main_process():
+            print("[checkpoint] remapped legacy MoE checkpoint keys for compatibility")
 
         from torch.nn.parallel import DistributedDataParallel as DDP
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
@@ -227,9 +314,7 @@ class CheckpointManager:
         if isinstance(model, DDP):
             # Load into underlying module — DDP holds full params on every rank
             _log_state_dict_result(
-                model.module.load_state_dict(
-                    checkpoint["model_state_dict"], strict=False
-                ),
+                model.module.load_state_dict(model_state_dict, strict=False),
                 "DDP",
             )
         elif isinstance(model, FSDP):
@@ -241,14 +326,14 @@ class CheckpointManager:
 
             set_model_state_dict(
                 model,
-                checkpoint["model_state_dict"],
+                model_state_dict,
                 options=StateDictOptions(
                     full_state_dict=True, cpu_offload=True, strict=False
                 ),
             )
         else:
             _log_state_dict_result(
-                model.load_state_dict(checkpoint["model_state_dict"], strict=False),
+                model.load_state_dict(model_state_dict, strict=False),
                 "plain",
             )
 
