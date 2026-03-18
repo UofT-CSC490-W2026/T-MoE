@@ -29,6 +29,7 @@ runs/
 .DS_Store
 Thumbs.db
 .cache/
+cache/
 
 # Terraform
 .terraform/

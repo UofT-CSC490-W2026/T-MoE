@@ -8,6 +8,14 @@ from pathlib import Path
 from typing import Any, Dict
 
 try:
+    import wandb
+
+    WANDB_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional dependency in lightweight envs
+    WANDB_AVAILABLE = False
+    wandb = None
+
+try:
     from omegaconf import OmegaConf
 except ImportError:  # pragma: no cover - exercised implicitly in lightweight envs
     class _OmegaConfShim:
@@ -169,3 +177,114 @@ def flatten_scalars(
             flattened[full_key] = value
 
     return flattened
+
+
+def _eval_wandb_project(config: Any) -> str:
+    project = _cfg_select(config, "logging.project")
+    if isinstance(project, str) and project.strip():
+        return project.strip()
+    return "tmoe"
+
+
+def _eval_wandb_entity(config: Any) -> str | None:
+    entity = _cfg_select(config, "logging.entity")
+    if isinstance(entity, str) and entity.strip():
+        return entity.strip()
+    return None
+
+
+def _eval_run_name(payload: Dict[str, Any], config: Any) -> str:
+    experiment_name = payload.get("experiment_name") or _cfg_select(
+        config, "experiment_name", "experiment"
+    )
+    checkpoint_step = payload.get("checkpoint_step")
+    if checkpoint_step is None:
+        return f"eval/{experiment_name}/stepunknown"
+    return f"eval/{experiment_name}/step{checkpoint_step}"
+
+
+def _wandb_scalar_payload(payload: Dict[str, Any]) -> Dict[str, float | int | bool | str]:
+    task = str(payload.get("task", "eval"))
+    scalars = flatten_scalars(payload.get("results", {}), prefix=f"eval/{task}")
+
+    metadata = dict(payload.get("metadata", {}))
+    metadata.pop("raw_results", None)
+    metadata.pop("mmlu_subjects", None)
+    scalars.update(flatten_scalars(metadata, prefix=f"eval/{task}/meta"))
+
+    checkpoint_step = payload.get("checkpoint_step")
+    if checkpoint_step is not None:
+        scalars["eval/checkpoint_step"] = int(checkpoint_step)
+
+    git_commit = payload.get("git_commit")
+    if isinstance(git_commit, str) and git_commit:
+        scalars["eval/git_commit"] = git_commit
+
+    return scalars
+
+
+def _build_mmlu_table(payload: Dict[str, Any]):
+    mmlu_subjects = payload.get("metadata", {}).get("mmlu_subjects", {})
+    if not isinstance(mmlu_subjects, dict) or not mmlu_subjects:
+        return None
+
+    table = wandb.Table(columns=["subject", "accuracy"])
+    for subject, accuracy in sorted(mmlu_subjects.items()):
+        table.add_data(subject, accuracy)
+    return table
+
+
+def log_results_to_wandb(
+    payload: Dict[str, Any],
+    *,
+    config: Any | None = None,
+) -> bool:
+    if not WANDB_AVAILABLE:
+        return False
+
+    config = config or payload.get("config") or {}
+    if _cfg_select(config, "logging.enabled", True) is False:
+        return False
+    if _cfg_select(config, "logging.mode") == "disabled":
+        return False
+
+    init_kwargs = {
+        "project": _eval_wandb_project(config),
+        "name": _eval_run_name(payload, config),
+        "group": f"eval/{payload.get('experiment_name') or _cfg_select(config, 'experiment_name', 'experiment')}",
+        "job_type": f"eval/{payload.get('task', 'eval')}",
+        "config": {
+            "task": payload.get("task"),
+            "checkpoint_path": payload.get("checkpoint_path"),
+            "checkpoint_step": payload.get("checkpoint_step"),
+            "git_commit": payload.get("git_commit"),
+        },
+    }
+    entity = _eval_wandb_entity(config)
+    if entity is not None:
+        init_kwargs["entity"] = entity
+
+    mode = _cfg_select(config, "logging.mode")
+    if isinstance(mode, str) and mode in {"online", "offline"}:
+        init_kwargs["mode"] = mode
+
+    try:
+        run = wandb.init(**init_kwargs)
+    except Exception:
+        return False
+
+    if run is None:
+        return False
+
+    step = payload.get("checkpoint_step")
+    wandb.log(_wandb_scalar_payload(payload), step=step)
+
+    mmlu_table = _build_mmlu_table(payload)
+    if mmlu_table is not None:
+        wandb.log(
+            {f"eval/{payload.get('task', 'lm_harness')}/mmlu_subjects": mmlu_table},
+            step=step,
+        )
+
+    wandb.finish()
+    return True

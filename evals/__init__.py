@@ -7,6 +7,7 @@ from evals.results_schema import (
     flatten_scalars,
     get_git_commit,
     infer_checkpoint_step,
+    log_results_to_wandb,
     write_results_json,
 )
 
@@ -20,5 +21,6 @@ __all__ = [
     "flatten_scalars",
     "get_git_commit",
     "infer_checkpoint_step",
+    "log_results_to_wandb",
     "write_results_json",
 ]

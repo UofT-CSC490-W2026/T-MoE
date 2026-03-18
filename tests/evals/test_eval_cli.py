@@ -19,6 +19,7 @@ def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
 
     monkeypatch.setattr("scripts.eval.load_experiment_config", fake_load_experiment_config)
     monkeypatch.setattr("scripts.eval.run_perplexity_eval", fake_run_perplexity_eval)
+    monkeypatch.setattr("scripts.eval.log_results_to_wandb", lambda payload, config: True)
 
     result = main(
         [
@@ -61,6 +62,7 @@ def test_run_task_uses_default_eval_dir(monkeypatch):
 
     monkeypatch.setattr("scripts.eval.load_experiment_config", fake_load_experiment_config)
     monkeypatch.setattr("scripts.eval.run_perplexity_eval", fake_run_perplexity_eval)
+    monkeypatch.setattr("scripts.eval.log_results_to_wandb", lambda payload, config: True)
 
     main(
         [
@@ -103,6 +105,7 @@ def test_run_task_rejects_unimplemented_tasks(monkeypatch):
         "scripts.eval.run_lm_harness_eval",
         lambda **kwargs: {"task": "lm_harness"},
     )
+    monkeypatch.setattr("scripts.eval.log_results_to_wandb", lambda payload, config: True)
 
     assert run_task(args)["task"] == "lm_harness"
 
@@ -120,6 +123,7 @@ def test_run_task_dispatches_lm_harness(monkeypatch, tmp_path):
         return {"task": "lm_harness"}
 
     monkeypatch.setattr("scripts.eval.run_lm_harness_eval", fake_run_lm_harness_eval)
+    monkeypatch.setattr("scripts.eval.log_results_to_wandb", lambda payload, config: True)
 
     result = main(
         [
@@ -158,6 +162,7 @@ def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
         return {"task": "efficiency"}
 
     monkeypatch.setattr("scripts.eval.run_efficiency_eval", fake_run_efficiency_eval)
+    monkeypatch.setattr("scripts.eval.log_results_to_wandb", lambda payload, config: True)
 
     result = main(
         [
@@ -187,3 +192,43 @@ def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
     assert captured["warmup_iters"] == 2
     assert captured["benchmark_iters"] == 5
     assert str(captured["reference_checkpoint_path"]).endswith("checkpoint_step_200.pt")
+
+
+def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "scripts.eval.load_experiment_config",
+        lambda *args, **kwargs: {"experiment_name": "demo"},
+    )
+
+    payload = {
+        "task": "perplexity",
+        "experiment_name": "demo",
+        "checkpoint_step": 100,
+        "results": {"wikitext103_ppl": 12.3},
+        "metadata": {},
+    }
+    monkeypatch.setattr("scripts.eval.run_perplexity_eval", lambda **kwargs: payload)
+
+    captured = {}
+
+    def fake_log_results_to_wandb(payload, config):
+        captured["payload"] = payload
+        captured["config"] = config
+        return True
+
+    monkeypatch.setattr("scripts.eval.log_results_to_wandb", fake_log_results_to_wandb)
+
+    result = main(
+        [
+            "--task",
+            "perplexity",
+            "--checkpoint",
+            str(tmp_path / "checkpoint_step_100.pt"),
+            "--config",
+            "demo",
+        ]
+    )
+
+    assert result is payload
+    assert captured["payload"] is payload
+    assert captured["config"] == {"experiment_name": "demo"}
