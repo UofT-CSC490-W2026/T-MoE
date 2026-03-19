@@ -90,6 +90,7 @@ def test_run_task_rejects_unimplemented_tasks(monkeypatch):
         {
             "task": "lm_harness",
             "checkpoint": "outputs/demo/checkpoint_step_100.pt",
+            "all_checkpoints": False,
             "config": "demo",
             "output_dir": None,
             "device": "cpu",
@@ -232,3 +233,52 @@ def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
     assert result is payload
     assert captured["payload"] is payload
     assert captured["config"] == {"experiment_name": "demo"}
+
+
+def test_run_task_sweeps_all_checkpoints_into_history_outputs(monkeypatch, tmp_path):
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    first = checkpoint_dir / "checkpoint_step_100.pt"
+    second = checkpoint_dir / "checkpoint_step_200.pt"
+    first.write_text("stub", encoding="utf-8")
+    second.write_text("stub", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "scripts.eval.load_experiment_config",
+        lambda *args, **kwargs: {"experiment_name": "demo"},
+    )
+
+    captured = []
+
+    def fake_run_perplexity_eval(**kwargs):
+        captured.append(kwargs)
+        return {
+            "task": "perplexity",
+            "experiment_name": "demo",
+            "checkpoint_step": int(kwargs["checkpoint_path"].stem.split("_")[-1]),
+            "results": {},
+            "metadata": {},
+        }
+
+    monkeypatch.setattr("scripts.eval.run_perplexity_eval", fake_run_perplexity_eval)
+    monkeypatch.setattr("scripts.eval.log_results_to_wandb", lambda payload, config: True)
+
+    result = main(
+        [
+            "--task",
+            "perplexity",
+            "--checkpoint",
+            str(checkpoint_dir),
+            "--all-checkpoints",
+            "--config",
+            "demo",
+        ]
+    )
+
+    assert [payload["checkpoint_step"] for payload in result] == [100, 200]
+    assert captured[0]["output_path"] == Path(
+        "outputs/demo/eval/history/checkpoint_step_100/perplexity.json"
+    )
+    assert captured[1]["output_path"] == Path(
+        "outputs/demo/eval/history/checkpoint_step_200/perplexity.json"
+    )

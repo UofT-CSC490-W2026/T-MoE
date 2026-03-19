@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import numbers
+import os
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +40,8 @@ except ImportError:  # pragma: no cover - exercised implicitly in lightweight en
             return current
 
     OmegaConf = _OmegaConfShim()
+
+EVAL_WANDB_RUN_VERSION = 5
 
 
 def _cfg_select(config: Any, key: str, default: Any = None) -> Any:
@@ -183,6 +188,9 @@ def _eval_wandb_project(config: Any) -> str:
     project = _cfg_select(config, "logging.project")
     if isinstance(project, str) and project.strip():
         return project.strip()
+    env_project = os.environ.get("WANDB_PROJECT")
+    if isinstance(env_project, str) and env_project.strip():
+        return env_project.strip()
     return "tmoe"
 
 
@@ -190,6 +198,9 @@ def _eval_wandb_entity(config: Any) -> str | None:
     entity = _cfg_select(config, "logging.entity")
     if isinstance(entity, str) and entity.strip():
         return entity.strip()
+    env_entity = os.environ.get("WANDB_ENTITY")
+    if isinstance(env_entity, str) and env_entity.strip():
+        return env_entity.strip()
     return None
 
 
@@ -197,24 +208,44 @@ def _eval_run_name(payload: Dict[str, Any], config: Any) -> str:
     experiment_name = payload.get("experiment_name") or _cfg_select(
         config, "experiment_name", "experiment"
     )
-    checkpoint_step = payload.get("checkpoint_step")
-    if checkpoint_step is None:
-        return f"eval/{experiment_name}/stepunknown"
-    return f"eval/{experiment_name}/step{checkpoint_step}"
+    task = payload.get("task") or "eval"
+    return f"eval/{experiment_name}/{task}"
 
 
-def _wandb_scalar_payload(payload: Dict[str, Any]) -> Dict[str, float | int | bool | str]:
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", value).strip("-").lower()
+    return slug or "experiment"
+
+
+def _eval_run_id(payload: Dict[str, Any], config: Any) -> str:
+    experiment_name = str(
+        payload.get("experiment_name")
+        or _cfg_select(config, "experiment_name", "experiment")
+    )
+    task = str(payload.get("task") or "eval")
+    identity = f"{experiment_name}:{task}"
+    digest = hashlib.sha1(identity.encode("utf-8")).hexdigest()[:10]
+    return (
+        f"eval-v{EVAL_WANDB_RUN_VERSION}-"
+        f"{_slugify(experiment_name)[:24]}-{_slugify(task)[:16]}-{digest}"
+    )
+
+
+def _wandb_history_payload(payload: Dict[str, Any]) -> Dict[str, float | int | bool | str]:
     task = str(payload.get("task", "eval"))
-    scalars = flatten_scalars(payload.get("results", {}), prefix=f"eval/{task}")
+    return flatten_scalars(payload.get("results", {}), prefix=f"eval/{task}")
 
+
+def _wandb_summary_payload(payload: Dict[str, Any]) -> Dict[str, float | int | bool | str]:
+    task = str(payload.get("task", "eval"))
     metadata = dict(payload.get("metadata", {}))
     metadata.pop("raw_results", None)
     metadata.pop("mmlu_subjects", None)
-    scalars.update(flatten_scalars(metadata, prefix=f"eval/{task}/meta"))
+    scalars = flatten_scalars(metadata, prefix=f"eval/{task}/meta")
 
     checkpoint_step = payload.get("checkpoint_step")
     if checkpoint_step is not None:
-        scalars["eval/checkpoint_step"] = int(checkpoint_step)
+        scalars["eval/latest_checkpoint_step"] = int(checkpoint_step)
 
     git_commit = payload.get("git_commit")
     if isinstance(git_commit, str) and git_commit:
@@ -251,13 +282,14 @@ def log_results_to_wandb(
     init_kwargs = {
         "project": _eval_wandb_project(config),
         "name": _eval_run_name(payload, config),
+        "id": _eval_run_id(payload, config),
+        "resume": "allow",
         "group": f"eval/{payload.get('experiment_name') or _cfg_select(config, 'experiment_name', 'experiment')}",
-        "job_type": f"eval/{payload.get('task', 'eval')}",
+        "job_type": "eval",
         "config": {
-            "task": payload.get("task"),
-            "checkpoint_path": payload.get("checkpoint_path"),
-            "checkpoint_step": payload.get("checkpoint_step"),
-            "git_commit": payload.get("git_commit"),
+            "experiment_name": payload.get("experiment_name")
+            or _cfg_select(config, "experiment_name", "experiment"),
+            "eval_schema_version": EVAL_WANDB_RUN_VERSION,
         },
     }
     entity = _eval_wandb_entity(config)
@@ -276,15 +308,27 @@ def log_results_to_wandb(
     if run is None:
         return False
 
-    step = payload.get("checkpoint_step")
-    wandb.log(_wandb_scalar_payload(payload), step=step)
-
+    checkpoint_step = payload.get("checkpoint_step")
+    log_payload: Dict[str, Any] = dict(_wandb_history_payload(payload))
     mmlu_table = _build_mmlu_table(payload)
-    if mmlu_table is not None:
-        wandb.log(
-            {f"eval/{payload.get('task', 'lm_harness')}/mmlu_subjects": mmlu_table},
-            step=step,
-        )
+    if checkpoint_step is None:
+        run.log(log_payload)
+        if mmlu_table is not None:
+            run.log({f"eval/{payload.get('task', 'lm_harness')}/mmlu_subjects": mmlu_table})
+    else:
+        run.log(log_payload, step=int(checkpoint_step))
+        if mmlu_table is not None:
+            run.log(
+                {f"eval/{payload.get('task', 'lm_harness')}/mmlu_subjects": mmlu_table},
+                step=int(checkpoint_step),
+            )
 
-    wandb.finish()
+    summary_payload = _wandb_summary_payload(payload)
+    if summary_payload:
+        run.summary.update(summary_payload)
+    finish = getattr(run, "finish", None)
+    if callable(finish):
+        finish()
+    else:
+        wandb.finish()
     return True

@@ -135,17 +135,11 @@ def test_log_results_to_wandb_logs_scalars_and_mmlu_table(monkeypatch):
         def add_data(self, *row):
             self.rows.append(row)
 
-    class _FakeWandb:
-        Table = _FakeTable
-
+    class _FakeRun:
         def __init__(self):
-            self.init_kwargs = None
             self.logged = []
             self.finished = False
-
-        def init(self, **kwargs):
-            self.init_kwargs = kwargs
-            return object()
+            self.summary = {}
 
         def log(self, data, step=None):
             self.logged.append((data, step))
@@ -153,7 +147,20 @@ def test_log_results_to_wandb_logs_scalars_and_mmlu_table(monkeypatch):
         def finish(self):
             self.finished = True
 
+    class _FakeWandb:
+        Table = _FakeTable
+
+        def __init__(self):
+            self.init_kwargs = None
+            self.run = _FakeRun()
+
+        def init(self, **kwargs):
+            self.init_kwargs = kwargs
+            return self.run
+
     fake_wandb = _FakeWandb()
+    monkeypatch.delenv("WANDB_PROJECT", raising=False)
+    monkeypatch.delenv("WANDB_ENTITY", raising=False)
     monkeypatch.setattr("evals.results_schema.WANDB_AVAILABLE", True)
     monkeypatch.setattr("evals.results_schema.wandb", fake_wandb)
 
@@ -179,15 +186,67 @@ def test_log_results_to_wandb_logs_scalars_and_mmlu_table(monkeypatch):
 
     assert logged is True
     assert fake_wandb.init_kwargs["project"] == "tmoe"
-    assert fake_wandb.init_kwargs["name"] == "eval/demo/step42"
-    assert fake_wandb.logged[0][0]["eval/lm_harness/piqa"] == 0.62
-    assert fake_wandb.logged[0][0]["eval/lm_harness/meta/device"] == "cuda:0"
-    assert fake_wandb.logged[0][0]["eval/checkpoint_step"] == 42
-    assert fake_wandb.logged[1][0]["eval/lm_harness/mmlu_subjects"].rows == [
+    assert fake_wandb.init_kwargs["name"] == "eval/demo/lm_harness"
+    assert fake_wandb.init_kwargs["resume"] == "allow"
+    assert fake_wandb.init_kwargs["id"].startswith("eval-v5-demo-lm-harness-")
+    assert fake_wandb.run.logged[0] == (
+        {
+            "eval/lm_harness/piqa": 0.62,
+            "eval/lm_harness/mmlu": 0.55,
+        },
+        42,
+    )
+    assert fake_wandb.run.logged[1][0]["eval/lm_harness/mmlu_subjects"].rows == [
         ("mmlu_abstract_algebra", 0.40),
         ("mmlu_anatomy", 0.70),
     ]
-    assert fake_wandb.finished is True
+    assert fake_wandb.run.logged[1][1] == 42
+    assert fake_wandb.run.summary["eval/lm_harness/meta/device"] == "cuda:0"
+    assert fake_wandb.run.summary["eval/latest_checkpoint_step"] == 42
+    assert fake_wandb.run.finished is True
+
+
+def test_log_results_to_wandb_uses_wandb_env_defaults(monkeypatch):
+    class _FakeRun:
+        def __init__(self):
+            self.summary = {}
+
+        def log(self, data, step=None):
+            return None
+
+        def finish(self):
+            return None
+
+    class _FakeWandb:
+        Table = object
+
+        def __init__(self):
+            self.init_kwargs = None
+
+        def init(self, **kwargs):
+            self.init_kwargs = kwargs
+            return _FakeRun()
+
+    fake_wandb = _FakeWandb()
+    monkeypatch.setenv("WANDB_PROJECT", "T-MoE")
+    monkeypatch.setenv("WANDB_ENTITY", "uoft")
+    monkeypatch.setattr("evals.results_schema.WANDB_AVAILABLE", True)
+    monkeypatch.setattr("evals.results_schema.wandb", fake_wandb)
+
+    logged = log_results_to_wandb(
+        {
+            "experiment_name": "demo",
+            "task": "perplexity",
+            "results": {"wikitext103_ppl": 12.3},
+            "metadata": {},
+            "config": {},
+        },
+        config={"experiment_name": "demo"},
+    )
+
+    assert logged is True
+    assert fake_wandb.init_kwargs["project"] == "T-MoE"
+    assert fake_wandb.init_kwargs["entity"] == "uoft"
 
 
 def test_log_results_to_wandb_skips_when_logging_disabled(monkeypatch):

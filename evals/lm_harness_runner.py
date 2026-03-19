@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Mapping, Sequence
 
 import torch
 
@@ -69,13 +69,29 @@ def _collect_mmlu_breakdown(raw_results: Dict[str, Any]) -> Dict[str, float]:
     return breakdown
 
 
+def _resolve_batch_sizes(
+    batch_size: int | str | Mapping[str, int | str],
+) -> tuple[int | str, int | str]:
+    if isinstance(batch_size, Mapping):
+        zero_shot_batch_size = batch_size.get(
+            "zero_shot",
+            batch_size.get("default", 1),
+        )
+        five_shot_batch_size = batch_size.get(
+            "five_shot",
+            batch_size.get("default", zero_shot_batch_size),
+        )
+        return zero_shot_batch_size, five_shot_batch_size
+    return batch_size, batch_size
+
+
 def run_lm_harness_eval(
     config: Any,
     checkpoint_path: str | Path,
     *,
     output_path: str | Path | None = None,
     device: str = "cuda",
-    batch_size: int | str = 1,
+    batch_size: int | str | Mapping[str, int | str] = 1,
     limit: int | float | None = None,
     zero_shot_tasks: Sequence[str] = ZERO_SHOT_TASKS,
     five_shot_tasks: Sequence[str] = FIVE_SHOT_TASKS,
@@ -87,19 +103,37 @@ def run_lm_harness_eval(
         dtype=torch.bfloat16 if device.startswith("cuda") else None,
     )
     tokenizer = _load_tokenizer_for_model(config)
-    harness_model = _build_harness_model(
-        model,
-        tokenizer,
-        device=device,
-        batch_size=batch_size,
+    zero_shot_batch_size, five_shot_batch_size = _resolve_batch_sizes(batch_size)
+
+    zero_shot_harness_model = (
+        _build_harness_model(
+            model,
+            tokenizer,
+            device=device,
+            batch_size=zero_shot_batch_size,
+        )
+        if zero_shot_tasks
+        else None
     )
+    if five_shot_tasks:
+        if zero_shot_harness_model is not None and five_shot_batch_size == zero_shot_batch_size:
+            five_shot_harness_model = zero_shot_harness_model
+        else:
+            five_shot_harness_model = _build_harness_model(
+                model,
+                tokenizer,
+                device=device,
+                batch_size=five_shot_batch_size,
+            )
+    else:
+        five_shot_harness_model = None
 
     zero_shot_eval = (
         _simple_evaluate(
-            model=harness_model,
+            model=zero_shot_harness_model,
             tasks=list(zero_shot_tasks),
             num_fewshot=0,
-            batch_size=batch_size,
+            batch_size=zero_shot_batch_size,
             device=device,
             limit=limit,
             log_samples=False,
@@ -109,10 +143,10 @@ def run_lm_harness_eval(
     )
     five_shot_eval = (
         _simple_evaluate(
-            model=harness_model,
+            model=five_shot_harness_model,
             tasks=list(five_shot_tasks),
             num_fewshot=5,
-            batch_size=batch_size,
+            batch_size=five_shot_batch_size,
             device=device,
             limit=limit,
             log_samples=False,
