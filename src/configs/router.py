@@ -78,12 +78,18 @@ class MetabolicRouterConfig(BaseRouterConfig):
 
 
 @dataclass
-class DynMoERouterConfig(BaseRouterConfig):
+class DeepSeekRouterConfig(BaseRouterConfig):
+    router_type: RouterType = RouterType.DEEPSEEK
     temperature: float = 1.0
-    gate_threshold: float = 0.5
-    use_aux_loss: bool = False
-    aux_loss_coef: float = 0.01
+    noise_std: float = 0.0
+    bias_update_rate: float = 1e-3
+    use_sigmoid: bool = False
 
+@dataclass
+class ExpertChoiceRouterConfig(BaseRouterConfig):
+    router_type: RouterType = RouterType.EXPERT_CHOICE
+    temperature: float = 1.0
+    noise_std: float = 0.0
 
 @dataclass
 class StressCorrectedRouterConfig(BaseRouterConfig):

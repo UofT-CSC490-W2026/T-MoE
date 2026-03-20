@@ -22,6 +22,8 @@ class RouterType(str, Enum):
     STANDARD = "standard"
     TOPK_ROUTER = "topk"
     STRESS_CORRECTED = "stress_corrected"
+    DEEPSEEK = "deepseek"
+    EXPERT_CHOICE = "expert_choice"
 
 
 class ExpertType(str, Enum):

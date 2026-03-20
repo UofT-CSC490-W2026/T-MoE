@@ -99,5 +99,7 @@ class TopKRouter(StandardRouter):
 class SwitchRouter(StandardRouter):
     def __init__(self, config: SwitchRouterConfig):
         super().__init__(config)
+        self.use_aux_loss = getattr(config, "use_aux_loss", False)
+        self.aux_loss_coef = getattr(config, "aux_loss_coef", 0.01)
         if self.top_k != 1:
             self.top_k = 1

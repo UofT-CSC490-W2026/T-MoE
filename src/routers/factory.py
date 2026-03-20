@@ -6,7 +6,8 @@ from src.configs.router import (
     StandardRouterConfig,
     TopKRouterConfig,
     SwitchRouterConfig,
-    DynMoERouterConfig,
+    DeepSeekRouterConfig,
+    ExpertChoiceRouterConfig,
     StressCorrectedRouterConfig,
 )
 from src.core import RouterRegistry
@@ -21,7 +22,8 @@ ROUTER_CONFIG_CLASSES = {
     "standard": StandardRouterConfig,
     "topk": TopKRouterConfig,
     "switch": SwitchRouterConfig,
-    "dynmoe": DynMoERouterConfig,
+    "deepseek": DeepSeekRouterConfig,
+    "expert_choice": ExpertChoiceRouterConfig,
     "stress_corrected": StressCorrectedRouterConfig,
 }
 

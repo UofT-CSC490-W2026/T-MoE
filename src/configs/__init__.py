@@ -4,7 +4,8 @@ from src.configs.router import (
     TopKRouterConfig,
     SwitchRouterConfig,
     MetabolicRouterConfig,
-    DynMoERouterConfig,
+    DeepSeekRouterConfig,
+    ExpertChoiceRouterConfig,
     StressCorrectedRouterConfig,
 )
 from src.configs.model import ModelConfig
@@ -16,7 +17,8 @@ __all__ = [
     "TopKRouterConfig",
     "SwitchRouterConfig",
     "MetabolicRouterConfig",
-    "DynMoERouterConfig",
+    "DeepSeekRouterConfig",
+    "ExpertChoiceRouterConfig",
     "StressCorrectedRouterConfig",
     "ModelConfig",
     "DatasetConfig",
