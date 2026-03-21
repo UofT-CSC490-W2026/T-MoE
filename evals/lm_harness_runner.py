@@ -28,7 +28,9 @@ PRIMARY_METRICS: dict[str, tuple[str, ...]] = {
 }
 
 
-def _build_harness_model(model: Any, tokenizer: Any, *, device: str, batch_size: int | str):
+def _build_harness_model(
+    model: Any, tokenizer: Any, *, device: str, batch_size: int | str
+):
     from lm_eval.models.huggingface import HFLM
 
     return HFLM(
@@ -116,7 +118,10 @@ def run_lm_harness_eval(
         else None
     )
     if five_shot_tasks:
-        if zero_shot_harness_model is not None and five_shot_batch_size == zero_shot_batch_size:
+        if (
+            zero_shot_harness_model is not None
+            and five_shot_batch_size == zero_shot_batch_size
+        ):
             five_shot_harness_model = zero_shot_harness_model
         else:
             five_shot_harness_model = _build_harness_model(

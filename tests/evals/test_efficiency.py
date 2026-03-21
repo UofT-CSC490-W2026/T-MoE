@@ -81,6 +81,12 @@ def test_run_efficiency_eval_adds_reference_ratio(monkeypatch, tmp_path):
 
     assert payload["task"] == "efficiency"
     assert payload["results"]["batch_1_throughput_tokens_per_sec_mean"] == 100.0
-    assert math.isclose(payload["results"]["router_overhead_ratio_batch_1"], 1.25, rel_tol=1e-6)
-    assert math.isclose(payload["results"]["router_overhead_ratio_batch_32"], 1.5, rel_tol=1e-6)
-    assert payload["metadata"]["reference_checkpoint_path"].endswith("checkpoint_step_20.pt")
+    assert math.isclose(
+        payload["results"]["router_overhead_ratio_batch_1"], 1.25, rel_tol=1e-6
+    )
+    assert math.isclose(
+        payload["results"]["router_overhead_ratio_batch_32"], 1.5, rel_tol=1e-6
+    )
+    assert payload["metadata"]["reference_checkpoint_path"].endswith(
+        "checkpoint_step_20.pt"
+    )

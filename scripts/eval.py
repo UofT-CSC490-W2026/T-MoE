@@ -129,7 +129,9 @@ def _checkpoint_sort_key(path: Path) -> tuple[int, str]:
 def _resolve_checkpoint_paths(checkpoint: str, all_checkpoints: bool) -> list[Path]:
     checkpoint_path = Path(checkpoint)
     if checkpoint_path.is_dir() or all_checkpoints:
-        checkpoint_dir = checkpoint_path if checkpoint_path.is_dir() else checkpoint_path.parent
+        checkpoint_dir = (
+            checkpoint_path if checkpoint_path.is_dir() else checkpoint_path.parent
+        )
         checkpoint_paths = sorted(
             checkpoint_dir.glob("checkpoint_step_*.pt"),
             key=_checkpoint_sort_key,
@@ -153,7 +155,9 @@ def _resolve_output_path(
     eval_dir = Path(output_dir) if output_dir else _default_output_dir(config)
     if multiple_checkpoints:
         if checkpoint_path is None:
-            raise ValueError("checkpoint_path is required when multiple_checkpoints=True")
+            raise ValueError(
+                "checkpoint_path is required when multiple_checkpoints=True"
+            )
         return eval_dir / "history" / checkpoint_path.stem / f"{task}.json"
     return eval_dir / f"{task}.json"
 

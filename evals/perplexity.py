@@ -59,7 +59,9 @@ def _autocast_context(device: str, dtype: torch.dtype):
     return nullcontext()
 
 
-def infer_eval_context_length(model: Any, config: Any, tokenizer: Any | None = None) -> int:
+def infer_eval_context_length(
+    model: Any, config: Any, tokenizer: Any | None = None
+) -> int:
     backbone_config = getattr(getattr(model, "backbone", None), "config", None)
     max_length = (
         getattr(backbone_config, "max_position_embeddings", None)
@@ -114,7 +116,9 @@ def compute_document_nll(
             with _autocast_context(device, autocast_dtype):
                 outputs = model(input_ids=window_input)
 
-            logits = outputs[0] if isinstance(outputs, (tuple, list)) else outputs.logits
+            logits = (
+                outputs[0] if isinstance(outputs, (tuple, list)) else outputs.logits
+            )
             shift_logits = logits[:, :-1, :].float()
             shift_labels = window_input[:, 1:]
 

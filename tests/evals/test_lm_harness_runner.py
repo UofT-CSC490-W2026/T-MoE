@@ -59,7 +59,9 @@ def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_
             }
         }
 
-    monkeypatch.setattr("evals.lm_harness_runner._simple_evaluate", fake_simple_evaluate)
+    monkeypatch.setattr(
+        "evals.lm_harness_runner._simple_evaluate", fake_simple_evaluate
+    )
 
     payload = run_lm_harness_eval(
         config={"experiment_name": "demo"},
@@ -114,7 +116,9 @@ def test_run_lm_harness_eval_allows_empty_five_shot_tasks(monkeypatch, tmp_path)
         calls.append(kwargs)
         return {"results": {"piqa": {"acc,none": 0.62}}}
 
-    monkeypatch.setattr("evals.lm_harness_runner._simple_evaluate", fake_simple_evaluate)
+    monkeypatch.setattr(
+        "evals.lm_harness_runner._simple_evaluate", fake_simple_evaluate
+    )
 
     payload = run_lm_harness_eval(
         config={"experiment_name": "demo"},

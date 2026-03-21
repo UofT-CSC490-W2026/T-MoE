@@ -45,7 +45,10 @@ def _remap_legacy_moe_key(key: str) -> str | None:
     the current SharedLoRALayer reconstructs them from the pretrained MLP and they
     are non-persistent in state_dict.
     """
-    def _map_expert_suffix(prefix_parts: list[str], suffix_parts: list[str]) -> str | None:
+
+    def _map_expert_suffix(
+        prefix_parts: list[str], suffix_parts: list[str]
+    ) -> str | None:
         if len(suffix_parts) < 3:
             return ".".join(prefix_parts + suffix_parts)
 

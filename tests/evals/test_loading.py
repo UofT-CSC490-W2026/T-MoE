@@ -105,7 +105,14 @@ def test_build_model_from_config_injects_requested_moe_layers(monkeypatch):
 
 
 def test_load_model_for_eval_returns_checkpoint_info(monkeypatch, tmp_path):
-    def fake_load_checkpoint(self, model, optimizer=None, scheduler=None, checkpoint_path=None, load_best=False):
+    def fake_load_checkpoint(
+        self,
+        model,
+        optimizer=None,
+        scheduler=None,
+        checkpoint_path=None,
+        load_best=False,
+    ):
         assert checkpoint_path is not None
         model.loaded_checkpoint_path = checkpoint_path
         return {"step": 42, "metrics": {"loss": 1.23}, "metadata": {"source": "test"}}
@@ -132,7 +139,12 @@ def test_load_model_for_eval_returns_checkpoint_info(monkeypatch, tmp_path):
 
 def test_load_model_for_eval_applies_explicit_dtype(monkeypatch, tmp_path):
     def fake_load_checkpoint(
-        self, model, optimizer=None, scheduler=None, checkpoint_path=None, load_best=False
+        self,
+        model,
+        optimizer=None,
+        scheduler=None,
+        checkpoint_path=None,
+        load_best=False,
     ):
         return {"step": 42, "metrics": {}, "metadata": {}}
 

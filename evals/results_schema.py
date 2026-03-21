@@ -21,6 +21,7 @@ except ImportError:  # pragma: no cover - optional dependency in lightweight env
 try:
     from omegaconf import OmegaConf
 except ImportError:  # pragma: no cover - exercised implicitly in lightweight envs
+
     class _OmegaConfShim:
         @staticmethod
         def is_config(value: Any) -> bool:
@@ -62,7 +63,11 @@ def _to_plain_python(value: Any) -> Any:
 
     if isinstance(value, Path):
         return str(value)
-    if value is None or isinstance(value, str | bool) or isinstance(value, numbers.Number):
+    if (
+        value is None
+        or isinstance(value, str | bool)
+        or isinstance(value, numbers.Number)
+    ):
         return value
     if isinstance(value, dict):
         return {str(k): _to_plain_python(v) for k, v in value.items()}
@@ -82,8 +87,11 @@ def _to_plain_python(value: Any) -> Any:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace(
-        "+00:00", "Z"
+    return (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
     )
 
 
@@ -231,12 +239,16 @@ def _eval_run_id(payload: Dict[str, Any], config: Any) -> str:
     )
 
 
-def _wandb_history_payload(payload: Dict[str, Any]) -> Dict[str, float | int | bool | str]:
+def _wandb_history_payload(
+    payload: Dict[str, Any],
+) -> Dict[str, float | int | bool | str]:
     task = str(payload.get("task", "eval"))
     return flatten_scalars(payload.get("results", {}), prefix=f"eval/{task}")
 
 
-def _wandb_summary_payload(payload: Dict[str, Any]) -> Dict[str, float | int | bool | str]:
+def _wandb_summary_payload(
+    payload: Dict[str, Any],
+) -> Dict[str, float | int | bool | str]:
     task = str(payload.get("task", "eval"))
     metadata = dict(payload.get("metadata", {}))
     metadata.pop("raw_results", None)
@@ -314,7 +326,9 @@ def log_results_to_wandb(
     if checkpoint_step is None:
         run.log(log_payload)
         if mmlu_table is not None:
-            run.log({f"eval/{payload.get('task', 'lm_harness')}/mmlu_subjects": mmlu_table})
+            run.log(
+                {f"eval/{payload.get('task', 'lm_harness')}/mmlu_subjects": mmlu_table}
+            )
     else:
         run.log(log_payload, step=int(checkpoint_step))
         if mmlu_table is not None:
