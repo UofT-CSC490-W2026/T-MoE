@@ -22,9 +22,11 @@ DEFAULT_PERPLEXITY_DATASETS: tuple[dict[str, Any], ...] = (
         "include_bpb": True,
     },
     {
-        "result_prefix": "c4",
-        "hf_path": "allenai/c4",
-        "hf_name": "en",
+        "result_prefix": "pile",
+        # Use a parquet-backed mirror because the legacy EleutherAI/pile loader
+        # relies on dataset scripts, which newer versions of `datasets` refuse.
+        "hf_path": "monology/pile-test-val",
+        "hf_name": None,
         "split": "validation",
         "streaming": True,
         "text_column": "text",
@@ -169,6 +171,8 @@ def evaluate_text_documents(
     autocast_dtype: torch.dtype = torch.bfloat16,
     max_documents: int | None = None,
     include_bpb: bool = True,
+    progress_label: str | None = None,
+    log_every_documents: int = 25,
 ) -> Dict[str, float]:
     total_nll = 0.0
     total_tokens = 0
@@ -179,11 +183,19 @@ def evaluate_text_documents(
         if not isinstance(text, str) or not text:
             continue
 
-        encoded = tokenizer(
-            text,
-            add_special_tokens=False,
-            return_tensors="pt",
-        )
+        try:
+            encoded = tokenizer(
+                text,
+                add_special_tokens=False,
+                return_tensors="pt",
+                verbose=False,
+            )
+        except TypeError:
+            encoded = tokenizer(
+                text,
+                add_special_tokens=False,
+                return_tensors="pt",
+            )
         input_ids = encoded["input_ids"]
         doc_nll, doc_tokens = compute_document_nll(
             model,
@@ -202,6 +214,12 @@ def evaluate_text_documents(
             total_bytes += len(text.encode("utf-8"))
 
         documents_scored += 1
+        if progress_label and documents_scored % max(log_every_documents, 1) == 0:
+            print(
+                f"[perplexity] {progress_label}: scored {documents_scored} documents "
+                f"({total_tokens} tokens)",
+                flush=True,
+            )
         if max_documents is not None and documents_scored >= max_documents:
             break
 
@@ -212,6 +230,12 @@ def evaluate_text_documents(
     )
     summary["documents_scored"] = float(documents_scored)
     summary["tokens_scored"] = float(total_tokens)
+    if progress_label:
+        print(
+            f"[perplexity] {progress_label}: finished with {documents_scored} documents "
+            f"({total_tokens} tokens)",
+            flush=True,
+        )
     return summary
 
 
@@ -281,6 +305,7 @@ def run_perplexity_eval(
             autocast_dtype=autocast_dtype,
             max_documents=max_documents,
             include_bpb=dataset_spec.get("include_bpb", False),
+            progress_label=dataset_spec["result_prefix"],
         )
         prefix = dataset_spec["result_prefix"]
         results[f"{prefix}_ppl"] = summary["ppl"]
