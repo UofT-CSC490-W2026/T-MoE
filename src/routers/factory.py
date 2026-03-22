@@ -28,6 +28,12 @@ ROUTER_CONFIG_CLASSES = {
 }
 
 
+def _filter_config_kwargs(config_cls: type, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Keep only kwargs that are accepted by the router config dataclass."""
+    allowed = {field.name for field in dataclasses.fields(config_cls) if field.init}
+    return {key: value for key, value in kwargs.items() if key in allowed}
+
+
 def create_router(
     router_type: str, hidden_dim: int, num_experts: int, top_k: int, **kwargs
 ) -> BaseRouter:
@@ -70,11 +76,16 @@ def create_router(
     # top-level params (e.g. noise_std, temperature) don't crash dataclasses that
     # don't declare them (e.g. MetabolicRouterConfig after v6 cleanup).
     config_cls = ROUTER_CONFIG_CLASSES[router_type]
-    valid_fields = {f.name for f in dataclasses.fields(config_cls)}
-    filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_fields}
-    config = config_cls(
-        hidden_dim=hidden_dim, num_experts=num_experts, top_k=top_k, **filtered_kwargs
+    config_kwargs = _filter_config_kwargs(
+        config_cls,
+        {
+            "hidden_dim": hidden_dim,
+            "num_experts": num_experts,
+            "top_k": top_k,
+            **kwargs,
+        },
     )
+    config = config_cls(**config_kwargs)
 
     # Get router class from registry and instantiate
     router_cls = RouterRegistry.get(router_type)
