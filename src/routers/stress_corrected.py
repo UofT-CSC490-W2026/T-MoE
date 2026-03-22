@@ -529,7 +529,9 @@ class StressCorrectedRouter(BaseRouter):
         if weights is not None and weights.dim() == 2:
             hard = (weights > 0).float().sum(dim=0)
         elif indices is not None:
-            hard = torch.zeros(self.num_experts, device=indices.device, dtype=torch.float32)
+            hard = torch.zeros(
+                self.num_experts, device=indices.device, dtype=torch.float32
+            )
             hard.scatter_add_(
                 0,
                 indices.flatten().clamp(min=0),
