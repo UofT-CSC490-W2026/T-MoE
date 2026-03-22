@@ -11,5 +11,8 @@ def test_switch_router_top1(device):
     x = torch.randn(2, 3, config.hidden_dim, device=device)
     weights, indices, _ = router(x, return_metrics=False)
 
-    assert weights.shape[-1] == 1
-    assert indices.shape[-1] == 1
+    N = 2 * 3
+    # Dense (N, E) format: each row has exactly 1 non-zero entry (top_k=1)
+    assert weights.shape == (N, config.num_experts)
+    assert indices is None
+    assert (weights > 0).sum(dim=-1).eq(1).all()

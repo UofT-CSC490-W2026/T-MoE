@@ -11,14 +11,12 @@ def test_standard_router_forward_shapes(device):
     x = torch.randn(2, 3, config.hidden_dim, device=device)
     weights, indices, metrics = router(x, return_metrics=True)
 
-    print("standard_router_forward_shapes:")
-    print("  weights.shape:", weights.shape)
-    print("  indices.shape:", indices.shape)
-    print("  weights.sum(dim=-1):", weights.sum(dim=-1))
-
-    assert weights.shape == (2, 3, config.top_k)
-    assert indices.shape == (2, 3, config.top_k)
-    assert (weights.sum(dim=-1) - 1.0).abs().max().item() < 1e-5
+    N = 2 * 3
+    assert weights.shape == (N, config.num_experts)
+    assert indices is None
+    # Each token's non-zero weights should sum to ~1
+    row_sums = weights.sum(dim=-1)
+    assert (row_sums - 1.0).abs().max().item() < 1e-5
     assert metrics is not None
 
 
@@ -44,10 +42,13 @@ def test_standard_router_indices_in_range(device):
     router = StandardRouter(config).to(device)
 
     x = torch.randn(4, 2, config.hidden_dim, device=device)
-    _, indices, _ = router(x, return_metrics=False)
+    weights, indices, _ = router(x, return_metrics=False)
 
-    assert indices.min().item() >= 0
-    assert indices.max().item() < config.num_experts
+    # Dense format: indices is None, non-zero columns indicate selected experts
+    assert indices is None
+    assert weights.shape == (4 * 2, config.num_experts)
+    # Each row has exactly top_k non-zero entries
+    assert (weights > 0).sum(dim=-1).eq(config.top_k).all()
 
 
 def test_standard_router_deterministic_in_eval(device):
@@ -60,7 +61,7 @@ def test_standard_router_deterministic_in_eval(device):
     w2, i2, _ = router(x, return_metrics=False)
 
     assert torch.allclose(w1, w2)
-    assert torch.equal(i1, i2)
+    assert i1 is None and i2 is None
 
 
 def test_standard_router_topk_matches_known_logits(device):
@@ -75,11 +76,13 @@ def test_standard_router_topk_matches_known_logits(device):
 
     # One token with known logits: expert 3 (0-based) and 1 should win
     x = torch.tensor([[[0.1, 2.0, -1.0, 3.0]]], device=device)
-    _, indices, _ = router(x, return_metrics=False)
+    weights, indices, _ = router(x, return_metrics=False)
 
-    topk = indices[0, 0].tolist()
-    assert 3 in topk
-    assert 1 in topk
+    # Dense format: check that experts 3 and 1 have non-zero weight
+    assert indices is None
+    selected = weights[0].nonzero().squeeze(-1).tolist()
+    assert 3 in selected
+    assert 1 in selected
 
 
 def test_standard_router_aux_loss_reflects_imbalance(device):

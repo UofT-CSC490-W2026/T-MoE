@@ -159,17 +159,31 @@ class MetabolicRouter(BaseRouter):
 
         top_k_values, top_k_indices = torch.topk(potential, self.top_k, dim=-1)
 
-        temp = max(temperature if temperature is not None else 1.0, MIN_TEMPERATURE)
-        weights = F.softmax(top_k_values / temp, dim=-1)
+        temp = max(
+            temperature if temperature is not None else 1.0,
+            MIN_TEMPERATURE,
+        )
+        top_k_weights = F.softmax(top_k_values / temp, dim=-1)
+
+        # Build dense (N, E) weight matrix for unified dispatcher
+        bsz, seq, _ = potential.shape
+        potential_flat = potential.view(-1, self.num_experts)
+        top_k_indices_flat = top_k_indices.view(-1, self.top_k)
+        expert_weights = torch.zeros_like(potential_flat)
+        expert_weights.scatter_(
+            1, top_k_indices_flat, top_k_weights.view(-1, self.top_k)
+        )
 
         if self.training and record_usage:
             self._record_usage(top_k_indices)
 
         metrics = None
         if return_metrics:
-            metrics = self.metrics_tracker.compute_all_metrics(top_k_indices, weights)
+            metrics = self.metrics_tracker.compute_all_metrics(
+                top_k_indices, top_k_weights
+            )
 
-        return weights, top_k_indices, metrics
+        return expert_weights, None, metrics
 
     def step(self) -> None:
         """Apply pending usage to fatigue. Call after optimizer.step(), once per logical batch."""

@@ -155,39 +155,27 @@ class LoRAMoELayer(BaseMoELayer):
             router_kwargs["record_usage"] = record_usage
         weights, indices, metrics = self.router(x, **router_kwargs)
 
-        # Cache routing state for metric retrieval without re-running experts
         self._last_routing_weights = weights.detach()
-        self._last_routing_indices = indices.detach()
+        self._last_routing_indices = indices.detach() if indices is not None else None
 
-        x_flat = x.view(-1, hidden)
-        w_flat = weights.view(-1, weights.shape[-1])  # [BS, k]
-        idx_flat = indices.view(-1, indices.shape[-1])  # [BS, k]
+        x_flat = x.view(-1, hidden).contiguous()
         combined = torch.zeros_like(x_flat)
 
-        # Trainable shared base: pass the parameter tensors explicitly so that
-        # F.linear() in SharedLoRALayer receives the parameter (not .data), allowing
-        # gradients to flow back to ExpertPool.shared_fc/proj_weight.
-        _fc_w = self.expert_pool.shared_fc_weight
-        _proj_w = self.expert_pool.shared_proj_weight
-
-        # Precompute active expert set — avoids iterating over experts with zero tokens.
-        active_experts = idx_flat.unique()
-
-        for expert_idx in active_experts.tolist():
+        # Unified Dispatcher: mask-based expert accumulation over dense (N, E) weights
+        for expert_idx in range(self.expert_pool.num_experts):
             expert = self.expert_pool[expert_idx]
-            # token_ids: bool mask [BS] — which tokens are assigned to this expert
-            token_ids = (idx_flat == expert_idx).any(dim=1)
-            if _fc_w is not None:
-                expert_out = expert(
-                    x_flat[token_ids], fc_weight=_fc_w, proj_weight=_proj_w
-                )
-            else:
-                expert_out = expert(x_flat[token_ids])
-            # Sum weights for this expert across the k slots (at most one slot has
-            # expert_idx per token for standard top-k; sum handles k>1 correctly).
-            mask = (idx_flat[token_ids] == expert_idx).to(w_flat.dtype)  # [n_tok, k]
-            expert_w = (w_flat[token_ids] * mask).sum(dim=1, keepdim=True)
-            combined[token_ids] += expert_out * expert_w
+
+            expert_w_col = weights[:, expert_idx]
+            mask = expert_w_col > 0
+
+            if not mask.any():
+                continue
+
+            token_ids = mask.nonzero().squeeze(-1)
+            expert_in = x_flat[token_ids]
+            expert_out = expert(expert_in)
+            scale = expert_w_col[token_ids].unsqueeze(-1).to(expert_out.dtype)
+            combined[token_ids] += expert_out * scale
 
         if self.shared_proj_lora is not None:
             # Compute frozen fc hidden state for ALL tokens (no grad — frozen path).
@@ -210,6 +198,7 @@ class LoRAMoELayer(BaseMoELayer):
             if metrics is None:
                 metrics = {}
             metrics["weights"] = weights.detach()
-            metrics["indices"] = indices.detach()
+            if indices is not None:
+                metrics["indices"] = indices.detach()
             return output, metrics
         return output

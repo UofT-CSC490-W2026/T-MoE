@@ -358,7 +358,13 @@ class StressCorrectedRouter(BaseRouter):
             temperature if temperature is not None else self._tau, MIN_TEMPERATURE
         )
         topk_cos = cos_sim.gather(-1, topk_idx)
-        output_weights = F.softmax(topk_cos / tau, dim=-1)  # [B, S, k]
+        topk_weights = F.softmax(topk_cos / tau, dim=-1)  # [B, S, k]
+
+        # Build dense (N, E) weight matrix for unified dispatcher
+        cos_flat = cos_sim.view(-1, self.num_experts)
+        topk_idx_flat = topk_idx.view(-1, self.top_k)
+        expert_weights = torch.zeros_like(cos_flat)
+        expert_weights.scatter_(1, topk_idx_flat, topk_weights.view(-1, self.top_k))
 
         if self.training and record_usage:
             # Detach all tensors at the call site so the Dynamo-resumed graph
@@ -376,9 +382,9 @@ class StressCorrectedRouter(BaseRouter):
 
         metrics = None
         if return_metrics:
-            metrics = self.metrics_tracker.compute_all_metrics(topk_idx, output_weights)
+            metrics = self.metrics_tracker.compute_all_metrics(topk_idx, topk_weights)
 
-        return output_weights, topk_idx, metrics
+        return expert_weights, None, metrics
 
     def step(self) -> None:
         # Sync Python bool from buffer (safe after checkpoint loads).
@@ -498,7 +504,7 @@ class StressCorrectedRouter(BaseRouter):
         self.welford_M2.copy_(combined_M2)
 
     def get_custom_metrics(
-        self, indices: torch.Tensor, weights: torch.Tensor
+        self, indices: Optional[torch.Tensor], weights: torch.Tensor
     ) -> Dict[str, Any]:
         metrics = {}
 
@@ -519,13 +525,20 @@ class StressCorrectedRouter(BaseRouter):
         # Per-expert
         metrics["ema_load_per_expert"] = self.ema_load.cpu().float().numpy().tolist()
 
-        # Hard assignment counts
-        hard = torch.zeros(self.num_experts, device=indices.device, dtype=torch.float32)
-        hard.scatter_add_(
-            0,
-            indices.flatten().clamp(min=0),
-            torch.ones(indices.numel(), device=indices.device),
-        )
+        # Hard assignment counts from dense weight matrix (N, E)
+        if weights is not None and weights.dim() == 2:
+            hard = (weights > 0).float().sum(dim=0)
+        elif indices is not None:
+            hard = torch.zeros(
+                self.num_experts, device=indices.device, dtype=torch.float32
+            )
+            hard.scatter_add_(
+                0,
+                indices.flatten().clamp(min=0),
+                torch.ones(indices.numel(), device=indices.device),
+            )
+        else:
+            hard = torch.ones(self.num_experts)
         hard = hard / hard.sum().clamp(min=1e-8)
         metrics["eff_E_hard"] = (1.0 / (hard**2).sum().clamp(min=1e-8)).item()
 
