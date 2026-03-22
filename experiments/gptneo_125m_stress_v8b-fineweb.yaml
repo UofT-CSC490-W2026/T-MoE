@@ -29,6 +29,11 @@
 #
 # [Finding 4] MLP-only LoRA is optimal. Already correct in T-MoE. No change.
 #
+# [b_init_scale fix] b_init_scale: 0.01 → 0.0. Zero-init B is the standard LoRA
+#   guarantee (adapter contributes zero delta at init). Non-zero breaks MoE expert
+#   symmetry — experts start with random deltas, some randomly preferred before any
+#   gradient signal. See src/experts/lora.py comment.
+#
 # All router hyperparameters identical to v8a — isolated ablation.
 # ============================================================================
 
@@ -63,7 +68,8 @@ expert:
     alpha: 32          # was 64 (scaling=2.0) → now 32 (scaling=1.0); Finding 1
     dropout: 0.05
     init_scale: 0.01
-    b_init_scale: 0.01
+    # b_init_scale=0.0: zero-init B restores LoRA zero-delta guarantee and expert symmetry at init
+    b_init_scale: 0.0
     shared_base_rank: 8
     shared_base_alpha: 8.0   # was 16.0 (scaling=2.0) → now 8.0 (scaling=1.0); Finding 1
 

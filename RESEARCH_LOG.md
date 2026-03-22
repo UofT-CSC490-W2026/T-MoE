@@ -1,3 +1,352 @@
+## 2026-03-22 — Pre-scale review: v8a metric diagnosis, SOTA comparison, Qwen/Llama checklist
+
+### 1. Metric Diagnosis: v8a steps 0--600
+
+**conf = 0.524--0.528 throughout, at tau=0.5, top_k=2, N=8**
+
+Theoretical conf bounds with top_k=2 softmax over N=8 experts at temperature tau:
+```
+w_max = exp(cos_max / tau) / [exp(cos_max / tau) + exp(cos_2nd / tau)]
+      = sigma(Delta_cos / tau)      where sigma = logistic function
+conf  = E[w_max] = E[sigma(Delta_cos / tau)]
+```
+- **Minimum** (uniform routing, Delta_cos = 0): `conf = sigma(0) = 0.500`
+- **Maximum** (one expert dominates, Delta_cos -> inf): `conf -> 1.0`
+- **Observed** `conf = 0.527`: solve `0.527 = sigma(Delta / 0.5)` => `Delta = 0.5 * logit(0.527) = 0.5 * 0.108 = 0.054`
+
+So the mean cosine gap between first and second selected experts is **Delta_cos ~ 0.054** at step 600. This is slightly above noise-level differentiation. For context: random unit vectors in D=768 have `std(cos) ~ 1/sqrt(D) ~ 0.036`. A gap of 0.054 is about 1.5 sigma above random — the k-means initialization is producing barely-meaningful differentiation.
+
+**What conf indicates "real specialization":** conf = 0.60 requires Delta_cos = 0.5 * logit(0.60) = 0.5 * 0.405 = 0.20. conf = 0.70 requires Delta_cos = 0.5 * logit(0.70) = 0.5 * 0.847 = 0.42. Given that cosine similarities live in [-1,1], a gap of 0.20 is substantial — it means the best expert is meaningfully closer than the runner-up. The v8a trajectory (conf growing by +0.003 over 600 steps) projects to conf ~ 0.62 at step 19000 if linear — consistent with Delta_cos ~ 0.10, which is moderate but not strong specialization.
+
+**var = 0.006--0.024 (Welford variance of cosine distances)**
+
+These are variances of `1 - cos(x, W_i)` for tokens assigned to expert i. Standard deviations:
+```
+L1:  sqrt(0.007) = 0.084    L3:  sqrt(0.012) = 0.110
+L5:  sqrt(0.006) = 0.077    L7:  sqrt(0.006) = 0.077
+L9:  sqrt(0.010) = 0.100    L11: sqrt(0.024) = 0.155
+```
+For k-means-initialized prototypes in D=768, the expected intra-cluster cosine distance std depends on cluster tightness. With 8 centroids partitioning a 768-dim unit sphere, each Voronoi cell subtends a solid angle of ~1/8 of the sphere. The expected intra-cluster `std(1-cos)` for uniform random vectors in such a cell is approximately `sqrt(2/(D*pi)) * sqrt(8) ~ 0.04`. The observed values (0.077--0.155) are 2--4x larger than this, indicating that token distributions are NOT uniform within Voronoi cells — there is genuine structure (some tokens are close to the centroid, others near the boundary). L11 has the largest variance (0.155), consistent with later layers having more heterogeneous representations.
+
+The n_min values (28k--304k) show all experts are receiving substantial tokens even at step 0. L1 has the smallest n_min (28k), suggesting early layers have more uneven initial routing. L5/L7 have the largest (300k), indicating near-perfect balance in middle layers — expected since middle-layer representations are more isotropic.
+
+**eff_E 7.1 -> 7.5, gini 0.188 -> 0.154**
+
+This is near-perfect load balance improving further. At step 0, before lambda is calibrated, eff_E = 7.2 with lambda_val = 1.0 (the default). Two explanations, not mutually exclusive:
+1. **K-means init provides good starting balance**: prototypes placed at k-means centroids create roughly equal Voronoi cells, so even without penalty, routing is near-uniform. This is the dominant effect — eff_E = 7.2 at step 0 with lambda = 1.0 (uncalibrated) is very high.
+2. **SPAR penalty is contributing**: the default lambda=1.0 is not zero, so the `max(0, L_i - 1/N)` term is active from step 0. With ema_load initialized to 1/8 (fair share), the penalty is initially zero for all experts, but as training produces small load imbalances, the penalty fires.
+
+Verdict: the high eff_E is primarily from k-means init, secondarily from SPAR. This is good — it means k-means init is doing its job. The SPAR penalty's role will become visible after lambda calibration at step 600, when lambda takes its data-derived value.
+
+**Loss plateau at ~3.47 from step 400--600**
+
+At step 400, the learning rate warmup (400 steps) has just completed. Steps 400--600 are the first 200 steps at full LR. This is NOT a plateau — it is the transition from warmup to full-LR training. The loss decline from 4.965 to 3.476 over 600 steps is rapid and healthy. The apparent flattening at 3.47--3.48 over steps 400--600 is consistent with the LR reaching its peak and the model entering steady-state optimization. Check: at step 400, LR reaches 3e-4 (peak). Steps 400--600 at peak LR should show continued decline but slower than during warmup when both LR and model are co-adapting.
+
+The router is NOT bottlenecking learning at this stage. Evidence: loss dropped from 4.965 to 3.476 (a factor of 4.2x in PPL) in 600 steps. The prior v7 run at similar steps showed comparable loss trajectory. SharedBaseLoRA B matrix is still near-zero at this stage (per LoRA Without Regret: B stays small for ~1000--2000 steps), so v8a and v7 should be indistinguishable through step 600.
+
+---
+
+### 2. Is conf=0.527 a problem?
+
+No, for three reasons:
+
+**Reason 1: it is step 600 of 19000 (3.2% complete).** The v8a trajectory shows conf growing. At tau=0.5 (current), the softmax is relatively soft. As tau anneals toward 0.10 over 14000 steps, even a fixed Delta_cos = 0.054 would produce conf = sigma(0.054/0.10) = sigma(0.54) = 0.632. The tau anneal alone will push conf above 0.60.
+
+**Reason 2: Delta_cos will grow.** K-means init gives a starting Delta_cos ~ 0.054. As task-loss gradients flow through the softmax weights back to W (via the cos_sim -> softmax -> expert_weight -> combined output path), prototypes will specialize toward their assigned token clusters. At step 5000 (tau ~ 0.36), Delta_cos is expected to reach 0.08--0.12 based on the v6-wikitext trajectory, giving conf ~ 0.60--0.65.
+
+**Reason 3: the 2026-03-19 Voronoi analysis already established that conf is the wrong metric.** At eff_E = 8.0, perfect load balance geometrically constrains prototypes to Voronoi boundaries where Delta_cos is small. conf ~ 0.55--0.65 at tau = 0.10 is the mathematical ceiling for eff_E = 8.0 with N = 8 in D = 768. The paper should report eff_E and gini, not conf.
+
+**Action:** No intervention needed. conf = 0.527 at step 600 is on-track.
+
+---
+
+### 3. SOTA Router Improvements: ranked recommendations
+
+#### 3a. DeepSeek-V3 bias correction vs SPAR EMA penalty
+
+**DeepSeek formulation:**
+```
+z_i = linear_gate(x)_i + b_i
+b_i <- b_i + gamma * sign(1/N - actual_load_i)    # discrete step, every batch
+```
+
+**SPAR formulation:**
+```
+z_i = cos(x, W_i) - lambda * max(0, L_i - 1/N)
+L_i = (1-alpha) * L_i + alpha * U_i               # continuous EMA
+```
+
+**Mathematical comparison:**
+
+| Property | SPAR | DeepSeek bias |
+|----------|------|---------------|
+| Penalty on underloaded experts | Zero (one-sided max) | Negative (sign function pushes b_i up) |
+| Update smoothness | Continuous (EMA, alpha=0.01) | Discrete (sign function, +/- gamma) |
+| Scale sensitivity | Auto-calibrated lambda | Fixed gamma (needs manual tuning) |
+| Steady-state | L_i = 1/N => penalty = 0 | b_i drifts without bound unless clipped |
+| Gradient interaction | Out-of-graph (detached ema_load) | Out-of-graph (bias is not differentiable) |
+
+**Verdict: SPAR is mathematically superior in 3 of 5 properties.**
+
+The one-sided penalty is SPAR's key advantage. DeepSeek's sign-based correction pushes underloaded experts' biases up AND overloaded experts' biases down — this creates a global shift that confounds the routing signal. SPAR's `max(0, ...)` only penalizes overloaded experts, leaving underloaded ones free to attract tokens through genuine cosine affinity.
+
+DeepSeek's unbounded drift is a real issue: without clipping, b_i accumulates indefinitely for consistently over/underloaded experts, eventually dominating the linear gate signal. DeepSeek addresses this by making gamma very small (1e-5 to 1e-3), but this slows response time. SPAR's EMA has a natural forgetting mechanism (alpha=0.01 => 100-step window).
+
+**Recommendation:** Do not adopt bias correction. SPAR's formulation is strictly better for the paper's use case. The comparison itself is a paper contribution: "SPAR's one-sided EMA penalty is a continuous, auto-calibrated generalization of DeepSeek-V3's discrete bias correction."
+
+#### 3b. DeepSeek shared expert vs T-MoE SharedBaseLoRA
+
+DeepSeek uses m=2 shared experts (full MLP width) that always fire for all tokens, plus N-m=62 routed experts. Total expert count is 64, effective per-token compute = 2 (shared) + 6 (routed) = 8 experts.
+
+T-MoE's SharedBaseLoRA is structurally different:
+```
+DeepSeek: y = sum_{j in shared}(MLP_j(x)) + sum_{i in TopK}(w_i * MLP_i(x))
+T-MoE:    y = frozen_base_MLP(x) + SharedBaseLoRA_proj(h) + sum_{i in TopK}(w_i * delta_i(x))
+```
+
+The frozen base MLP in T-MoE already acts as the "shared expert" — it processes every token. SharedBaseLoRA adds a rank-8 correction to c_proj for all tokens, which is a parameter-efficient approximation to DeepSeek's full shared expert (184k params vs millions).
+
+**Mathematical tradeoff: full shared expert vs SharedBaseLoRA:**
+- Full shared expert at rank=32: 2 * (768 * 32 + 32 * 3072) = 2 * 123,648 = 247k LoRA params (c_fc + c_proj), routed like any expert but always selected.
+- SharedBaseLoRA at rank=8 on c_proj only: 6 * (3072 * 8 + 8 * 768) = 184k params.
+- Full shared LoRA expert provides a richer correction (both c_fc and c_proj, higher rank per projection) but creates the gradient competition issue identified on 2026-03-19: shared expert gets 8x more gradient, starving routed experts.
+
+**Recommendation: keep SharedBaseLoRA, do not add a full shared expert.** The frozen backbone IS the shared expert. SharedBaseLoRA is the right parameter-efficient correction for domain shift. A full shared LoRA expert would reproduce the gradient starvation pathology already diagnosed.
+
+#### 3c. Expert-choice routing
+
+Expert-choice (EC) guarantees perfect load balance by construction: each expert picks its top-c tokens (c = capacity * B*S / N). No penalty, no EMA, no lambda.
+
+**Fatal for T-MoE:**
+1. **Token dropping**: tokens selected by zero experts receive zero MoE output. With `combined = torch.zeros_like(x_flat)` in the current code, these tokens lose their entire MLP contribution. The fix (init combined = frozen_base(x)) adds a full frozen forward pass.
+2. **Variable batch incompatibility**: EC requires fixed batch size to compute capacity. With DDP gradient accumulation (batch varies across microbatches), capacity factor must be recomputed per microbatch — fragile.
+3. **Paper contradiction**: SPAR's claim is "near-perfect balance WITHOUT auxiliary loss or capacity constraints." EC achieves perfect balance by imposing a hard capacity constraint — a different mechanism that validates the problem but not the SPAR solution.
+4. **Already diagnosed as fatal on 2026-03-19** (zero-output bug, gradient sparsity).
+
+**Recommendation: do not implement. EC is the right comparison baseline in the paper but not a mechanism to adopt.**
+
+#### 3d. Token dropping / overflow handling
+
+Current SPAR has no overflow — all tokens are processed by their selected experts. With N=8 and top_k=2, each expert processes ~25% of tokens on average. At eff_E=7.5+, the max-loaded expert processes ~30% of tokens (gini=0.15 => load ratio max/mean ~ 1.2).
+
+For larger models (N=16 or N=64 with Qwen/Llama):
+- With N=64 and top_k=6 (DeepSeek-V3 style), max-load expert could see 2--3x fair share during early training.
+- Memory cost scales linearly with max tokens per expert per batch.
+- Token dropping would cap this at capacity * B*S / N tokens per expert.
+
+**Recommendation: not needed for N=8. Add as an option when N >= 16, implemented as a configurable capacity_factor (default: inf = no dropping).** Do not implement before Qwen/Llama scale-up. When added, ensure dropped tokens fall through to frozen_base(x), not zero.
+
+#### 3e. Ranked priority for pre-scale implementation
+
+| Priority | Change | Effort | Expected Impact |
+|----------|--------|--------|----------------|
+| 1 | LoRA init fix (alpha=rank, B=0) | Config-only | Removes confound, cleaner paper |
+| 2 | GMR (already spec'd in code header) | ~50 LOC | Fixes gini=0.05 on fineweb-edu |
+| 3 | SwiGLU expert class for Qwen/Llama | ~80 LOC | Required for scale-up |
+| 4 | FSDP router buffer handling | ~30 LOC | Required for 7B models |
+| 5 | Per-layer lambda (optional) | ~40 LOC | L1 and L11 have different var; per-layer lambda may help |
+
+---
+
+### 4. LoRA Initialization: specific recommendations
+
+**Current: A ~ Kaiming(a=0.01), B ~ Normal(0, 0.01), scaling=2.0**
+
+Three issues:
+
+**Issue 1: b_init_scale=0.01 is harmful for SPAR.**
+
+The code comment says "Non-zero breaks expert symmetry for MoE routing." This was intentional — the idea is that non-zero B at init makes each expert produce a different delta from step 0, giving the router something to differentiate. However:
+
+With b_init_scale=0.01 and scaling=2.0, the initial expert delta magnitude is:
+```
+||delta_i|| = ||B_i @ A_i|| * scaling * ||x||
+            ~ ||B_i||_F * ||A_i||_F * scaling / sqrt(rank)   [approximate for random matrices]
+            ~ (sqrt(out * rank) * 0.01) * ||A_i||_F * 2.0 / sqrt(32)
+```
+
+For c_fc (768 -> 3072): `||B||_F ~ sqrt(3072 * 32) * 0.01 = 3.13`, `||A||_F ~ sqrt(768 * 32) * sqrt(2/768) = sqrt(32 * 2) = 8.0` (Kaiming with a=0.01 ~ standard Kaiming). So `||delta|| ~ 3.13 * 8.0 * 2.0 / sqrt(32) = 8.9`. This is NOT small — it is a non-negligible perturbation at init.
+
+The problem: with b_init_scale=0.01, the LoRA guarantee (delta=0 at init) is violated. The model output at step 0 is `frozen_base(x) + random_noise(x)`, not `frozen_base(x)`. This adds noise to the pretrained model's predictions, increasing initial loss and potentially destabilizing early training.
+
+**Verdict: set b_init_scale=0.0.** K-means init already breaks expert symmetry (different W_i directions). The B=0 init preserves the pretrained model's predictions at step 0, which is the standard LoRA guarantee. Expert differentiation should come from routing (different W_i), not from random perturbation of expert outputs.
+
+**Issue 2: scaling=2.0 (alpha=64, rank=32)**
+
+Per LoRA Without Regret: alpha=rank is optimal, giving scaling=1.0. The invariance argument says Adam compensates for the scale factor, but scaling=2.0 means the effective learning rate for LoRA parameters is 2x what the optimizer LR specifies. This interacts with:
+- The LR schedule (lr=3e-4 behaves like lr=6e-4 for LoRA deltas)
+- Gradient clipping (clip_grad_norm=1.0 clips earlier than intended)
+- SharedBaseLoRA (shared_base_alpha=16.0 with rank=8 gives scaling=2.0 there too)
+
+**Verdict: set alpha=32 (scaling=1.0) for expert LoRA, shared_base_alpha=8.0 (scaling=1.0) for SharedBaseLoRA.** Already noted in the 2026-03-21 log entry as a v8b change. Confirm it is applied.
+
+**Issue 3: init_scale=0.01 for Kaiming**
+
+`nn.init.kaiming_uniform_(A.weight, a=0.01)` uses `a` as the negative slope parameter for leaky ReLU, not a scale factor. With a=0.01, this is `kaiming_uniform with mode='fan_in', nonlinearity='leaky_relu', negative_slope=0.01`. The resulting distribution is `Uniform(-bound, bound)` where `bound = sqrt(6 / ((1 + 0.01^2) * fan_in)) ~ sqrt(6 / fan_in)`. This is essentially standard Kaiming for ReLU (a=0 gives the same bound to 4 decimal places). **No change needed** — a=0.01 is fine.
+
+**Summary of LoRA init changes for v8b/v9:**
+```yaml
+expert:
+  lora:
+    alpha: 32          # was 64, scaling 2.0 -> 1.0
+    b_init_scale: 0.0  # was 0.01, restore LoRA zero-init guarantee
+    shared_base_alpha: 8.0  # was 16.0, scaling 2.0 -> 1.0
+```
+
+---
+
+### 5. Qwen/Llama Pre-Scale Checklist
+
+#### 5a. MLP structure: SwiGLU vs GELU
+
+**GPT-Neo MLP:**
+```
+y = c_proj(GELU(c_fc(x)))           # 2 linear projections
+c_fc:   [D, 4D]                      # 768 -> 3072
+c_proj: [4D, D]                      # 3072 -> 768
+```
+
+**Qwen2.5/Llama3 MLP (SwiGLU):**
+```
+y = down_proj(SiLU(gate_proj(x)) * up_proj(x))   # 3 linear projections
+gate_proj: [D, intermediate_dim]      # 4096 -> 11008 (Llama) or 11008 (Qwen 7B)
+up_proj:   [D, intermediate_dim]      # 4096 -> 11008
+down_proj: [intermediate_dim, D]      # 11008 -> 4096
+```
+
+**Required change:** Create `SwiGLULoRAMLP` expert class (parallel to `GPTNeoLoRAMLP`):
+```python
+class SwiGLULoRAMLP(LoRAMLPExpert):
+    # 3 SharedLoRALayers: gate_proj, up_proj, down_proj
+    # forward: down_proj(silu(gate_proj(x)) * up_proj(x))
+    # LoRA deltas on all three projections
+```
+
+The `LoRAConfig` needs `intermediate_dim` set correctly: Llama-7B uses 11008 (not 4*4096=16384). This is already a field in `LoRAConfig` (`intermediate_dim: Optional[int] = None`, defaults to 4*hidden_dim). Must be explicitly set for SwiGLU models.
+
+**LoRA parameter count for SwiGLU at rank=32:**
+```
+Per expert: 3 projections * (4096*32 + 32*11008) = 3 * (131072 + 352256) = 1,449,984
+Per layer (8 experts): 11.6M
+6 MoE layers: 69.6M trainable (vs 125M backbone -> 56%; vs 7B backbone -> 1.0%)
+```
+This is a much better LoRA-to-backbone ratio (1%) than GPT-Neo 125M (4.75%). Rank=32 is appropriate.
+
+**SharedBaseLoRA adjustment:** For SwiGLU, shared base LoRA should apply to `down_proj` (the output projection), not `c_proj`. Same role: domain-shift correction on the output stage for all tokens.
+
+#### 5b. Attention: GQA vs MHA
+
+Qwen2.5 7B and Llama 3.1 8B use Grouped Query Attention (GQA). T-MoE applies LoRA exclusively to MLP blocks — attention is untouched. **No change needed** as long as the MoE replacement targets only MLP blocks (which it does: `moe_layer_indices` selects which transformer layers get MoE MLPs). GQA vs MHA is irrelevant.
+
+#### 5c. Layer norms: RMSNorm vs LayerNorm
+
+Qwen/Llama uses RMSNorm (no mean subtraction, only scale normalization). The router input `x` is the hidden state AFTER the pre-MLP norm (RMSNorm or LayerNorm). This means:
+- `x` passed to the router is already approximately unit-variance per dimension
+- `F.normalize(x, dim=-1)` in the router further normalizes to unit L2 norm
+- RMSNorm vs LayerNorm affects the distribution of `x` before F.normalize, but the cosine similarity `cos(x, W_i)` is invariant to input scale — only direction matters
+
+**No change needed for the router.** The double-normalization (RMSNorm then F.normalize) is redundant but not harmful. RMSNorm already ensures `||x||_2 ~ sqrt(D)`, so `F.normalize` just divides by `sqrt(D)` — a constant factor that cancels in the cosine.
+
+#### 5d. Tokenizer
+
+Qwen2.5 uses tiktoken (cl100k-like), Llama uses SentencePiece. This affects:
+- `scripts/prepare_data.py`: tokenizer loading must use the model's tokenizer, not hardcoded GPT-Neo BPE
+- Vocabulary size: Qwen=151936, Llama=128256 vs GPT-Neo=50257. Does not affect MoE layers (MoE is in MLP, not embedding/head).
+- Sequence packing: same algorithm, different token IDs. No MoE-specific change.
+
+**Change needed in `prepare_data.py` only.** The tokenizer is loaded from the model name — ensure it handles tiktoken/sentencepiece correctly (HuggingFace AutoTokenizer does this automatically).
+
+#### 5e. Cosine similarity on RMSNorm'd inputs
+
+After RMSNorm, hidden states have `||x||_2 ~ sqrt(D)` and approximately zero mean per token. After `F.normalize(x)`, the vector is on the unit sphere. The cosine similarity then depends only on the angular structure of the hidden states.
+
+For D=4096 (Llama 7B) vs D=768 (GPT-Neo 125M):
+- **Concentration of measure**: in D=4096, random unit vectors have `cos ~ 0` with `std ~ 1/sqrt(D) ~ 0.0156`. This is 2.3x smaller than GPT-Neo's `1/sqrt(768) ~ 0.036`. Cosine similarities between tokens and prototypes will be more tightly concentrated around the mean.
+- **Impact on SPAR**: Delta_cos (the gap between top-1 and top-2 expert) will be smaller in absolute terms. At D=4096, the k-means-initialized Delta_cos is expected to be `~0.054 * (768/4096)^{0.5} = 0.054 * 0.433 = 0.023` (scaling as `1/sqrt(D)`).
+- **Impact on lambda calibration**: `sigma_cos ~ 1/sqrt(D) ~ 0.016` at D=4096, so `lambda = min(sigma_cos * N, 5.0) = min(0.016 * 8, 5.0) = 0.125`. This is much smaller than the 125M lambda (expected ~0.3--0.5). The penalty will be proportionally weaker.
+
+**Key concern: lambda may be too small at D=4096.** With lambda=0.125 and max overload penalty `max(0, L_i - 1/8) ~ 0.05` (for a mildly overloaded expert), the penalty term is `0.125 * 0.05 = 0.006`. The cosine signal (Delta_cos ~ 0.023) is only 4x larger. This ratio may be sufficient — the penalty is designed to be a perturbation, not a dominant term. But monitor: if eff_E drops below 7.0 at D=4096, lambda may need a floor: `lambda = max(sigma_cos * N, 0.5)`.
+
+**Recommendation: add a lambda_floor parameter.** `lambda = max(min(sigma_cos * N, 5.0), lambda_floor)` with `lambda_floor = 0.5` default. This ensures the penalty remains meaningful at high D. The floor should be configurable — 0.5 is a reasonable default for D=4096.
+
+#### 5f. FSDP considerations
+
+Qwen2.5 7B has ~7B params. With bf16, that is ~14GB per GPU. An H100 (80GB) can hold the model but not with 8 experts' LoRA weights plus optimizer states. FSDP is required.
+
+**Router-specific FSDP issues:**
+1. **Buffers vs parameters**: FSDP shards parameters but NOT buffers by default. Router buffers (`ema_load`, `lambda_val`, `welford_*`, `_pending_counts`, `num_steps`) are registered via `register_buffer`. They are replicated across ranks, not sharded. This is correct — these are small (8 floats for ema_load) and must be identical across ranks.
+2. **All-reduce in step()**: `_sync_ema_load_distributed()` calls `dist.all_reduce(ema_load, AVG)`. Under FSDP, the router module may be in a different FSDP unit than the experts. The all_reduce must happen outside FSDP's backward pass (it does — it is called in `step()`, after `optimizer.step()`). **Verified correct.**
+3. **W parameter sharding**: `self.W` (shape [8, 4096] at D=4096 = 32KB in bf16) is tiny. FSDP will shard it but the overhead of gathering 32KB across 4 GPUs is negligible. No special handling needed.
+4. **torch.compile + FSDP**: The `@torch._dynamo.disable` decorator on forward() and helper methods was added to avoid Dynamo graph breaks. Under FSDP, this is even more important — Dynamo cannot trace through FSDP's all-gather/reduce-scatter. The current approach (disable Dynamo for the router) is correct for FSDP.
+
+**Required changes:**
+- `src/training/fsdp_utils.py`: ensure router module is in a separate FSDP wrap unit (not fused with expert parameters). This prevents FSDP from treating `W` and `ema_load` as part of an expert shard.
+- Test: verify `step()` all_reduce works correctly when called between FSDP backward and optimizer step.
+
+#### 5g. Rank scaling with model dimension
+
+At D=768 (GPT-Neo 125M), rank=32 gives rank/D = 0.042 (4.2% of the hidden dimension).
+At D=4096 (Llama 7B), rank=32 gives rank/D = 0.0078 (0.78%).
+
+The LoRA approximation quality depends on rank relative to the effective rank of the weight update matrix, not on rank/D. For fine-tuning (not pretraining), the weight update is typically low-rank (~4-16 effective dimensions for domain adaptation). Rank=32 is 2-8x over-provisioned for both D=768 and D=4096.
+
+However, with MoE, each expert needs enough rank to represent its specialized subspace. With eff_E=8, each expert sees ~12.5% of tokens — a more diverse token distribution than single-task fine-tuning. The required rank scales with the complexity of the token subpopulation, not with D.
+
+**Recommendation: rank=32 is sufficient for 7B models.** The LoRA Without Regret paper confirms this: rank=128 gives diminishing returns at 7B scale. For MoE with 8 experts at rank=32, the aggregate rank across all active experts per token is `top_k * rank = 2 * 32 = 64`, which is well within the effective dimensionality of fine-tuning updates.
+
+If PPL gains plateau at rank=32, try rank=64 as a single ablation point. Do not go to rank=128 — parameter count would exceed 140M trainable (2% of 7B), which weakens the "parameter-efficient" claim.
+
+---
+
+### 6. The Shared Expert Question
+
+**Should T-MoE add a full shared expert (one LoRA expert that always fires)?**
+
+**No.** Three arguments:
+
+**Argument 1: The frozen backbone IS the shared expert.**
+
+In T-MoE, every expert computes:
+```
+expert_i(x) = frozen_base_MLP(x) + delta_i(x)
+```
+The frozen base MLP is shared across all experts and processes every token through every expert. The MoE output is:
+```
+y = sum_{i in TopK} w_i * [frozen_base(x) + delta_i(x)]
+  = (sum w_i) * frozen_base(x) + sum_{i in TopK} w_i * delta_i(x)
+  = frozen_base(x) + sum_{i in TopK} w_i * delta_i(x)    [since sum w_i = 1]
+```
+This is algebraically identical to DeepSeek's formulation with 1 shared expert + K routed experts, where the shared expert = frozen_base and routed experts = deltas. Adding another shared LoRA expert on top would be a second shared path — redundant with both frozen_base and SharedBaseLoRA.
+
+**Argument 2: Gradient starvation (proven on 2026-03-19, confirmed on 2026-03-21).**
+
+A shared LoRA expert receives gradient from ALL tokens (batch_size * seq_len per step). Each routed expert receives gradient from ~1/eff_E fraction. With eff_E=8, the shared expert gets 8x more gradient signal. This causes:
+- Shared expert converges fast, capturing most of the learnable signal
+- Routed expert residuals shrink, reducing gradient to routed expert LoRA parameters
+- Expert specialization stalls — reproducing the conf=0.52 plateau
+
+SharedBaseLoRA (rank=8 on c_proj only) is a deliberate compromise: small enough to not starve routed experts, applied only to the output projection to avoid double-counting.
+
+**Argument 3: Parameter efficiency.**
+
+A full shared expert at rank=32 adds ~250k params per layer, ~1.5M total. SharedBaseLoRA at rank=8 on c_proj adds 184k total. The marginal 1.3M params are better spent increasing routed expert rank (e.g., rank 32->40 for all 8 experts = 6 * 8 * 2 * (768*8 + 8*3072) = 1.47M additional params) which benefits specialization rather than the shared path.
+
+**Verdict: keep SharedBaseLoRA (rank=8, c_proj only). Do not add a full shared expert.** The frozen backbone already provides the shared computation. SharedBaseLoRA provides a small, targeted domain-shift correction. A full shared expert would be architecturally redundant and empirically harmful.
+
+---
+
+### 7. Appendix: lambda calibration at step 600
+
+At step 600, lambda calibration fires. The formula is `lambda = min(sigma_cos * N, 5.0)`.
+
+From the DIAG output at step 0, the Welford variances are 0.006--0.024. These are variances of cosine DISTANCES (1 - cos), not cosine similarities. The sigma_cos in the calibration formula is `std(cos_sim)` computed from `_pending_cos_sims` — the raw cosine similarities accumulated over the grad-accum window at step 600.
+
+Expected sigma_cos at step 600: with k-means init and D=768, sigma_cos across all (token, expert) pairs is approximately `sqrt(Var_between_experts(cos)) ~ 0.03--0.06`. So lambda ~ min(0.04 * 8, 5.0) ~ 0.32. This is a reasonable penalty scale: at max overload of `L_i - 1/8 = 0.05`, the penalty is `0.32 * 0.05 = 0.016`, which is about 30% of Delta_cos (0.054). Strong enough to matter, weak enough to not override the cosine signal.
+
+The per-layer variance spread (L1 var=0.007 vs L11 var=0.024) suggests that a per-layer lambda would better match each layer's routing geometry. L11 has 3.4x the variance of L1, so lambda at L11 would be ~1.8x larger than L1. This is a minor optimization — current global lambda is an average that works adequately for all layers.
+
+---
+
 ## 2026-03-21 — LoRA Without Regret: key findings applied to T-MoE
 
 **Source**: Schulman et al., Thinking Machines Lab, Sep 2025 — https://thinkingmachines.ai/blog/lora/

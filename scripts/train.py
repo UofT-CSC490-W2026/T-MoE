@@ -297,10 +297,11 @@ def _initialize_router_prototypes(
 
     # Use the unwrapped model to avoid DDP/compile complications during the warmup forward.
     base_model.eval()
-    for i, (x, _) in enumerate(train_loader):
-        if i >= n_warmup_batches:
-            break
-        base_model(input_ids=x.to(device), return_metrics=False)
+    with torch.compiler.disable():
+        for i, (x, _) in enumerate(train_loader):
+            if i >= n_warmup_batches:
+                break
+            base_model(input_ids=x.to(device), return_metrics=False)
 
     for h in hooks:
         h.remove()
@@ -389,13 +390,12 @@ def evaluate(
     model: torch.nn.Module, val_loader: DataLoader, device: str, max_batches: int = 20
 ) -> float:
     """Compute validation loss over up to max_batches batches."""
-    torch.cuda.empty_cache()
     model.eval()
     losses = []
     for i, (x, y) in enumerate(val_loader):
         if i >= max_batches:
             break
-        x, y = x.to(device), y.to(device)
+        x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         _, loss, _ = model(
             input_ids=x, labels=y, return_metrics=False, record_usage=False
         )
@@ -556,7 +556,11 @@ def main():
         try:
             val_ds = ShardDataset(shard_dir, "val", seq_len)
             val_loader = DataLoader(
-                val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers
+                val_ds,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=num_workers,
+                pin_memory=torch.cuda.is_available(),
             )
         except FileNotFoundError:
             print("No validation shards found. Skipping validation.")
@@ -872,7 +876,10 @@ def main():
                         train_iter = iter(train_loader)
                         x, y = next(train_iter)
 
-                    x, y = x.to(device), y.to(device)
+                    x, y = (
+                        x.to(device, non_blocking=True),
+                        y.to(device, non_blocking=True),
+                    )
 
                     # Only compute metrics on the last accumulation step at log intervals.
                     # spec_trackers only needs indices (included in metrics), not full stats.

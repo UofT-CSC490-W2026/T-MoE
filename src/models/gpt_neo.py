@@ -109,12 +109,20 @@ class GPTNeoBackbone(BaseModelBackbone):
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         return_metrics: bool = False,
+        record_usage: bool = True,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Dict[str, Any]]]:
         # output_hidden_states=False: MoE layers cache their own metrics; enabling this
         # wastes ~3 GB VRAM at 1.3B for data we don't use.
         # Respect outer torch.no_grad(): set_grad_enabled(True) would override it,
         # causing OOM + NCCL timeout during eval.
+
+        # Thread record_usage into each MoE layer. HuggingFace's inner forward
+        # calls mlp(hidden_states) with no kwargs, so we use a per-layer attribute
+        # that LoRAMoELayer.forward() reads when no explicit kwarg is passed.
+        for moe_layer in self.moe_layers.values():
+            moe_layer._forced_record_usage = record_usage
+
         needs_grad = not self.freeze_backbone or bool(self.moe_layers)
         with torch.set_grad_enabled(needs_grad and torch.is_grad_enabled()):
             outputs = self.backbone(

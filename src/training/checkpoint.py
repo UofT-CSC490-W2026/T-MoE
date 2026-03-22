@@ -202,10 +202,13 @@ class CheckpointManager:
         is_fsdp = isinstance(model, FSDP)
 
         if is_fsdp:
-            # All ranks call _get_state_dict; non-rank-0 get empty dict (rank0_only=True)
+            # FSDP: ALL ranks must call _get_state_dict (collective all-gather).
             model_state_dict = _get_state_dict(model)
             if not is_main_process():
-                # Sync so rank 0 finishes saving before training resumes
+                # Non-rank-0: skip save, but MUST hit the barrier below so rank 0
+                # doesn't deadlock waiting. Previous code returned here, causing a
+                # barrier mismatch (non-rank-0 hit barrier#1 and left; rank-0 hit
+                # barrier#2 alone → deadlock).
                 import torch.distributed as dist
 
                 if dist.is_initialized():
@@ -213,10 +216,7 @@ class CheckpointManager:
                 return Path("/dev/null")
         else:
             if not is_main_process():
-                # Block until rank 0 finishes saving, then return.
-                # Without this barrier, non-rank-0 ranks race into the next
-                # training step while rank 0 is doing checkpoint I/O, causing
-                # DDP gradient all-reduce sequence numbers to diverge (NCCL timeout).
+                # DDP: non-rank-0 waits for rank 0 to finish saving.
                 import torch.distributed as dist
 
                 if dist.is_initialized():
@@ -224,6 +224,7 @@ class CheckpointManager:
                 return Path("/dev/null")
             model_state_dict = _get_state_dict(model)
 
+        # Only rank 0 reaches here.
         if self.trainable_only:
             base_model = get_model_for_attr_access(model)
             trainable_keys = {
@@ -275,10 +276,7 @@ class CheckpointManager:
 
         self._cleanup_old_checkpoints()
 
-        # All strategies: barrier so non-rank-0 processes wait until rank 0
-        # finishes saving before training resumes.
-        # FSDP: non-rank-0 waited above (after all-gather), barriers here to release.
-        # DDP: non-rank-0 blocked in the barrier above; rank 0 signals completion here.
+        # Rank 0 signals completion — releases non-rank-0 processes waiting above.
         import torch.distributed as dist
 
         if dist.is_initialized():

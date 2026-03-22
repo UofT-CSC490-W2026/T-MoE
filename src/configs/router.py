@@ -100,8 +100,9 @@ class StressCorrectedRouterConfig(BaseRouterConfig):
     SPAR Router configuration.
 
     Selection:     z_i = cos(x,W_i) - λ · max(0, L_i - 1/N)
-    Output weight: w_i = softmax(cos(x,W_i) / τ_t)
-    Lambda calib:  λ = min(σ_cos / mean(L), 5.0)   [auto at step lambda_calib_step]
+    Output weight: w_i = softmax(cos(x,W_i) / τ_t)   [over top-k selected experts]
+    Lambda calib:  λ = min(σ_cos · N, 5.0)   [auto at step lambda_calib_step]
+                   (equiv. σ_cos / mean(L) at equilibrium when mean(L) = 1/N)
 
     Free hyperparameters: τ (one value). λ is data-derived, α is standard.
     τ anneals linearly from temperature → tau_final over tau_anneal_steps optimizer steps.

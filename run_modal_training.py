@@ -31,7 +31,7 @@ from omegaconf import OmegaConf
 # CONFIGURATION — change this one line to switch experiments
 # =============================================================================
 
-CONFIG = "experiments/gptneo_125m_standard_v2.yaml"
+CONFIG = "experiments/gptneo_125m_stress_v8a-fineweb.yaml"
 
 # GPU spec is read from compute.modal.gpu in the active config.
 # Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
