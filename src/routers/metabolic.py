@@ -160,7 +160,7 @@ class MetabolicRouter(BaseRouter):
         top_k_values, top_k_indices = torch.topk(potential, self.top_k, dim=-1)
 
         temp = max(
-            temperature if temperature is not None else self.temperature,
+            temperature if temperature is not None else 1.0,
             MIN_TEMPERATURE,
         )
         top_k_weights = F.softmax(top_k_values / temp, dim=-1)
