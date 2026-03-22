@@ -57,10 +57,11 @@ class TestForwardShapes:
         router = make_router(hidden_dim=64, num_experts=4, top_k=2, device=device)
         x = make_input(batch=3, seq=6, hidden=64, device=device)
         weights, indices, _ = router(x)
-        assert weights.shape == (3, 6, 2)
-        assert indices.shape == (3, 6, 2)
-        assert indices.min() >= 0
-        assert indices.max() < 4
+        N = 3 * 6
+        assert weights.shape == (N, 4)
+        assert indices is None
+        # Each row has exactly top_k non-zero entries
+        assert (weights > 0).sum(dim=-1).eq(2).all()
 
     def test_weights_sum_to_one(self, device):
         router = make_router(device=device)
@@ -185,11 +186,12 @@ class TestOneSidedPenalty:
         x = direction.unsqueeze(0).unsqueeze(0)  # [1,1,64]
         count_0, count_1 = 0, 0
         for _ in range(20):
-            _, idx, _ = router(x)
-            chosen = idx[0, 0, 0].item()
-            if chosen == 0:
+            weights, _, _ = router(x)
+            # Dense (N, E): check which expert has non-zero weight
+            selected = weights[0].nonzero().squeeze(-1).tolist()
+            if 0 in selected:
                 count_0 += 1
-            if chosen == 1:
+            if 1 in selected:
                 count_1 += 1
 
         assert count_1 > count_0, (
@@ -203,14 +205,19 @@ class TestOneSidedPenalty:
         router.eval()
 
         x = make_input(device=device)
-        weights, indices, _ = router(x)
+        weights, _, _ = router(x)
 
         with torch.no_grad():
             W_norm = F.normalize(router.W, dim=-1)
             x_norm = F.normalize(x, dim=-1)
-            cos_sim = x_norm @ W_norm.T
-            topk_cos = cos_sim.gather(-1, indices)
-            expected = F.softmax(topk_cos / router.temperature, dim=-1)
+            cos_sim = x_norm @ W_norm.T  # [B, S, E]
+            # top-k indices from cos_sim (no load penalty in eval with zero ema_load offset)
+            topk_cos, topk_idx = cos_sim.topk(router.top_k, dim=-1)
+            expected_sparse = F.softmax(topk_cos / router.temperature, dim=-1)
+            # Build expected dense matrix
+            N = x.shape[0] * x.shape[1]
+            expected = torch.zeros(N, router.num_experts, device=device)
+            expected.scatter_(1, topk_idx.view(N, -1), expected_sparse.view(N, -1))
 
         assert torch.allclose(weights, expected, atol=1e-5), (
             "Output weights must equal softmax(cos/τ) regardless of load penalty"
@@ -370,7 +377,14 @@ class TestWelford:
 
         _, idx_without, _ = router(x)
 
-        assert torch.equal(idx_with, idx_without), (
+        # Both return None for indices (dense format); compare weights instead
+        w_with, _, _ = router(x)
+        router.welford_n.zero_()
+        router.welford_mu.zero_()
+        router.welford_M2.zero_()
+        w_without, _, _ = router(x)
+
+        assert torch.allclose(w_with, w_without, atol=1e-6), (
             "Welford state must not affect routing decisions (metrics-only)"
         )
 
@@ -435,8 +449,8 @@ class TestNoiseAnnealing:
         x = make_input(device=device)
         run_steps(router, x, 50)
         router.eval()
-        _, indices, _ = router(x, return_metrics=True)
-        metrics = router.get_custom_metrics(indices, None)
+        weights, _, _ = router(x, return_metrics=True)
+        metrics = router.get_custom_metrics(None, weights)
         assert "noise_std" in metrics
         assert metrics["noise_std"] == pytest.approx(router._noise_std)
 

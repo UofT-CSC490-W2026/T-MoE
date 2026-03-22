@@ -101,9 +101,6 @@ class TopKRouter(StandardRouter):
     def __init__(self, config: TopKRouterConfig):
         super().__init__(config)
         self.use_aux_loss = False
-        self._last_probs = None
-        self._last_indices = None
-        self._last_weights = None
 
 
 @RouterRegistry.register("switch")

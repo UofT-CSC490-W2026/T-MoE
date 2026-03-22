@@ -24,11 +24,13 @@ class StandardRouterConfig(BaseRouterConfig):
 
 @dataclass
 class TopKRouterConfig(StandardRouterConfig):
+    router_type: RouterType = RouterType.TOPK_ROUTER
     use_aux_loss: bool = False
 
 
 @dataclass
 class SwitchRouterConfig(StandardRouterConfig):
+    router_type: RouterType = RouterType.SWITCH
     top_k: int = 1
 
 
@@ -90,7 +92,6 @@ class DeepSeekRouterConfig(BaseRouterConfig):
 class ExpertChoiceRouterConfig(BaseRouterConfig):
     router_type: RouterType = RouterType.EXPERT_CHOICE
     temperature: float = 1.0
-    noise_std: float = 0.0
 
 
 @dataclass

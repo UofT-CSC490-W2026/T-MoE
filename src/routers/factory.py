@@ -38,7 +38,7 @@ def create_router(
     logic that was previously duplicated across multiple modules.
 
     Args:
-        router_type: Type of router ("stress_corrected", "metabolic", "standard", "topk", "switch", "dynmoe")
+        router_type: Type of router ("stress_corrected", "metabolic", "standard", "topk", "switch", "deepseek", "expert_choice")
         hidden_dim: Dimension of input embeddings
         num_experts: Number of experts to route to
         top_k: Number of top experts per token

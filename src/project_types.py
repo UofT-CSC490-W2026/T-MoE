@@ -21,6 +21,7 @@ class RouterType(str, Enum):
     METABOLIC = "metabolic"
     STANDARD = "standard"
     TOPK_ROUTER = "topk"
+    SWITCH = "switch"
     STRESS_CORRECTED = "stress_corrected"
     DEEPSEEK = "deepseek"
     EXPERT_CHOICE = "expert_choice"
