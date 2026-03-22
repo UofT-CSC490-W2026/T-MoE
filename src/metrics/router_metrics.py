@@ -30,7 +30,9 @@ class GlobalSpecializationTracker:
         )
         self.total_tokens = 0
 
-    def update(self, token_ids: torch.Tensor, expert_indices: torch.Tensor):
+    def update(self, token_ids: torch.Tensor, expert_indices: Optional[torch.Tensor]):
+        if expert_indices is None:
+            return
         with torch.no_grad():
             batch, seq, top_k = expert_indices.shape
 
@@ -170,9 +172,12 @@ class RouterMetricsTracker:
         self.gini_index = torch.arange(1, self.num_experts + 1, dtype=torch.float32)
 
     def _compute_usage(
-        self, indices: torch.Tensor, weights: torch.Tensor
+        self, indices: Optional[torch.Tensor], weights: torch.Tensor
     ) -> torch.Tensor:
         """Aggregate routing weights into per-expert usage vector [num_experts]."""
+        if indices is None:
+            # Dense case: weights is (N, E)
+            return weights.sum(dim=0).to(torch.float32)
         usage = torch.zeros(
             self.num_experts, device=indices.device, dtype=torch.float32
         )
@@ -251,7 +256,8 @@ class RouterMetricsTracker:
         usage = usage if usage is not None else self._compute_usage(indices, weights)
         sorted_usage, _ = torch.sort(usage)
         n = self.num_experts
-        index = self.gini_index.to(indices.device)
+        device = indices.device if indices is not None else weights.device
+        index = self.gini_index.to(device)
         gini = (2 * (index * sorted_usage).sum()) / (n * sorted_usage.sum() + 1e-10) - (
             n + 1
         ) / n
@@ -305,7 +311,7 @@ class RouterMetricsTracker:
 
     def compute_all_metrics(
         self,
-        indices: torch.Tensor,
+        indices: Optional[torch.Tensor],
         weights: torch.Tensor,
     ) -> Dict[str, Any]:
         metrics = {}

@@ -70,19 +70,31 @@ class DeepSeekRouter(BaseRouter):
             
         top_k_values, top_k_indices = torch.topk(probs, self.top_k, dim=-1)
 
+        # Create a unified dense weight matrix (N, E)
+        bsz, seq, _ = probs.shape
+        probs_flat = probs.view(-1, self.num_experts)
+        top_k_indices_flat = top_k_indices.view(-1, self.top_k)
+        
         if self.use_sigmoid:
-            weights = top_k_values
+            top_k_weights = top_k_values
         else:
-            weights = F.normalize(top_k_values, p=1, dim=-1)
+            top_k_weights = F.normalize(top_k_values, p=1, dim=-1)
+        
+        expert_weights = torch.zeros_like(probs_flat)
+        expert_weights.scatter_(1, top_k_indices_flat, top_k_weights.view(-1, self.top_k))
             
         if self.training and record_usage:
             self._record_usage(top_k_indices)
             
         metrics = None
         if return_metrics:
-            metrics = self.metrics_tracker.compute_all_metrics(top_k_indices, weights)
+            metrics = self.metrics_tracker.compute_all_metrics(
+                top_k_indices,
+                top_k_weights.view(-1, self.top_k) if not self.use_sigmoid
+                else top_k_values.view(-1, self.top_k)
+            )
             
-        return weights, top_k_indices, metrics
+        return expert_weights, None, metrics
 
     def step(self) -> None:
         if not self._usage_pending:
