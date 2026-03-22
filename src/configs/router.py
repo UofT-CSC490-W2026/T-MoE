@@ -85,11 +85,13 @@ class DeepSeekRouterConfig(BaseRouterConfig):
     bias_update_rate: float = 1e-3
     use_sigmoid: bool = False
 
+
 @dataclass
 class ExpertChoiceRouterConfig(BaseRouterConfig):
     router_type: RouterType = RouterType.EXPERT_CHOICE
     temperature: float = 1.0
     noise_std: float = 0.0
+
 
 @dataclass
 class StressCorrectedRouterConfig(BaseRouterConfig):

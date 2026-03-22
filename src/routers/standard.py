@@ -32,15 +32,17 @@ class StandardRouter(BaseRouter):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Dict[str, Any]]]:
         batch, seq, _ = x.shape
         logits = self.gate(x).view(-1, self.num_experts) / self.temperature
-        probs = F.softmax(logits, dim=-1) # (N, E)
+        probs = F.softmax(logits, dim=-1)  # (N, E)
 
         # Select top-k experts per token
         top_k_values, top_k_indices = torch.topk(probs, self.top_k, dim=-1)
-        
+
         # Create a weight matrix of shape (N, E)
         # This unified format is used by the LoRAMoELayer dispatcher
         expert_weights = torch.zeros_like(probs)
-        expert_weights.scatter_(1, top_k_indices, F.normalize(top_k_values, p=1, dim=-1))
+        expert_weights.scatter_(
+            1, top_k_indices, F.normalize(top_k_values, p=1, dim=-1)
+        )
 
         if self.training and self.use_aux_loss:
             self._last_probs = probs.view(batch, seq, -1)
@@ -51,7 +53,9 @@ class StandardRouter(BaseRouter):
         if return_metrics:
             # For backward compatibility with the tracker, we pass the sparse format
             # but usually the layer only needs expert_weights
-            metrics = self.metrics_tracker.compute_all_metrics(top_k_indices, top_k_values)
+            metrics = self.metrics_tracker.compute_all_metrics(
+                top_k_indices, top_k_values
+            )
 
         return expert_weights, None, metrics
 
@@ -75,7 +79,7 @@ class StandardRouter(BaseRouter):
 
         # P_i: Mean gate probability across the batch
         P = probs.mean(dim=(0, 1))
-        
+
         # f_i: Mean routing weight across the batch
         usage = weights.mean(dim=(0, 1))
 

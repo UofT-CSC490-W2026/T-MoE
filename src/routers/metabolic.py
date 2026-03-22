@@ -170,14 +170,18 @@ class MetabolicRouter(BaseRouter):
         potential_flat = potential.view(-1, self.num_experts)
         top_k_indices_flat = top_k_indices.view(-1, self.top_k)
         expert_weights = torch.zeros_like(potential_flat)
-        expert_weights.scatter_(1, top_k_indices_flat, top_k_weights.view(-1, self.top_k))
+        expert_weights.scatter_(
+            1, top_k_indices_flat, top_k_weights.view(-1, self.top_k)
+        )
 
         if self.training and record_usage:
             self._record_usage(top_k_indices)
 
         metrics = None
         if return_metrics:
-            metrics = self.metrics_tracker.compute_all_metrics(top_k_indices, top_k_weights)
+            metrics = self.metrics_tracker.compute_all_metrics(
+                top_k_indices, top_k_weights
+            )
 
         return expert_weights, None, metrics
 

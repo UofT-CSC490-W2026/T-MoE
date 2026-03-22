@@ -23,7 +23,14 @@ def test_expert_registry_invalid_name():
 
 
 def test_router_registry_contains_all_types():
-    for name in ("metabolic", "standard", "topk", "switch", "deepseek", "expert_choice"):
+    for name in (
+        "metabolic",
+        "standard",
+        "topk",
+        "switch",
+        "deepseek",
+        "expert_choice",
+    ):
         assert name in RouterRegistry, f"RouterRegistry missing: {name}"
 
 
