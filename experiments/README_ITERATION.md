@@ -4,10 +4,9 @@
 
 | Config | Model | GPUs | Steps | Purpose |
 |---|---|---|---|---|
-| `gptneo_125m_metabolic_fast.yaml` | 125M | 1 | 500 | Fast iteration — tune router params |
+| `gptneo_125m_stress_v6-wikitext.yaml` | 125M | 4 | 5000 | SPAR router — wikitext-103 (primary) |
 | `gptneo_125m_metabolic_v4.yaml` | 125M | 4 | 5000 | Main metabolic run (fineweb-edu) |
 | `gptneo_125m_standard_v2.yaml` | 125M | 4 | 5000 | Standard router baseline |
-| `gptneo_1.3b_metabolic_v3.yaml` | 1.3B | 4 | 5000 | Scale-up |
 | `smoketest.yaml` | 125M | 1 | 2 | CI only |
 
 v2/v3 wikitext-103 runs are archived in RESEARCH_LOG.md — v4 is the production config on fineweb-edu.

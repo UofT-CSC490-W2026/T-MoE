@@ -7,10 +7,10 @@ a new backbone requires no changes here.
 
 Usage:
     # Local
-    python -m scripts.train --config experiments/gptneo_125m_metabolic.yaml
+    python -m scripts.train --config experiments/gptneo_125m_stress_v6-wikitext.yaml
 
     # With CLI overrides
-    python -m scripts.train --config experiments/gptneo_125m_metabolic.yaml \\
+    python -m scripts.train --config experiments/gptneo_125m_stress_v6-wikitext.yaml \\
         training.lr=1e-4 training.batch_size=8
 
     # Via Modal (set CONFIG = "experiments/..." in run_modal_training.py, then):
@@ -142,7 +142,7 @@ def parse_args():
         "--config",
         type=str,
         required=True,
-        help="Path to experiment YAML (e.g. experiments/gptneo_125m_metabolic.yaml)",
+        help="Path to experiment YAML (e.g. experiments/gptneo_125m_stress_v6-wikitext.yaml)",
     )
     parser.add_argument(
         "--resume",

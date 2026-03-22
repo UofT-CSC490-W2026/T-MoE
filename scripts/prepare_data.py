@@ -9,18 +9,18 @@ Compatible with nanoGPT / llm.c binary shard format.
 
 Usage:
     # Default dataset from config:
-    python -m scripts.prepare_data --config experiments/gptneo_125m_metabolic.yaml
+    python -m scripts.prepare_data --config experiments/gptneo_125m_stress_v6-wikitext.yaml
 
     # Override dataset from CLI:
-    python -m scripts.prepare_data --config experiments/gptneo_125m_metabolic_v4.yaml \
+    python -m scripts.prepare_data --config experiments/gptneo_125m_stress_v6-wikitext.yaml \
         --dataset fineweb-edu
 
     # Parallel tokenization (recommended for large datasets):
-    python -m scripts.prepare_data --config experiments/gptneo_125m_metabolic_v4.yaml \
+    python -m scripts.prepare_data --config experiments/gptneo_125m_stress_v6-wikitext.yaml \
         --dataset fineweb-edu --num-proc 8
 
     # Run via Modal (Stage 1, saves to Modal Volume):
-    # Set CONFIG = "experiments/gptneo_125m_metabolic_v3.yaml" in run_modal_training.py, then:
+    # Set CONFIG = "experiments/gptneo_125m_stress_v6-wikitext.yaml" in run_modal_training.py, then:
     modal run run_modal_training.py::stage_data
 
 Dataset sizing guide:
@@ -54,7 +54,7 @@ def parse_args():
         "--config",
         type=str,
         required=True,
-        help="Path to experiment YAML config (e.g. experiments/gptneo_125m_metabolic.yaml)",
+        help="Path to experiment YAML config (e.g. experiments/gptneo_125m_stress_v6-wikitext.yaml)",
     )
     parser.add_argument(
         "--dataset",

@@ -148,24 +148,10 @@ def _flatten_yaml(yaml: dict) -> dict:
         flat["dataset_name"] = custom_name
         flat["dataset_config"] = ds_block.get("custom_dataset_config")
     elif ds_block.get("dataset_key"):
-        dataset_key = ds_block.get("dataset_key")
-        try:
-            import sys
-
-            # Ensure catalog is importable
-            project_root = Path(__file__).resolve().parent.parent.parent
-            if str(project_root) not in sys.path:
-                sys.path.insert(0, str(project_root))
-
-            from catalog.dataset_catalog import get_dataset_info
-
-            cat_info = get_dataset_info(dataset_key)
-            flat["dataset_name"] = cat_info["name"]
-            flat["dataset_config"] = cat_info["config"]
-        except Exception as exc:
-            logger.warning(
-                "Failed to load dataset key '%s' from catalog: %s", dataset_key, exc
-            )
+        logger.warning(
+            "dataset_key '%s' specified but catalog lookup is not supported; use custom_dataset_name instead",
+            ds_block.get("dataset_key"),
+        )
 
     # In case data_ingestion still manually defines source_dataset (legacy override)
     if "source_dataset" in yaml and yaml["source_dataset"]:
