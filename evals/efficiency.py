@@ -41,12 +41,16 @@ def summarize_timing_measurements(
     ms_per_token = [(duration * 1000.0) / tokens_per_pass for duration in durations_s]
 
     p50 = statistics.median(ms_per_token)
-    p95_index = max(0, min(len(ms_per_token) - 1, int(round(0.95 * (len(ms_per_token) - 1)))))
+    p95_index = max(
+        0, min(len(ms_per_token) - 1, int(round(0.95 * (len(ms_per_token) - 1))))
+    )
     p95 = sorted(ms_per_token)[p95_index]
 
     return {
         "throughput_tokens_per_sec_mean": statistics.mean(throughputs),
-        "throughput_tokens_per_sec_std": statistics.pstdev(throughputs) if len(throughputs) > 1 else 0.0,
+        "throughput_tokens_per_sec_std": statistics.pstdev(throughputs)
+        if len(throughputs) > 1
+        else 0.0,
         "latency_ms_per_token_p50": p50,
         "latency_ms_per_token_p95": p95,
     }
@@ -62,7 +66,9 @@ def _profile_loaded_model(
     benchmark_iters: int,
     autocast_dtype: torch.dtype,
 ) -> Dict[str, Any]:
-    vocab_size = getattr(model, "vocab_size", None) or getattr(model.backbone.config, "vocab_size", 50257)
+    vocab_size = getattr(model, "vocab_size", None) or getattr(
+        model.backbone.config, "vocab_size", 50257
+    )
     metrics: Dict[str, Any] = {}
 
     for batch_size in batch_sizes:
@@ -115,7 +121,9 @@ def _profile_loaded_model(
     return metrics
 
 
-def _flatten_efficiency_results(profile: Dict[str, Any], batch_sizes: Iterable[int]) -> Dict[str, float]:
+def _flatten_efficiency_results(
+    profile: Dict[str, Any], batch_sizes: Iterable[int]
+) -> Dict[str, float]:
     results: Dict[str, float] = {}
     for batch_size in batch_sizes:
         batch_metrics = profile[f"batch_{batch_size}"]
@@ -207,7 +215,9 @@ def run_efficiency_eval(
             benchmark_iters=benchmark_iters,
             autocast_dtype=autocast_dtype,
         )
-        results.update(_compute_overhead_ratios(profile, reference_profile, batch_sizes))
+        results.update(
+            _compute_overhead_ratios(profile, reference_profile, batch_sizes)
+        )
         metadata["reference_checkpoint_path"] = str(reference_checkpoint_path)
         metadata["reference_profile"] = reference_profile
 
