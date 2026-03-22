@@ -247,6 +247,48 @@ def test_log_results_to_wandb_uses_wandb_env_defaults(monkeypatch):
     assert logged is True
     assert fake_wandb.init_kwargs["project"] == "T-MoE"
     assert fake_wandb.init_kwargs["entity"] == "uoft"
+    assert fake_wandb.init_kwargs["mode"] == "online"
+
+
+def test_log_results_to_wandb_overrides_disabled_env_to_online(monkeypatch):
+    class _FakeRun:
+        def __init__(self):
+            self.summary = {}
+
+        def log(self, data, step=None):
+            return None
+
+        def finish(self):
+            return None
+
+    class _FakeWandb:
+        Table = object
+
+        def __init__(self):
+            self.init_kwargs = None
+
+        def init(self, **kwargs):
+            self.init_kwargs = kwargs
+            return _FakeRun()
+
+    fake_wandb = _FakeWandb()
+    monkeypatch.setenv("WANDB_MODE", "disabled")
+    monkeypatch.setattr("evals.results_schema.WANDB_AVAILABLE", True)
+    monkeypatch.setattr("evals.results_schema.wandb", fake_wandb)
+
+    logged = log_results_to_wandb(
+        {
+            "experiment_name": "demo",
+            "task": "perplexity",
+            "results": {"wikitext103_ppl": 12.3},
+            "metadata": {},
+            "config": {},
+        },
+        config={"experiment_name": "demo"},
+    )
+
+    assert logged is True
+    assert fake_wandb.init_kwargs["mode"] == "online"
 
 
 def test_log_results_to_wandb_skips_when_logging_disabled(monkeypatch):

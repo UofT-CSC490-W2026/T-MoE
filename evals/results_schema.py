@@ -43,6 +43,7 @@ except ImportError:  # pragma: no cover - exercised implicitly in lightweight en
     OmegaConf = _OmegaConfShim()
 
 EVAL_WANDB_RUN_VERSION = 5
+_VALID_WANDB_MODES = {"online", "offline", "disabled"}
 
 
 def _cfg_select(config: Any, key: str, default: Any = None) -> Any:
@@ -212,6 +213,24 @@ def _eval_wandb_entity(config: Any) -> str | None:
     return None
 
 
+def _eval_wandb_mode(config: Any) -> str:
+    """Choose an explicit W&B mode for eval logging.
+
+    We prefer an explicit config override first. If the environment was seeded
+    with WANDB_MODE=disabled (for example via a shared Modal secret), we still
+    default eval logging back to online unless the config explicitly disables it.
+    """
+    mode = _cfg_select(config, "logging.mode")
+    if isinstance(mode, str) and mode in _VALID_WANDB_MODES:
+        return mode
+
+    env_mode = os.environ.get("WANDB_MODE")
+    if isinstance(env_mode, str) and env_mode in {"online", "offline"}:
+        return env_mode
+
+    return "online"
+
+
 def _eval_run_name(payload: Dict[str, Any], config: Any) -> str:
     experiment_name = payload.get("experiment_name") or _cfg_select(
         config, "experiment_name", "experiment"
@@ -288,7 +307,8 @@ def log_results_to_wandb(
     config = config or payload.get("config") or {}
     if _cfg_select(config, "logging.enabled", True) is False:
         return False
-    if _cfg_select(config, "logging.mode") == "disabled":
+    mode = _eval_wandb_mode(config)
+    if mode == "disabled":
         return False
 
     init_kwargs = {
@@ -308,9 +328,7 @@ def log_results_to_wandb(
     if entity is not None:
         init_kwargs["entity"] = entity
 
-    mode = _cfg_select(config, "logging.mode")
-    if isinstance(mode, str) and mode in {"online", "offline"}:
-        init_kwargs["mode"] = mode
+    init_kwargs["mode"] = mode
 
     try:
         run = wandb.init(**init_kwargs)
