@@ -33,7 +33,11 @@ def test_training_integration():
         alpha=16,
         dropout=0.1,
     )
-    router_cfg = MetabolicRouterConfig(hidden_dim=hidden_dim, num_experts=4, top_k=2)
+    # tau_specialization=0.5 → threshold = 0.5/4 = 12.5%; top-2/4 routing gives ~25%
+    # usage per expert → always above threshold → fatigue accumulates deterministically.
+    router_cfg = MetabolicRouterConfig(
+        hidden_dim=hidden_dim, num_experts=4, top_k=2, tau_specialization=0.5
+    )
 
     # Build MoE layer using from_pretrained_mlp to trigger load_from_mlp
     moe = LoRAMoELayer.from_pretrained_mlp(

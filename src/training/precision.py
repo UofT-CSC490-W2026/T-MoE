@@ -33,15 +33,6 @@ def _detect_dtype() -> torch.dtype:
 COMPUTE_DTYPE: torch.dtype = _detect_dtype()
 
 
-def set_compute_dtype(dtype: torch.dtype) -> None:
-    global COMPUTE_DTYPE
-    COMPUTE_DTYPE = dtype
-
-
-def get_compute_dtype() -> torch.dtype:
-    return COMPUTE_DTYPE
-
-
 def is_mixed_precision() -> bool:
     return COMPUTE_DTYPE in (torch.bfloat16, torch.float16)
 

@@ -232,3 +232,40 @@ def test_gptneo_lora_forward_raises_before_load():
     expert = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
     with pytest.raises(RuntimeError, match="load_from_mlp"):
         expert(torch.randn(2, 4, 32))
+
+
+def test_b_init_scale_breaks_expert_symmetry():
+    """Non-zero b_init_scale produces distinct expert outputs at init, fixing the zero-gradient deadlock."""
+    config = LoRAConfig(hidden_dim=32, rank=4, alpha=8, b_init_scale=0.01)
+    base_mlp = MockMLP()
+
+    experts = []
+    for _ in range(4):
+        e = GPTNeoLoRAMLP(config)
+        e.load_from_mlp(base_mlp)
+        experts.append(e)
+
+    x = torch.randn(1, 5, 32)
+    outputs = [e(x) for e in experts]
+
+    # With b_init_scale > 0, experts should produce distinct outputs at init
+    any_different = False
+    for i in range(len(outputs)):
+        for j in range(i + 1, len(outputs)):
+            if not torch.allclose(outputs[i], outputs[j], atol=1e-7):
+                any_different = True
+                break
+    assert any_different, (
+        "With b_init_scale > 0, at least two experts should produce different outputs at init"
+    )
+
+
+def test_b_init_scale_zero_preserves_base_output():
+    """b_init_scale=0 (default) should still match base MLP output exactly."""
+    config = LoRAConfig(hidden_dim=32, rank=4, alpha=8, b_init_scale=0.0)
+    base_mlp = MockMLP()
+    expert = GPTNeoLoRAMLP(config)
+    expert.load_from_mlp(base_mlp)
+
+    x = torch.randn(1, 5, 32)
+    assert torch.allclose(expert(x), base_mlp(x), atol=1e-6)

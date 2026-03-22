@@ -10,7 +10,7 @@
 | `gptneo_1.3b_metabolic_v3.yaml` | 1.3B | 4 | 5000 | Scale-up |
 | `smoketest.yaml` | 125M | 1 | 2 | CI only |
 
-v2/v3 wikitext-103 runs are archived in LOG.md — v4 is the production config on fineweb-edu.
+v2/v3 wikitext-103 runs are archived in RESEARCH_LOG.md — v4 is the production config on fineweb-edu.
 
 ## Running on Modal
 

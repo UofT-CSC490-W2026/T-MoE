@@ -7,6 +7,7 @@ from transformers import AutoModelForCausalLM, AutoConfig
 from src.core import ModelRegistry
 from src.models.base import BaseModelBackbone
 from src.project_types import ModelType
+from src.training.precision import COMPUTE_DTYPE
 
 
 @ModelRegistry.register(ModelType.GPTNEO.value)
@@ -83,10 +84,9 @@ class GPTNeoBackbone(BaseModelBackbone):
         return list(cls.VARIANTS.keys())
 
     def load_pretrained(self) -> None:
-        # float32: FSDP MixedPrecision casts uniformly during wrapping
         self.backbone = AutoModelForCausalLM.from_pretrained(
             self.model_name,
-            dtype=torch.float32,
+            dtype=COMPUTE_DTYPE,
         ).to(self.device)
 
         config = AutoConfig.from_pretrained(self.model_name)

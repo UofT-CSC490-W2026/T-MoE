@@ -1,0 +1,72 @@
+# ============================================================================
+# GPT-Neo 125M / SPAR Router — wikitext-103
+# ============================================================================
+#
+# Selection:  z_i = cos(x,W_i) - λ·max(0, L_i - 1/N)
+# Weight:     w_i = softmax(cos(x,W_i) / τ)
+# Lambda:     auto-calibrated at step 200: λ = min(σ_cos / mean(L), 5.0)
+#
+# One-sided penalty: zero at equilibrium, fires only for overloaded experts.
+# No auxiliary loss. One free hyperparameter (τ=0.5).
+# ============================================================================
+
+experiment_name: gptneo_125m_spar_wikitext
+seed: 42
+compile: false
+
+model:
+  model_key: gpt-neo-125m
+  freeze_backbone: true
+  moe_layer_indices: [1, 3, 5, 7, 9, 11]
+
+router:
+  type: stress_corrected
+  num_experts: 8
+  top_k: 2
+  temperature: 0.5        # τ — one free hyperparameter
+  noise_std: 0.05
+  ema_alpha: 0.01
+  lambda_calib_step: 600  # warmup_steps(400) + 200; calibrate after LR warmup completes
+
+expert:
+  type: gpt_neo_lora
+  count: 8
+  lora:
+    rank: 16
+    alpha: 32
+    dropout: 0.05
+    init_scale: 0.01
+    trainable_base: false
+
+training:
+  batch_size: 16
+  lr: 3.0e-4
+  steps: 5000
+  warmup_steps: 400
+  weight_decay: 0.1
+  save_interval: 1000
+  eval_interval: 500
+  log_interval: 25
+  optimizer: adamw
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  gradient_accumulation_steps: 4
+  clip_grad_norm: 1.0
+  num_workers: 2
+
+dataset:
+  dataset_key: wikitext-103
+  max_seq_len: 512
+
+logging:
+  enabled: true
+  log_gradients: false
+  log_interval: 25
+
+distributed:
+  strategy: ddp
+  find_unused_parameters: false
+
+compute:
+  modal:
+    gpu: "A100:4"

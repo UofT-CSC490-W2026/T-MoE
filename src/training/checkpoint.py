@@ -30,8 +30,24 @@ def _log_state_dict_result(result, label: str) -> None:
 
 
 # Router state buffers that must survive checkpointing for correct resume.
-# Excludes: _pending_usage_sum / _pending_tokens (transient, zero after step()).
-_ROUTER_STATE_BUFFERS = frozenset({"fatigue", "num_steps"})
+# Transient accumulators (_pending_*) are excluded — they're zero after step().
+_ROUTER_STATE_BUFFERS = frozenset(
+    {
+        # MetabolicRouter
+        "fatigue",
+        # Shared
+        "num_steps",
+        # StressCorrectedRouter (SPAR) — ema_load and lambda_val define routing
+        # behaviour at resume time; losing them resets load tracking and disables
+        # the calibrated penalty for the remainder of training.
+        "ema_load",
+        "lambda_val",
+        "lambda_initialized",
+        "welford_n",
+        "welford_mu",
+        "welford_M2",
+    }
+)
 
 
 def _get_state_dict(model: nn.Module) -> dict:

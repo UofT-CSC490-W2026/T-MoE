@@ -27,7 +27,7 @@ from omegaconf import OmegaConf
 # CONFIGURATION — change this one line to switch experiments
 # =============================================================================
 
-CONFIG = "experiments/gptneo_125m_standard_v3.yaml"
+CONFIG = "experiments/gptneo_125m_stress_v8b-fineweb.yaml"
 
 # GPU spec is read from compute.modal.gpu in the active config.
 # Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
@@ -170,7 +170,7 @@ def stage_data(config: str = CONFIG, force: bool = False):  # noqa: B008
     gpu=GPU,  # provisioned from the constant above
     memory=32768,
     timeout=60 * 60 * 12,
-    retries=2,
+    retries=0,
 )
 def stage_train(config: str = CONFIG, overrides: str = ""):  # noqa: B008
     """

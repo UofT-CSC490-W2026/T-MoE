@@ -16,16 +16,17 @@ def device() -> torch.device:
 
 @pytest.fixture
 def standard_config() -> MetabolicRouterConfig:
-    """Standard metabolic router configuration for testing."""
+    """Standard metabolic router configuration for testing (v6 formulation)."""
     return MetabolicRouterConfig(
         hidden_dim=256,
         num_experts=8,
         top_k=2,
         lambda_metabolic=0.5,
-        gamma_recovery=0.05,
-        beta_cost=0.4,
+        gamma_recovery=0.15,
+        beta_cost=0.15,
+        tau_specialization=2.0,
+        F_scale=0.5,
         warmup_steps=100,
-        temperature=1.0,
     )
 
 
@@ -39,8 +40,9 @@ def minimal_config() -> MetabolicRouterConfig:
         lambda_metabolic=0.0,
         gamma_recovery=0.0,
         beta_cost=0.0,
+        tau_specialization=1.0,
+        F_scale=1.0,
         warmup_steps=0,
-        temperature=1.0,
     )
 
 

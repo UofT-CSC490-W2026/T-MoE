@@ -52,14 +52,3 @@ def load_experiment_config(
         cfg.experiment_name = path.stem
 
     return cfg
-
-
-def list_available_experiments() -> None:
-    """List all available experiment configurations."""
-    print("\nAvailable experiments:")
-    if EXPERIMENTS_DIR.exists():
-        for f in sorted(EXPERIMENTS_DIR.glob("*.yaml")):
-            print(f"  - {f.stem}")
-    else:
-        print("  (No experiments directory found)")
-    print()

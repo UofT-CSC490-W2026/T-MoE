@@ -23,6 +23,10 @@ class BaseRouter(nn.Module, ABC):
     def compute_aux_loss(self) -> torch.Tensor:
         pass
 
+    def step(self) -> None:
+        """Called after optimizer.step(). Override for per-step state updates."""
+        pass
+
     def reset_state(self) -> None:
         pass
 

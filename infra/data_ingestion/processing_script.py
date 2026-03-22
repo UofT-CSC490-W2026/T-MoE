@@ -7,12 +7,12 @@ to ``/opt/ml/processing/output``, and emits ``metadata.json``.
 SageMaker automatically syncs that directory to S3 when the job finishes.
 
 Environment variables consumed:
-    DATASET_NAME   — HuggingFace dataset identifier  (default: EleutherAI/wikitext-2)
-    OUTPUT_BASE_DIR — local output directory          (default: /opt/ml/processing/output)
-    OUTPUT_FORMAT  — jsonl | parquet | text            (default: jsonl)
-    LOG_LEVEL      — DEBUG | INFO | WARNING | …       (default: INFO)
-    MAX_RETRIES    — download retry count              (default: 3)
-    RETRY_DELAY    — base retry delay in seconds       (default: 5.0)
+    DATASET_NAME — HuggingFace dataset identifier (default: EleutherAI/wikitext-2)
+    OUTPUT_BASE_DIR — local output directory (default: /opt/ml/processing/output)
+    OUTPUT_FORMAT — jsonl | parquet | text (default: jsonl)
+    LOG_LEVEL — DEBUG | INFO | WARNING | … (default: INFO)
+    MAX_RETRIES — download retry count (default: 3)
+    RETRY_DELAY — base retry delay in seconds (default: 5.0)
 """
 
 from __future__ import annotations

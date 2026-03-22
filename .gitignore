@@ -24,7 +24,6 @@ outputs/
 logs/
 *.log
 runs/
-scripts/
 
 # System
 .DS_Store

@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Optional WandB integration
 try:
@@ -47,6 +47,15 @@ class GlobalSpecializationTracker:
 
             expanded_tokens = valid_tokens.unsqueeze(1).expand(-1, top_k).reshape(-1)
             flattened_experts = valid_experts.flatten()
+
+            # Filter out padding experts (-1 used in adaptive k)
+            expert_mask = flattened_experts >= 0
+            if not expert_mask.any():
+                return
+
+            expanded_tokens = expanded_tokens[expert_mask]
+            flattened_experts = flattened_experts[expert_mask]
+
             linear_indices = expanded_tokens * self.num_experts + flattened_experts
             counts = torch.bincount(
                 linear_indices, minlength=self.vocab_size * self.num_experts
@@ -167,13 +176,19 @@ class RouterMetricsTracker:
         usage = torch.zeros(
             self.num_experts, device=indices.device, dtype=torch.float32
         )
-        usage.scatter_add_(0, indices.flatten(), weights.flatten().to(torch.float32))
+        # clamp min to 0 to safely ignore -1 indices (weights will be 0 anyway)
+        safe_indices = indices.flatten().clamp(min=0)
+        usage.scatter_add_(0, safe_indices, weights.flatten().to(torch.float32))
         return usage
 
     def compute_expert_entropy(
-        self, indices: torch.Tensor, weights: torch.Tensor
+        self,
+        indices: torch.Tensor,
+        weights: torch.Tensor,
+        usage: Optional[torch.Tensor] = None,
     ) -> Dict[str, float]:
-        usage = self._compute_usage(indices, weights)
+        if usage is None:
+            usage = self._compute_usage(indices, weights)
         usage_prob = usage / (usage.sum() + 1e-10)
         entropy = -(usage_prob * torch.log(usage_prob + 1e-10)).sum()
         max_entropy = np.log(self.num_experts)
@@ -185,6 +200,8 @@ class RouterMetricsTracker:
         }
 
     def compute_fatigue_stats(self) -> Dict[str, Any]:
+        if not hasattr(self.router, "fatigue"):
+            return {}
         fatigue = self.router.fatigue
 
         return {
@@ -196,9 +213,14 @@ class RouterMetricsTracker:
         }
 
     def compute_usage_distribution(
-        self, indices: torch.Tensor, weights: torch.Tensor
+        self,
+        indices: torch.Tensor,
+        weights: torch.Tensor,
+        usage: Optional[torch.Tensor] = None,
     ) -> Dict[str, Any]:
-        usage_counts = self._compute_usage(indices, weights)
+        usage_counts = (
+            usage if usage is not None else self._compute_usage(indices, weights)
+        )
         usage_dist = usage_counts / (usage_counts.sum() + 1e-10)
 
         return {
@@ -207,7 +229,10 @@ class RouterMetricsTracker:
         }
 
     def compute_gini_coefficient(
-        self, indices: torch.Tensor, weights: torch.Tensor
+        self,
+        indices: torch.Tensor,
+        weights: torch.Tensor,
+        usage: Optional[torch.Tensor] = None,
     ) -> float:
         """
         Compute Gini coefficient for load balancing assessment.
@@ -218,11 +243,12 @@ class RouterMetricsTracker:
         Args:
             indices: Expert indices [batch, seq, top_k]
             weights: Routing weights [batch, seq, top_k]
+            usage: Precomputed usage tensor [num_experts] (optional)
 
         Returns:
             Gini coefficient in [0, 1]
         """
-        usage = self._compute_usage(indices, weights)
+        usage = usage if usage is not None else self._compute_usage(indices, weights)
         sorted_usage, _ = torch.sort(usage)
         n = self.num_experts
         index = self.gini_index.to(indices.device)
@@ -233,11 +259,17 @@ class RouterMetricsTracker:
         return gini.item()
 
     def compute_effective_experts(
-        self, indices: torch.Tensor, weights: torch.Tensor, entropy: float = None
+        self,
+        indices: torch.Tensor,
+        weights: torch.Tensor,
+        entropy: float = None,
+        usage: Optional[torch.Tensor] = None,
     ) -> float:
         """Effective number of experts = exp(entropy). Range: [1, num_experts]."""
         if entropy is None:
-            entropy = self.compute_expert_entropy(indices, weights)["expert_entropy"]
+            entropy = self.compute_expert_entropy(indices, weights, usage=usage)[
+                "expert_entropy"
+            ]
         return np.exp(entropy)
 
     def compute_confidence_metrics(self, weights: torch.Tensor) -> Dict[str, float]:
@@ -277,20 +309,25 @@ class RouterMetricsTracker:
         weights: torch.Tensor,
     ) -> Dict[str, Any]:
         metrics = {}
-        entropy_metrics = self.compute_expert_entropy(indices, weights)
+        # Compute usage once — shared by entropy, distribution, gini, effective_experts.
+        usage = self._compute_usage(indices, weights)
+        entropy_metrics = self.compute_expert_entropy(indices, weights, usage=usage)
         metrics.update(entropy_metrics)
         if hasattr(self.router, "fatigue"):
             metrics.update(self.compute_fatigue_stats())
-        metrics.update(self.compute_usage_distribution(indices, weights))
+        metrics.update(self.compute_usage_distribution(indices, weights, usage=usage))
         metrics["routing_diversity_gini"] = self.compute_gini_coefficient(
-            indices, weights
+            indices, weights, usage=usage
         )
         metrics["effective_experts"] = self.compute_effective_experts(
-            indices, weights, entropy=entropy_metrics["expert_entropy"]
+            indices, weights, entropy=entropy_metrics["expert_entropy"], usage=usage
         )
         metrics.update(self.compute_confidence_metrics(weights))
         if hasattr(self.router, "num_steps"):
             metrics["num_steps"] = self.router.num_steps.item()
+        # Allow routers to inject their own custom metrics (e.g. stress, mean_k)
+        if hasattr(self.router, "get_custom_metrics"):
+            metrics.update(self.router.get_custom_metrics(indices, weights))
         return metrics
 
     def log_to_wandb(
@@ -325,3 +362,20 @@ class RouterMetricsTracker:
                 },
                 step=step,
             )
+
+        extra_log: Dict[str, Any] = {}
+        for key, hist_name, scalar_name in (
+            ("stress_per_expert", "stress_histogram", "stress"),
+            ("ema_load_per_expert", "ema_load_histogram", "load"),
+        ):
+            if key in metrics:
+                vals = metrics[key]
+                extra_log[f"{prefix}/{hist_name}"] = wandb.Histogram(vals)
+                extra_log.update(
+                    {
+                        f"{prefix}/expert_{i}_{scalar_name}": v
+                        for i, v in enumerate(vals)
+                    }
+                )
+        if extra_log:
+            wandb.log(extra_log, step=step)

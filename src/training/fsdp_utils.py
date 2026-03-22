@@ -1,13 +1,3 @@
-"""
-FSDP utilities for multi-GPU training.
-
-Wrapping strategy: GPTNeoBlock with use_orig_params=True.
-- use_orig_params=True is required because blocks mix frozen and trainable params.
-- GPTNeoBlock wrapping ensures all params are materialized before router access.
-
-Launch: torchrun --standalone --nproc_per_node=N -m scripts.train --config ...
-"""
-
 from __future__ import annotations
 
 import os
@@ -65,38 +55,6 @@ def get_model_for_attr_access(model: nn.Module) -> nn.Module:
     from torch.nn.parallel import DistributedDataParallel as DDP
 
     return model.module if isinstance(model, DDP) else model
-
-
-def debug_fsdp_wrapping(model: nn.Module) -> None:
-    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-
-    print("\n=== FSDP Module Tree ===")
-    fsdp_modules = []
-
-    def _walk(module: nn.Module, prefix: str, depth: int) -> None:
-        is_fsdp = isinstance(module, FSDP)
-        tag = " ← FSDP" if is_fsdp else ""
-        if is_fsdp:
-            fsdp_modules.append(
-                (depth, prefix, type(module._fsdp_wrapped_module).__name__)
-            )
-        print(f"  {'  ' * depth}{prefix} [{type(module).__name__}]{tag}")
-        for name, child in module.named_children():
-            _walk(child, name, depth + 1)
-
-    _walk(model, "root", 0)
-
-    print("\n--- Wrapped Nodes ---")
-    for depth, name, inner_cls in fsdp_modules:
-        print(f"  depth={depth} | name={name!r} | wrapping={inner_cls}")
-
-    nested = any(
-        d1 > d2 and n1.startswith(n2 + ".")
-        for (d1, n1, _) in fsdp_modules
-        for (d2, n2, _) in fsdp_modules
-    )
-    print("\n⚠️  Nested FSDP wrap detected!" if nested else "\n✅ No nested wraps.")
-    print("=== End ===\n")
 
 
 def wrap_model_for_distributed(

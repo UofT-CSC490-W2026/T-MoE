@@ -1,0 +1,91 @@
+# ============================================================================
+# GPT-Neo 125M / SPAR Router — fineweb-edu — v8a
+# ============================================================================
+#
+# Ablation: Shared Base LoRA only (no GMR).
+#
+# Key change vs v7: shared_base_rank: 8
+#   A trainable LoRA (rank=8) is applied to the c_proj stage for ALL tokens,
+#   outside the routing mechanism. Absorbs domain shift (Pile → fineweb-edu)
+#   at the shared-base level, freeing per-expert LoRA capacity for specialization.
+#
+#   Full output:
+#     y(x) = base_adapted(h_all) + Σ_{i∈S} w_i · Δ_i(x)
+#   where:
+#     h_all         = act(W_frozen_fc · x)           [frozen, no grad, all tokens]
+#     base_adapted  = W_frozen_proj·h_all + B_s·A_s·h_all·(αs/rs)  [shared LoRA delta]
+#     Δ_i(x)        = top-k routed expert LoRA deltas  [unchanged from v7]
+#
+# Added trainable params: 6 layers × (3072×8 + 8×768) = 6 × 30,720 = 184,320
+# Total trainable: 11.8M + 0.18M = 11.98M (vs 125M frozen backbone)
+#
+# All router settings identical to v7 — clean isolated ablation.
+# ============================================================================
+
+experiment_name: gptneo_125m_stress_v8a_fineweb
+seed: 42
+compile: true
+
+model:
+  model_key: gpt-neo-125m
+  freeze_backbone: true
+  moe_layer_indices: [1, 3, 5, 7, 9, 11]
+
+router:
+  type: stress_corrected
+  num_experts: 8
+  top_k: 2
+  temperature: 0.5
+  tau_final: 0.10
+  tau_anneal_steps: 14000
+  noise_std: 0.05
+  noise_anneal_steps: 9500
+  eps: 1.0e-3
+  ema_alpha: 0.01
+  lambda_calib_step: 600
+  init_from_data: true
+
+expert:
+  type: gpt_neo_lora
+  count: 8
+  lora:
+    rank: 32
+    alpha: 64
+    dropout: 0.05
+    init_scale: 0.01
+    b_init_scale: 0.01
+    shared_base_rank: 8      # enables SharedBaseLoRA on c_proj for all tokens
+    shared_base_alpha: 16.0  # scaling = 16/8 = 2.0
+
+training:
+  batch_size: 32
+  lr: 3.0e-4
+  steps: 19000
+  warmup_steps: 400
+  weight_decay: 0.1
+  save_interval: 1000
+  eval_interval: 1000
+  log_interval: 25
+  optimizer: adamw
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  gradient_accumulation_steps: 2
+  clip_grad_norm: 1.0
+  num_workers: 2
+
+dataset:
+  dataset_key: fineweb-edu
+  max_seq_len: 1024
+
+logging:
+  enabled: true
+  log_gradients: false
+  log_interval: 25
+
+distributed:
+  strategy: ddp
+  find_unused_parameters: false
+
+compute:
+  modal:
+    gpu: "H100:4"

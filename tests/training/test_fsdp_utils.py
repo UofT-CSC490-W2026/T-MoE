@@ -1,26 +1,7 @@
-"""
-tests/training/test_fsdp_utils.py — Unit tests for FSDP wrap policy correctness.
-
-These tests run entirely on CPU without a real distributed process group.
-They verify the structural correctness of the wrap policy by:
-  - Checking that LoRAMoELayer instances ARE captured by the policy
-  - Checking that GPTNeo attention/norm sub-modules are NOT captured
-  - Checking that no module occurs as a wrapped child of another wrapped module
-    (which would recreate the double-wrap AssertionError at runtime)
-
-Run with:
-    pytest tests/training/test_fsdp_utils.py -v
-"""
-
 from __future__ import annotations
 
 import pytest
 import torch.nn as nn
-
-
-# ---------------------------------------------------------------------------
-# Minimal stub classes to test policy logic in isolation (no model download)
-# ---------------------------------------------------------------------------
 
 
 class FakeLoRAMoELayer(nn.Module):
@@ -72,11 +53,6 @@ class FakeModel(nn.Module):
         for block in self.blocks:
             h = block(h)
         return h
-
-
-# ---------------------------------------------------------------------------
-# Policy correctness: ModuleWrapPolicy must match ONLY LoRAMoELayer
-# ---------------------------------------------------------------------------
 
 
 class TestModuleWrapPolicy:
@@ -172,11 +148,6 @@ class TestModuleWrapPolicy:
         assert not new_has_block, (
             "New policy should NOT match FakeTransformerBlock — only LoRAMoELayer"
         )
-
-
-# ---------------------------------------------------------------------------
-# is_main_process / init_distributed sanity checks (no real NCCL needed)
-# ---------------------------------------------------------------------------
 
 
 class TestDistributedUtils:

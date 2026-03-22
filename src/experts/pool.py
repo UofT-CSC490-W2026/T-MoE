@@ -22,6 +22,10 @@ class ExpertPool(nn.Module):
         self.experts = nn.ModuleList(
             [self.expert_class(config) for _ in range(num_experts)]
         )
+        # Populated by make_base_trainable() when config.trainable_base=True.
+        # Registered as nn.Parameters so optimizer sees them; biases stay as frozen buffers.
+        self.shared_fc_weight: nn.Parameter | None = None
+        self.shared_proj_weight: nn.Parameter | None = None
 
     @property
     def num_experts(self) -> int:
@@ -75,6 +79,30 @@ class ExpertPool(nn.Module):
             if hasattr(expert, "c_proj") and expert.c_proj is not None:
                 expert.c_proj._buffers["shared_weight"] = ref["c_proj_w"]
                 expert.c_proj._buffers["shared_bias"] = ref["c_proj_b"]
+
+    def make_base_trainable(self) -> None:
+        """
+        Promote shared base weights to trainable nn.Parameters at pool level.
+
+        Must be called AFTER consolidate_shared_weights() (so we're on-device
+        and buffers are shared) and BEFORE DDP/FSDP wrapping.
+
+        After this call, ExpertPool.shared_fc_weight and shared_proj_weight are
+        trainable parameters. LoRAMoELayer.forward() passes them explicitly to
+        each expert, so F.linear() sees the actual parameter (not .data) and
+        gradients flow correctly.
+        """
+        if self.num_experts == 0:
+            return
+        e0 = self.experts[0]
+        if not (hasattr(e0, "c_fc") and e0.c_fc is not None):
+            return
+        self.shared_fc_weight = nn.Parameter(
+            e0.c_fc._buffers["shared_weight"].clone().float()
+        )
+        self.shared_proj_weight = nn.Parameter(
+            e0.c_proj._buffers["shared_weight"].clone().float()
+        )
 
     def freeze_base_weights(self) -> None:
         for expert in self.experts:

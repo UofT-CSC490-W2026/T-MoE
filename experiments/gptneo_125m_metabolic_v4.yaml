@@ -71,8 +71,6 @@ router:
     # fatigue penalty activates. Confirmed working in v3.
     warmup_steps: 400
 
-    magnitude_min: 0.1
-    magnitude_max: 8.0
 
 # ── Experts ─────────────────────────────────────────────────────────────────
 expert:

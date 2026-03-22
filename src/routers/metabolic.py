@@ -16,30 +16,26 @@ MIN_TEMPERATURE = 1e-3
 @RouterRegistry.register(RouterType.METABOLIC.value)
 class MetabolicRouter(BaseRouter):
     """
-    Metabolic Router v5: fatigue-based load balancing without auxiliary loss.
+    Metabolic Router v6: tanh-bounded fatigue penalty with one-sided accumulation.
 
-    Formula:
-        potential_i = cos(x, w_i) - λ * warmup_scale * F_i
-        F_i = (1 - γ) * F_i + β * (U_i - 1/N)
+    Routing potential:
+        z_i(x,t) = cos(x, W_i) - λ_eff(t) · tanh(F_i(t) / F_s)
+
+    Fatigue update (one-sided — underused experts never go negative):
+        F_i(t+1) = (1 - γ) · F_i(t) + β · max(0, U_i(t) - τ/N)
 
     Where:
-        F_i  - fatigue buffer per expert (EMA of excess usage)
-        U_i  - fraction of tokens routed to expert i (uniform token count)
-        λ    - fatigue penalty strength (lambda_metabolic)
-        γ    - fatigue recovery rate (gamma_recovery)
-        β    - fatigue accumulation rate (beta_cost)
+        F_i  - fatigue buffer per expert (≥ 0)
+        U_i  - fraction of tokens routed to expert i
+        λ    - penalty scale (lambda_metabolic)
+        γ    - fatigue decay rate (gamma_recovery); memory horizon ≈ 1/γ steps
+        β    - accumulation rate (beta_cost)
+        τ    - specialization tolerance (tau_specialization); free zone up to τ/N
+        F_s  - saturation scale (F_scale); tanh reaches ±1 at F_i ≈ F_s
 
-    Escape hatches closed vs v1-v4:
-        1. g_i removed: cosine similarity ∈ [-1, 1] is the hard bound on gate signal.
-           No learnable scale the optimizer can inflate to overpower the penalty.
-        2. Raw F_i (no SoftSign): penalty grows proportionally with imbalance.
-           For any finite gate advantage (bounded by cosine range 2.0), F_i will grow
-           until λ × F_i exceeds it — guaranteed equilibrium for λ ≥ max trained advantage.
-
-    λ calibration (cosine space, no LN):
-        At equilibrium for 2x overloaded expert: F_eq = β/γ × 1/N ≈ 1.0
-        penalty = λ × 1.0. Trained gate advantages in practice ≈ 0.3–0.6.
-        λ=1.0 exceeds the practical maximum → provably forces rebalancing.
+    λ calibration (cosine space ∈ [-1, 1]):
+        Trained gate advantages ≈ 0.3–0.6. λ=0.3 is conservative; λ=1.0 provably
+        forces rebalancing for any gate advantage in the cosine range.
     """
 
     def __init__(self, config: MetabolicRouterConfig):
@@ -53,9 +49,10 @@ class MetabolicRouter(BaseRouter):
         self.lambda_metabolic = config.lambda_metabolic
         self.gamma_recovery = config.gamma_recovery
         self.beta_cost = config.beta_cost
+        self.tau_specialization = config.tau_specialization
+        self.F_scale = config.F_scale
         self.warmup_steps = config.warmup_steps
-        self.temperature = config.temperature
-        self.noise_std = config.noise_std
+        self._last_fraction_penalised = 0.0
 
         # Gate: cosine similarity between input and expert prototypes.
         # nn.Linear is FSDP-safe (vs raw Parameter — FSDP all-gather intercepts F.linear).
@@ -88,13 +85,12 @@ class MetabolicRouter(BaseRouter):
         potential = alignment
 
         if self.lambda_metabolic > 0 and lambda_scale > 0:
-            # Raw F_i: penalty grows proportionally with imbalance (no SoftSign ceiling).
+            # tanh(F_i / F_s) bounds the penalty to (-λ, +λ).
             # Cast to fp32: under FSDP bf16 the buffer may be downcast.
-            potential = potential - (
-                self.lambda_metabolic
-                * lambda_scale
-                * self.fatigue.float().view(1, 1, -1)
+            tanh_penalty = torch.tanh(self.fatigue.float() / self.F_scale).view(
+                1, 1, -1
             )
+            potential = potential - self.lambda_metabolic * lambda_scale * tanh_penalty
 
         if noise_std > 0:
             u = torch.empty_like(potential).uniform_(1e-10, 1.0 - 1e-10)
@@ -122,16 +118,21 @@ class MetabolicRouter(BaseRouter):
 
     def update_fatigue(self, usage: torch.Tensor) -> None:
         """
-        EMA fatigue update: F = (1 - γ) * F + β * (U - 1/N)
+        One-sided EMA fatigue update: F = (1 - γ) · F + β · max(0, U - τ/N)
 
-        Overloaded experts (U > 1/N) accumulate positive fatigue → routing penalty.
-        Underloaded experts (U < 1/N) accumulate negative fatigue → routing bonus.
-        Zero-sum by design: Σ (U_i - 1/N) = 0.
+        Only overloaded experts (U > τ/N) accumulate fatigue → routing penalty.
+        Underused experts only decay; fatigue is clamped to ≥ 0 (never negative).
+        τ > 1 creates a free zone: experts can handle up to τ/N tokens without penalty.
         """
-        excess_usage = usage.float() - (1.0 / self.num_experts)
+        fairshare = self.tau_specialization / self.num_experts
+        excess_usage = (usage.float() - fairshare).clamp(min=0.0)
+        self._last_fraction_penalised = (
+            (usage.float() > fairshare).float().mean().item()
+        )
         with torch.no_grad():
             f = self.fatigue.float()
             f.mul_(1 - self.gamma_recovery).add_(self.beta_cost * excess_usage)
+            f.clamp_(min=0.0)  # one-sided: fatigue never goes negative
             self.fatigue.copy_(f)
 
     def forward(
@@ -144,8 +145,7 @@ class MetabolicRouter(BaseRouter):
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[Dict[str, Any]]]:
         alignment = self.compute_alignment(x)
 
-        if noise_std is None:
-            noise_std = self.noise_std if self.training else 0.0
+        used_noise_std = noise_std if noise_std is not None else 0.0
 
         # Global λ warmup: ramp fatigue penalty 0 → λ over warmup_steps.
         if self.warmup_steps > 0 and self.training:
@@ -153,14 +153,13 @@ class MetabolicRouter(BaseRouter):
         else:
             lambda_scale = 1.0
 
-        potential = self.compute_routing_potential(alignment, noise_std, lambda_scale)
+        potential = self.compute_routing_potential(
+            alignment, used_noise_std, lambda_scale
+        )
 
         top_k_values, top_k_indices = torch.topk(potential, self.top_k, dim=-1)
 
-        temp = max(
-            temperature if temperature is not None else self.temperature,
-            MIN_TEMPERATURE,
-        )
+        temp = max(temperature if temperature is not None else 1.0, MIN_TEMPERATURE)
         weights = F.softmax(top_k_values / temp, dim=-1)
 
         if self.training and record_usage:
@@ -201,12 +200,23 @@ class MetabolicRouter(BaseRouter):
             self._step_count = 0
 
     def get_state(self) -> Dict[str, Any]:
+        lambda_scale = (
+            min(1.0, self._step_count / self.warmup_steps)
+            if self.warmup_steps > 0
+            else 1.0
+        )
         return {
             "fatigue": self.fatigue.clone(),
             "num_steps": self.num_steps.item(),
             "mean_fatigue": self.fatigue.mean().item(),
             "max_fatigue": self.fatigue.max().item(),
             "min_fatigue": self.fatigue.min().item(),
+            "lambda_eff": self.lambda_metabolic * lambda_scale,
+            "fatigue_tanh_mean": torch.tanh(self.fatigue.float() / self.F_scale)
+            .mean()
+            .item(),
+            "fairshare": self.tau_specialization / self.num_experts,
+            "fraction_penalised": self._last_fraction_penalised,
         }
 
     def state_dict(self, *args, **kwargs):
@@ -216,8 +226,9 @@ class MetabolicRouter(BaseRouter):
             "lambda_metabolic": self.lambda_metabolic,
             "gamma_recovery": self.gamma_recovery,
             "beta_cost": self.beta_cost,
+            "tau_specialization": self.tau_specialization,
+            "F_scale": self.F_scale,
             "warmup_steps": self.warmup_steps,
-            "temperature": self.temperature,
         }
         return state
 
@@ -237,7 +248,14 @@ class MetabolicRouter(BaseRouter):
             self.num_steps.fill_(metadata["num_steps"])
             self._step_count = metadata["num_steps"]
 
-        for key in ("lambda_metabolic", "gamma_recovery", "beta_cost", "warmup_steps"):
+        for key in (
+            "lambda_metabolic",
+            "gamma_recovery",
+            "beta_cost",
+            "tau_specialization",
+            "F_scale",
+            "warmup_steps",
+        ):
             if key in metadata:
                 current_val = getattr(self, key, None)
                 loaded_val = metadata[key]

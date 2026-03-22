@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from torch import nn
 
@@ -48,12 +50,22 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
             alpha=self.config.alpha,
             dropout=self.config.dropout,
             init_scale=self.config.init_scale,
+            b_init_scale=self.config.b_init_scale,
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        fc_weight: Optional[torch.Tensor] = None,
+        proj_weight: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         if self.c_fc is None:
             raise RuntimeError("Call load_from_mlp() before using GPTNeoLoRAMLP.")
-        return self.dropout(self.c_proj(self.act(self.c_fc(x))))
+        return self.dropout(
+            self.c_proj(
+                self.act(self.c_fc(x, base_weight=fc_weight)), base_weight=proj_weight
+            )
+        )
 
     def load_from_mlp(self, mlp: nn.Module) -> None:
         fc_layer = getattr(mlp, "c_fc", None) or getattr(mlp, "fc_in", None)

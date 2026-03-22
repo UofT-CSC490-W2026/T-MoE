@@ -1,13 +1,3 @@
-"""
-src/utils/training_workflow.py — Thin training wrapper for AWS Batch container mode.
-
-AWS Batch's run_aws_training.py (container mode) imports execute_training_workflow
-from here. This module bridges the AWS orchestration layer to scripts/train.main().
-
-It is intentionally minimal: configure the output directory argument, then delegate
-to the same training script used everywhere else. No duplicated training logic here.
-"""
-
 from __future__ import annotations
 
 import sys
@@ -46,9 +36,7 @@ def execute_training_workflow(
     output_dir = Path("/tmp/tmoe_outputs") / config_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # -----------------------------------------------------------------
     # Step 1: Prepare shards (idempotent — skips if already done)
-    # -----------------------------------------------------------------
     if next(shard_dir.glob("train_shard_*.bin"), None) is None:
         prep_cmd = [
             sys.executable,
@@ -61,9 +49,7 @@ def execute_training_workflow(
         ]
         subprocess.run(prep_cmd, check=True)
 
-    # -----------------------------------------------------------------
     # Step 2: Train
-    # -----------------------------------------------------------------
     import torch
 
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
