@@ -37,7 +37,7 @@ class BaseModelBackbone(nn.Module, ABC):
 
         # To be set by subclasses
         self.backbone = None
-        self.moe_layers = nn.ModuleDict()
+        self.moe_layers: dict = {}
 
     @abstractmethod
     def load_pretrained(self) -> None:
@@ -74,7 +74,7 @@ class BaseModelBackbone(nn.Module, ABC):
         Args:
             moe_layers: Dict mapping layer index to MoE module
         """
-        self.moe_layers = nn.ModuleDict({str(k): v for k, v in moe_layers.items()})
+        self.moe_layers = {str(k): v for k, v in moe_layers.items()}
 
     def freeze_parameters(self) -> None:
         """Freeze all backbone parameters (except MoE layers)."""

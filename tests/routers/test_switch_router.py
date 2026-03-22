@@ -1,6 +1,6 @@
 import torch
 
-from configs.router import SwitchRouterConfig
+from src.configs.router import SwitchRouterConfig
 from src.routers.standard import SwitchRouter
 
 

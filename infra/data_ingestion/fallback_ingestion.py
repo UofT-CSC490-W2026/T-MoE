@@ -8,7 +8,7 @@ Usage:
     from infra.data_ingestion.fallback_ingestion import FallbackIngestion
 
     ingestion = FallbackIngestion(
-        dataset_name="KrisMinchev/wikitext-2-raw-v1",
+        dataset_name="EleutherAI/wikitext-2",
         s3_bucket="my-bucket",
         s3_prefix="datasets/raw/",
         aws_region="us-east-1",
@@ -26,12 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-
-from infra.data_ingestion.shared import (
-    load_huggingface_dataset,
-    validate_split_data,
-    write_split_to_disk,
-)
+from datasets import load_dataset  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
@@ -109,11 +104,7 @@ class FallbackIngestion:
             logger.info("Temporary directory: %s", temp_path)
 
             # Step 1: Load dataset from HuggingFace Hub
-            dataset = load_huggingface_dataset(
-                dataset_name=self.dataset_name,
-                dataset_config=self.dataset_config,
-                max_retries=self.max_retries,
-            )
+            dataset = self._load_dataset()
 
             # Step 2: Filter splits if specified
             splits_to_process = self._get_splits_to_process(dataset)
@@ -126,12 +117,8 @@ class FallbackIngestion:
                     "Processing split: %s (%d examples)", split_name, len(split_data)
                 )
 
-                validate_split_data(split_name, split_data)
-                local_file = write_split_to_disk(
-                    split_name=split_name,
-                    split_data=split_data,
-                    output_dir=temp_path,
-                    output_format=self.output_format,
+                local_file = self._write_split_to_disk(
+                    split_name, split_data, temp_path
                 )
                 splits_info[split_name] = {
                     "num_examples": len(split_data),
@@ -177,6 +164,53 @@ class FallbackIngestion:
 
             return summary
 
+    def _load_dataset(self) -> Dict[str, Any]:
+        """Load dataset from HuggingFace Hub with retry logic."""
+        last_error: Exception | None = None
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                logger.info(
+                    "Loading dataset %s (attempt %d/%d)",
+                    self.dataset_name,
+                    attempt,
+                    self.max_retries,
+                )
+
+                if self.dataset_config:
+                    ds = load_dataset(self.dataset_name, self.dataset_config)
+                else:
+                    ds = load_dataset(self.dataset_name)
+
+                if ds is None or len(ds) == 0:  # type: ignore[arg-type]
+                    raise RuntimeError(f"Dataset {self.dataset_name} is empty or None")
+
+                for name in ds:
+                    split = ds[name]
+                    logger.info(
+                        "  split %-12s — %7d rows, columns=%s",
+                        name,
+                        len(split),
+                        split.column_names,
+                    )
+
+                return dict(ds)  # type: ignore[arg-type]
+
+            except (ConnectionError, TimeoutError, OSError) as exc:
+                last_error = exc
+                wait = 5.0 * (2 ** (attempt - 1))
+                logger.warning(
+                    "Attempt %d failed (%s). Retrying in %.1fs…",
+                    attempt,
+                    exc,
+                    wait,
+                )
+                time.sleep(wait)
+
+        raise RuntimeError(
+            f"Failed to load {self.dataset_name} after {self.max_retries} attempts: {last_error}"
+        )
+
     def _get_splits_to_process(self, dataset: Dict[str, Any]) -> List[str]:
         """Determine which splits to process."""
         available_splits = list(dataset.keys())
@@ -192,6 +226,61 @@ class FallbackIngestion:
             return self.dataset_splits
 
         return available_splits
+
+    def _write_split_to_disk(
+        self,
+        split_name: str,
+        split_data: Any,
+        output_dir: Path,
+    ) -> Path:
+        """Write one split to disk in the requested format."""
+        ext_map = {"jsonl": ".jsonl", "parquet": ".parquet", "text": ".txt"}
+
+        if self.output_format not in ext_map:
+            raise ValueError(f"Unsupported format {self.output_format!r}")
+
+        output_file = output_dir / f"{split_name}{ext_map[self.output_format]}"
+        total_records = 0
+        empty_records = 0
+
+        if self.output_format == "jsonl":
+            with open(output_file, "w", encoding="utf-8") as fh:
+                for row in split_data:
+                    text = row.get("text")
+                    if text is None or not text.strip():
+                        empty_records += 1
+                        continue
+                    fh.write(json.dumps({"text": text}, ensure_ascii=False) + "\n")
+                    total_records += 1
+
+        elif self.output_format == "parquet":
+            split_data.to_parquet(str(output_file))
+            total_records = len(split_data)
+
+        elif self.output_format == "text":
+            with open(output_file, "w", encoding="utf-8") as fh:
+                for row in split_data:
+                    text = row.get("text")
+                    if text is None or not text.strip():
+                        empty_records += 1
+                        continue
+                    fh.write(text.strip() + "\n")
+                    total_records += 1
+
+        file_size = output_file.stat().st_size
+        logger.info(
+            "Written split '%s': %d records (%d empty skipped), %.2f MB → %s",
+            split_name,
+            total_records,
+            empty_records,
+            file_size / 1024 / 1024,
+            output_file.name,
+        )
+
+        if file_size == 0:
+            raise IOError(f"Output file is empty: {output_file}")
+
+        return output_file
 
     def _create_metadata(
         self,
@@ -246,7 +335,11 @@ class FallbackIngestion:
             if not local_file.is_file():
                 continue
 
-            s3_key = f"{self.s3_prefix}{timestamp}/{local_file.name}"
+            # Include dataset_name in S3 path so datasets are distinguishable
+            # OLD (broken): datasets/raw/<timestamp>/train.jsonl
+            # NEW (fixed):  datasets/raw/<dataset_name>/<timestamp>/train.jsonl
+            safe_name = self.dataset_name.replace("/", "_")
+            s3_key = f"{self.s3_prefix}{safe_name}/{timestamp}/{local_file.name}"
 
             # Check if file already exists (idempotency)
             existing_objects = s3_client.list_objects(

@@ -95,6 +95,16 @@ def test_shared_lora_layer_memory_sharing():
     )
 
 
+def test_shared_lora_layer_not_in_state_dict():
+    """shared_weight must be excluded from state_dict (persistent=False)."""
+    w = torch.randn(64, 32)
+    layer = SharedLoRALayer(w, None, rank=4, alpha=16)
+    sd = layer.state_dict()
+    assert "shared_weight" not in sd
+    assert "lora_A.weight" in sd
+    assert "lora_B.weight" in sd
+
+
 def test_shared_lora_layer_forward():
     w = torch.randn(64, 32)
     layer = SharedLoRALayer(w, None, rank=4, alpha=16)
@@ -189,7 +199,6 @@ def test_lora_moe_layer_changes_after_perturb(lora_config):
     x = torch.randn(2, 5, 32)
     expected = base_mlp(x)
 
-    # Perturb expert 0 (both layers so the delta propagates)
     e0 = layer.expert_pool[0]
     nn.init.ones_(e0.c_fc.lora_B.weight)
     nn.init.ones_(e0.c_fc.lora_A.weight)
@@ -198,3 +207,65 @@ def test_lora_moe_layer_changes_after_perturb(lora_config):
 
     out = layer(x)
     assert not torch.allclose(out, expected)
+
+
+def test_consolidate_shared_weights_aliases_buffers(lora_config):
+    """After consolidation, experts 1..N-1 share expert 0's weight buffers."""
+    base_mlp = MockMLP()
+    pool = ExpertPool(lora_config, num_experts=4)
+    pool.load_from_mlp(base_mlp)
+    pool.consolidate_shared_weights()
+
+    e0 = pool.experts[0]
+    for expert in pool.experts[1:]:
+        assert (
+            expert.c_fc._buffers["shared_weight"].data_ptr()
+            == e0.c_fc._buffers["shared_weight"].data_ptr()
+        ), "Experts should share the same weight buffer after consolidation"
+
+
+def test_gptneo_lora_forward_raises_before_load():
+    """forward() must raise if load_from_mlp() was never called."""
+    from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
+    from src.experts.lora import LoRAConfig
+
+    expert = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
+    with pytest.raises(RuntimeError, match="load_from_mlp"):
+        expert(torch.randn(2, 4, 32))
+
+
+def test_b_init_scale_breaks_expert_symmetry():
+    """Non-zero b_init_scale produces distinct expert outputs at init, fixing the zero-gradient deadlock."""
+    config = LoRAConfig(hidden_dim=32, rank=4, alpha=8, b_init_scale=0.01)
+    base_mlp = MockMLP()
+
+    experts = []
+    for _ in range(4):
+        e = GPTNeoLoRAMLP(config)
+        e.load_from_mlp(base_mlp)
+        experts.append(e)
+
+    x = torch.randn(1, 5, 32)
+    outputs = [e(x) for e in experts]
+
+    # With b_init_scale > 0, experts should produce distinct outputs at init
+    any_different = False
+    for i in range(len(outputs)):
+        for j in range(i + 1, len(outputs)):
+            if not torch.allclose(outputs[i], outputs[j], atol=1e-7):
+                any_different = True
+                break
+    assert any_different, (
+        "With b_init_scale > 0, at least two experts should produce different outputs at init"
+    )
+
+
+def test_b_init_scale_zero_preserves_base_output():
+    """b_init_scale=0 (default) should still match base MLP output exactly."""
+    config = LoRAConfig(hidden_dim=32, rank=4, alpha=8, b_init_scale=0.0)
+    base_mlp = MockMLP()
+    expert = GPTNeoLoRAMLP(config)
+    expert.load_from_mlp(base_mlp)
+
+    x = torch.randn(1, 5, 32)
+    assert torch.allclose(expert(x), base_mlp(x), atol=1e-6)

@@ -1,190 +1,142 @@
-# T-MoE Infrastructure — Data Ingestion Pipeline
+## Infrastructure Setup
 
-Production-ready AWS SageMaker data ingestion pipeline for the T-MoE project. Uses Terraform for IaC and SageMaker HuggingFaceProcessor to ingest HuggingFace datasets into an S3 data lake.
-
-## Architecture
-
-### SageMaker Mode (use_sagemaker: true)
-```
-┌──────────────────┐     ┌─────────────────────────┐     ┌──────────────────┐
-│  run_pipeline.py │────▶│  SageMaker Processing   │────▶│   S3 Raw Data    │
-│  (Local / CI/CD)  │     │  (HuggingFace Container)│     │   Landing Zone   │
-└──────────────────┘     └─────────────────────────┘     └──────────────────┘
-        │                           │                            │
-        ▼                           ▼                            ▼
-  config.yaml              processing_script.py          datasets/raw/
-  .env / TF outputs        - Load from HF Hub            ├── train.jsonl
-                           - Validate splits             ├── validation.jsonl
-                           - Write to /opt/ml/output     ├── test.jsonl
-                                                         └── metadata.json
-```
-
-### Fallback Mode (use_sagemaker: false)
-```
-┌──────────────────┐     ┌─────────────────────────┐     ┌──────────────────┐
-│  run_pipeline.py │────▶│  fallback_ingestion.py  │────▶│   S3 Raw Data    │
-│  (Local / CI/CD)  │     │  (Direct boto3 upload)  │     │   Landing Zone   │
-└──────────────────┘     └─────────────────────────┘     └──────────────────┘
-        │                           │                            │
-        ▼                           ▼                            ▼
-  config.yaml              - Load from HF Hub            datasets/raw/
-  use_sagemaker: false     - Write to /tmp              ├── train.jsonl
-                           - Upload to S3                ├── validation.jsonl
-                                                         ├── test.jsonl
-                                                         └── metadata.json
-```
-
-## Directory Structure
-
-```
-infra/
-├── terraform/                 # Infrastructure as Code
-│   ├── main.tf                # Provider configuration
-│   ├── variables.tf           # Input variables
-│   ├── backend.tf             # State management
-│   ├── s3.tf                  # S3 bucket (encrypted, versioned)
-│   ├── iam.tf                 # IAM roles (least privilege)
-│   ├── sagemaker.tf           # CloudWatch log groups
-│   └── outputs.tf             # Infrastructure output values
-├── data_ingestion/            # Data ingestion modules
-│   ├── processing_script.py   # Runs inside SageMaker container
-│   ├── run_processing.py      # Launches SageMaker processing job
-│   ├── fallback_ingestion.py  # Direct S3 upload (SageMaker-independent)
-│   ├── logger_utils.py        # Structured logging
-│   └── requirements.txt       # Python dependencies
-├── s3client/                  # S3 client utilities
-│   ├── __init__.py
-│   └── client.py              # Upload/download/list operations
-├── config/
-│   └── config.py              # Centralized config management
-└── README.md                  # This file
-```
+This document covers the one-time setup of the cloud infrastructure required to run T-MoE.
 
 ## Prerequisites
 
-- **AWS Account** with permissions to create S3, IAM, SageMaker, CloudWatch resources
-- **AWS CLI** v2+ configured (`aws configure`)
-- **Terraform** >= 1.5.0
-- **Python** >= 3.10
-- IAM user/role with permissions to run `terraform apply`
+- Python 3.11+
+- AWS CLI
+- Terraform
+- Modal CLI (`pip install modal`)
+- A HuggingFace account
+- A WandB account
 
-## Quick Start
+---
 
-### 1. Deploy Infrastructure
+## 1. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 2. AWS Setup
+
+### Configure AWS CLI
+
+```bash
+aws configure
+# Enter your AWS Access Key ID, Secret Access Key, and default region
+```
+
+### Provision Infrastructure with Terraform
 
 ```bash
 cd infra/terraform
-
-# Initialize Terraform
 terraform init
-
-# Review planned changes
-terraform plan
-
-# Deploy resources
 terraform apply
 ```
 
-### 2. Configure Environment
+After `terraform apply` completes, capture the S3 bucket name:
 
 ```bash
-# Copy .env template
-cp ../../.env.example ../../.env
-
-# Populate from Terraform outputs
-terraform output raw_data_bucket_name    # → RAW_DATA_BUCKET
-terraform output sagemaker_execution_role_arn  # → SAGEMAKER_ROLE_ARN (only needed for SageMaker mode)
-
-# Or use the auto-generated snippet:
 terraform output env_configuration
 ```
 
-### 3. Install Dependencies
+Set it as an environment variable:
 
 ```bash
-# From project root
-pip install -r infra/data_ingestion/requirements.txt
+export RAW_DATA_BUCKET=<your-bucket-name-from-terraform-output>
 ```
 
-### 4. Run Data Ingestion
+---
 
-#### Option A: Fallback Mode (Direct S3 Upload — No SageMaker)
+## 3. WandB Setup
 
 ```bash
-# Ensure use_sagemaker: false in config.yaml (default)
-python run_pipeline.py
+wandb login
 ```
 
-**When to use**: SageMaker unavailable, local development, cost optimization
-
-**Requirements**: AWS credentials, S3 bucket access, HuggingFace Hub access
-
-#### Option B: SageMaker Mode
+Set the following environment variable:
 
 ```bash
-# Set use_sagemaker: true in config.yaml or via environment
-USE_SAGEMAKER=true python run_pipeline.py
-
-# Or update config.yaml:
-# data_ingestion:
-#   use_sagemaker: true
-python run_pipeline.py
+export WANDB_API_KEY=<your-wandb-api-key>
 ```
 
-**When to use**: Production workloads, large datasets, managed infrastructure
+---
 
-**Requirements**: SageMaker execution role, all of Option A requirements
+## 4. HuggingFace Setup
 
-## Security
+A HuggingFace access token is required to download models (e.g., GPT-Neo) and optionally gated datasets.
 
-| Feature | Status |
-|---------|--------|
-| No hardcoded credentials | ✅ IAM roles only |
-| S3 encryption at rest | ✅ AES256 |
-| S3 public access blocked | ✅ All 4 settings |
-| IAM least privilege | ✅ Scoped to specific bucket |
-| Terraform state encryption | ✅ When using S3 backend |
-| CloudWatch audit logging | ✅ Processing job logs |
-
-## Terraform Remote State (Optional)
-
-For production use, migrate from local to S3 backend:
+Generate a token at: https://huggingface.co/settings/tokens
 
 ```bash
-# 1. Create state bucket
-aws s3 mb s3://tmoe-terraform-state --region us-east-1
-
-# 2. Enable versioning
-aws s3api put-bucket-versioning \
-  --bucket tmoe-terraform-state \
-  --versioning-configuration Status=Enabled
-
-# 3. Create DynamoDB lock table
-aws dynamodb create-table \
-  --table-name tmoe-terraform-locks \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST
-
-# 4. Edit backend.tf: uncomment S3 block, comment local block
-
-# 5. Migrate state
-terraform init -migrate-state
+export HF_TOKEN=<your-huggingface-token>
 ```
 
-## Cost Optimization
+---
 
-- **Spot Instances**: Set `use_spot_instances: true` in config.yaml (~70% savings)
-- **Lifecycle Policies**: Old data auto-transitions to Glacier after 90 days
-- **Instance Right-Sizing**: Use `ml.m5.large` for smaller datasets
-- **Budget Alerts**: Set up AWS Budget alerts for SageMaker spend
+## 5. Modal Setup
 
-## Troubleshooting
+### First-time setup
 
-| Issue | Solution |
-|-------|----------|
-| `NoCredentialsError` | Run `aws configure` or check IAM role |
-| `AccessDenied` on S3 | Check IAM policy in `iam.tf` |
-| Processing job timeout | Increase `max_runtime_seconds` in config |
-| Terraform state lock | Run `terraform force-unlock <LOCK_ID>` |
-| Missing HF dataset | Verify dataset name on huggingface.co |
+If you are logging in from a new machine or need to switch to a specific workspace profile (e.g., `dev-tmoe`):
+
+```bash
+python3 -m modal setup
+```
+Follow the browser prompts to authenticate. Once complete, your token is saved locally to `~/.modal.toml`.
+
+### Create Environment and Workspace Secret
+
+Create the `tmoe-secrets` secret in the `main` environment:
+
+```bash
+modal secret create tmoe-secrets \
+    HF_TOKEN=your_hf_token \
+    WANDB_API_KEY=your_wandb_key
+```
+
+Or via the Modal Dashboard:
+1. Go to https://modal.com → Secrets → New Secret (Custom).
+2. Make sure you are in the `main` environment.
+3. Name it: `tmoe-secrets`.
+4. Add the following key-value pairs:
+
+| Key                     | Value                          | Required?    |
+|-------------------------|--------------------------------|--------------|
+| `HF_TOKEN`              | Your HuggingFace access token  | Yes          |
+| `WANDB_API_KEY`         | Your WandB API key             | Yes          |
+| `AWS_ACCESS_KEY_ID`     | Your AWS Access Key ID         | If using S3  |
+| `AWS_SECRET_ACCESS_KEY` | Your AWS Secret Access Key     | If using S3  |
+
+These secrets are automatically injected into Modal containers at runtime. You never hardcode them in code.
+
+---
+
+## 6. Verify Setup
+
+```bash
+# Verify AWS access
+aws s3 ls s3://$RAW_DATA_BUCKET
+
+# Verify Modal login
+modal token show
+
+# Verify WandB login
+wandb status
+```
+
+---
+
+## Environment Variables Summary
+
+| Variable                | Source               | Used by              |
+|-------------------------|----------------------|----------------------|
+| `RAW_DATA_BUCKET`       | Terraform output     | `run_pipeline.py`    |
+| `WANDB_API_KEY`         | WandB dashboard      | `scripts/train.py`   |
+| `HF_TOKEN`              | HuggingFace          | `scripts/prepare_data.py` |
+| `AWS_ACCESS_KEY_ID`     | AWS Console          | Terraform, boto3     |
+| `AWS_SECRET_ACCESS_KEY` | AWS Console          | Terraform, boto3     |

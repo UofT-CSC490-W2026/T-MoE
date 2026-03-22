@@ -1,7 +1,7 @@
 import pytest
 import torch
 from typing import Tuple
-from configs.router import MetabolicRouterConfig
+from src.configs.router import MetabolicRouterConfig
 
 
 @pytest.fixture
@@ -16,19 +16,17 @@ def device() -> torch.device:
 
 @pytest.fixture
 def standard_config() -> MetabolicRouterConfig:
-    """Standard metabolic router configuration for testing."""
+    """Standard metabolic router configuration for testing (v6 formulation)."""
     return MetabolicRouterConfig(
         hidden_dim=256,
         num_experts=8,
         top_k=2,
-        lambda_metabolic=0.1,
-        mu_silicon=0.0,
-        gamma_recovery=0.01,
-        beta_cost=0.04,
+        lambda_metabolic=0.5,
+        gamma_recovery=0.15,
+        beta_cost=0.15,
+        tau_specialization=2.0,
+        F_scale=0.5,
         warmup_steps=100,
-        temperature=1.0,
-        normalize_inputs=True,
-        normalize_weights=True,
     )
 
 
@@ -40,11 +38,11 @@ def minimal_config() -> MetabolicRouterConfig:
         num_experts=2,
         top_k=1,
         lambda_metabolic=0.0,
-        mu_silicon=0.0,
         gamma_recovery=0.0,
         beta_cost=0.0,
+        tau_specialization=1.0,
+        F_scale=1.0,
         warmup_steps=0,
-        temperature=1.0,
     )
 
 

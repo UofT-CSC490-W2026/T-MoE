@@ -24,11 +24,11 @@ outputs/
 logs/
 *.log
 runs/
-scripts/
 
 # System
 .DS_Store
 Thumbs.db
+.cache/
 
 # Terraform
 .terraform/

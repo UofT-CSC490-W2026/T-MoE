@@ -1,6 +1,6 @@
 import torch
 
-from configs.router import TopKRouterConfig
+from src.configs.router import TopKRouterConfig
 from src.routers.standard import TopKRouter
 
 

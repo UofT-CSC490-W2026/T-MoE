@@ -1,24 +1,28 @@
-"""
-Router Factory: Single source of truth for router instantiation.
-
-This module consolidates router creation logic to avoid duplication across:
-- TMoELayer._create_router()
-- injection_utils.create_tmoe_from_gpt_neo_mlp()
-- experiment.py:_get_router_class() + _build_router_config()
-"""
-
+import dataclasses
 from typing import Any
 
-from configs.router import MetabolicRouterConfig, StandardRouterConfig
+from src.configs.router import (
+    MetabolicRouterConfig,
+    StandardRouterConfig,
+    TopKRouterConfig,
+    SwitchRouterConfig,
+    DynMoERouterConfig,
+    StressCorrectedRouterConfig,
+)
 from src.core import RouterRegistry
 from src.routers.base import BaseRouter
 from src.project_types import RouterType
 
 
-# Mapping of router type strings to their config classes
+# Mapping of router type strings → config classes.
+# Keys must match the string literals used in @RouterRegistry.register(...) decorators.
 ROUTER_CONFIG_CLASSES = {
-    RouterType.METABOLIC: MetabolicRouterConfig,
-    RouterType.STANDARD: StandardRouterConfig,
+    "metabolic": MetabolicRouterConfig,
+    "standard": StandardRouterConfig,
+    "topk": TopKRouterConfig,
+    "switch": SwitchRouterConfig,
+    "dynmoe": DynMoERouterConfig,
+    "stress_corrected": StressCorrectedRouterConfig,
 }
 
 
@@ -32,7 +36,7 @@ def create_router(
     logic that was previously duplicated across multiple modules.
 
     Args:
-        router_type: Type of router ("metabolic" or "standard")
+        router_type: Type of router ("stress_corrected", "metabolic", "standard", "topk", "switch", "dynmoe")
         hidden_dim: Dimension of input embeddings
         num_experts: Number of experts to route to
         top_k: Number of top experts per token
@@ -54,15 +58,20 @@ def create_router(
         ... )
     """
     if router_type not in ROUTER_CONFIG_CLASSES:
-        available = list(ROUTER_CONFIG_CLASSES.keys())
+        available = sorted(ROUTER_CONFIG_CLASSES.keys())
         raise ValueError(
             f"Unknown router type: '{router_type}'. Available: {available}"
         )
 
-    # Create config with provided parameters
+    # Create config with provided parameters.
+    # Filter kwargs to only fields declared by this config class so that shared
+    # top-level params (e.g. noise_std, temperature) don't crash dataclasses that
+    # don't declare them (e.g. MetabolicRouterConfig after v6 cleanup).
     config_cls = ROUTER_CONFIG_CLASSES[router_type]
+    valid_fields = {f.name for f in dataclasses.fields(config_cls)}
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_fields}
     config = config_cls(
-        hidden_dim=hidden_dim, num_experts=num_experts, top_k=top_k, **kwargs
+        hidden_dim=hidden_dim, num_experts=num_experts, top_k=top_k, **filtered_kwargs
     )
 
     # Get router class from registry and instantiate
@@ -81,10 +90,9 @@ def create_router_from_config(config: Any) -> BaseRouter:
         Configured router instance
     """
     router_type = getattr(config, "router_type", RouterType.METABOLIC)
-    router_cls = RouterRegistry.get(router_type)
+    # Registry keys are strings (.value); config stores RouterType enum — convert.
+    router_key = (
+        router_type.value if isinstance(router_type, RouterType) else router_type
+    )
+    router_cls = RouterRegistry.get(router_key)
     return router_cls(config)
-
-
-def get_available_router_types() -> list:
-    """Return list of available router types."""
-    return list(ROUTER_CONFIG_CLASSES.keys())

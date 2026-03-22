@@ -9,8 +9,6 @@ from src.project_types import ExpertType
 
 
 class ExpertPool(nn.Module):
-    """Manages a fixed collection of LoRA MLP experts indexed 0 … N-1."""
-
     def __init__(
         self,
         config: LoRAConfig,
@@ -24,6 +22,10 @@ class ExpertPool(nn.Module):
         self.experts = nn.ModuleList(
             [self.expert_class(config) for _ in range(num_experts)]
         )
+        # Populated by make_base_trainable() when config.trainable_base=True.
+        # Registered as nn.Parameters so optimizer sees them; biases stay as frozen buffers.
+        self.shared_fc_weight: nn.Parameter | None = None
+        self.shared_proj_weight: nn.Parameter | None = None
 
     @property
     def num_experts(self) -> int:
@@ -35,6 +37,72 @@ class ExpertPool(nn.Module):
     def load_from_mlp(self, mlp: nn.Module) -> None:
         for expert in self.experts:
             expert.load_from_mlp(mlp)
+
+    def consolidate_shared_weights(self) -> None:
+        """
+        Collapse N independent GPU copies of frozen MLP weights → 1 shared copy.
+
+        Problem: after ExpertPool.load_from_mlp(), each GPTNeoLoRAMLP independently
+        calls SharedLoRALayer(shared_weight=w.detach()), creating N CPU tensors that
+        point to the same storage (data_ptr equality). But model.to("cuda") calls
+        _apply() on each buffer independently, breaking storage sharing and creating
+        N separate GPU allocations (one per expert × 2 linears × 6 MoE layers).
+
+        At 125M: 8 experts × 6 layers × 2 linears × 4.7M params × 2 bytes ≈ 900 MB waste.
+        At 1.3B: 8 × 12 × 2 × ~33M params × 2 bytes ≈ 12 GB waste — a showstopper.
+
+        Fix: after model.to(device), make experts 1..N-1 reference expert 0's buffer
+        tensors directly. The weights are frozen (never written after load_from_mlp),
+        so aliasing is safe. Call this method once, after model.to(device) and before
+        DDP/FSDP wrapping.
+
+        Memory saved: (N-1)/N of shared-weight GPU footprint per MoE layer.
+        """
+        if self.num_experts < 2:
+            return
+
+        e0 = self.experts[0]
+        if not (hasattr(e0, "c_fc") and e0.c_fc is not None):
+            return  # not a GPTNeoLoRAMLP pool; skip silently
+
+        ref = {
+            "c_fc_w": e0.c_fc._buffers["shared_weight"],
+            "c_fc_b": e0.c_fc._buffers.get("shared_bias"),
+            "c_proj_w": e0.c_proj._buffers["shared_weight"],
+            "c_proj_b": e0.c_proj._buffers.get("shared_bias"),
+        }
+
+        for expert in self.experts[1:]:
+            if hasattr(expert, "c_fc") and expert.c_fc is not None:
+                expert.c_fc._buffers["shared_weight"] = ref["c_fc_w"]
+                expert.c_fc._buffers["shared_bias"] = ref["c_fc_b"]
+            if hasattr(expert, "c_proj") and expert.c_proj is not None:
+                expert.c_proj._buffers["shared_weight"] = ref["c_proj_w"]
+                expert.c_proj._buffers["shared_bias"] = ref["c_proj_b"]
+
+    def make_base_trainable(self) -> None:
+        """
+        Promote shared base weights to trainable nn.Parameters at pool level.
+
+        Must be called AFTER consolidate_shared_weights() (so we're on-device
+        and buffers are shared) and BEFORE DDP/FSDP wrapping.
+
+        After this call, ExpertPool.shared_fc_weight and shared_proj_weight are
+        trainable parameters. LoRAMoELayer.forward() passes them explicitly to
+        each expert, so F.linear() sees the actual parameter (not .data) and
+        gradients flow correctly.
+        """
+        if self.num_experts == 0:
+            return
+        e0 = self.experts[0]
+        if not (hasattr(e0, "c_fc") and e0.c_fc is not None):
+            return
+        self.shared_fc_weight = nn.Parameter(
+            e0.c_fc._buffers["shared_weight"].clone().float()
+        )
+        self.shared_proj_weight = nn.Parameter(
+            e0.c_proj._buffers["shared_weight"].clone().float()
+        )
 
     def freeze_base_weights(self) -> None:
         for expert in self.experts:
@@ -48,13 +116,11 @@ class ExpertPool(nn.Module):
         self.experts[idx].load_state_dict(state, strict=False)
 
     def save_all(self, dir_path: str) -> None:
-        """Save every expert to ``<dir_path>/expert_<i>.pt``."""
         os.makedirs(dir_path, exist_ok=True)
         for i, expert in enumerate(self.experts):
             torch.save(expert.state_dict(), os.path.join(dir_path, f"expert_{i}.pt"))
 
     def load_all(self, dir_path: str) -> None:
-        """Load every expert from ``<dir_path>/expert_<i>.pt``."""
         for i in range(len(self.experts)):
             path = os.path.join(dir_path, f"expert_{i}.pt")
             if os.path.exists(path):

@@ -103,7 +103,10 @@ def run_processing_job(processor: "HuggingFaceProcessor", config: Any) -> str:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     job_name = f"tmoe-ingestion-{timestamp}"
 
-    s3_output = f"s3://{config.raw_data_bucket}/{config.raw_data_prefix}{timestamp}/"
+    s3_output = (
+        f"s3://{config.raw_data_bucket}/{config.raw_data_prefix}"
+        f"{config.dataset_name.replace('/', '_')}/{timestamp}/"
+    )
 
     output = ProcessingOutput(
         output_name="raw_data",

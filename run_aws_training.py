@@ -19,16 +19,16 @@ Orchestrates the full training workflow with three execution modes:
 
 Usage:
     # Local training
-    python run_training_pipeline.py --mode local --config gptneo_125m_lora
+    python run_aws_training.py --mode local --config gptneo_125m_lora
 
     # Submit to AWS Batch
-    python run_training_pipeline.py --mode batch --config gptneo_125m_lora
+    python run_aws_training.py --mode batch --config gptneo_125m_lora
 
     # Inside container (called by Batch, not invoked directly)
-    python run_training_pipeline.py --mode container --config gptneo_125m_lora
+    python run_aws_training.py --mode container --config gptneo_125m_lora
 
     # Dry run (any mode)
-    python run_training_pipeline.py --mode batch --config gptneo_125m_lora --dry-run
+    python run_aws_training.py --mode batch --config gptneo_125m_lora --dry-run
 """
 
 from __future__ import annotations
@@ -95,18 +95,96 @@ def load_configs(args) -> tuple:
 # =====================================================================
 
 
+def _dataset_s3_prefix(pipeline_config) -> str:
+    """Build the dataset-specific S3 prefix: datasets/raw/{dataset_name}/."""
+    safe_name = pipeline_config.dataset_name.replace("/", "_")
+    base = pipeline_config.raw_data_prefix.rstrip("/") + "/"
+    return f"{base}{safe_name}/"
+
+
+def _find_latest_timestamp_prefix(s3_client, bucket: str, dataset_prefix: str) -> str:
+    """
+    Find the latest timestamp directory under a dataset prefix.
+
+    Args:
+        s3_client: S3Client instance
+        bucket: S3 bucket name
+        dataset_prefix: Prefix like 'datasets/raw/wikitext/'
+
+    Returns:
+        Full prefix including latest timestamp, e.g. 'datasets/raw/wikitext/20240216-150000/'
+
+    Raises:
+        RuntimeError: If no timestamp directories found
+    """
+    # List all objects under the dataset prefix
+    objects = s3_client.list_objects(bucket, dataset_prefix)
+    if not objects:
+        raise RuntimeError(f"No objects found under s3://{bucket}/{dataset_prefix}")
+
+    # Extract unique timestamp directories from keys
+    # Keys look like: datasets/raw/wikitext/20240216-143022/train.jsonl
+    timestamps = set()
+    for obj in objects:
+        key = obj["Key"]
+        # Remove the dataset prefix to get relative path
+        relative = key[len(dataset_prefix) :].lstrip("/")
+        # Extract timestamp (first directory component)
+        parts = relative.split("/")
+        if parts and parts[0]:
+            # Validate timestamp format: YYYYMMDD-HHMMSS
+            timestamp = parts[0]
+            if len(timestamp) == 15 and timestamp[8] == "-":
+                timestamps.add(timestamp)
+
+    if not timestamps:
+        raise RuntimeError(
+            f"No timestamp directories found under s3://{bucket}/{dataset_prefix}"
+        )
+
+    # Sort timestamps (lexicographic sort works for YYYYMMDD-HHMMSS format)
+    latest_timestamp = sorted(timestamps)[-1]
+    latest_prefix = f"{dataset_prefix}{latest_timestamp}/"
+
+    logger.info(
+        "Found %d timestamp(s), selecting latest: %s",
+        len(timestamps),
+        latest_timestamp,
+    )
+
+    return latest_prefix
+
+
 def check_dataset_in_s3(pipeline_config) -> bool:
-    """Check if the dataset already exists in S3."""
+    """Check if the dataset already exists in S3 (checks latest timestamp)."""
     from infra.s3client.client import S3Client
 
     s3_client = S3Client(
         region=pipeline_config.aws_region,
         max_retries=pipeline_config.max_retries,
     )
-    prefix = pipeline_config.raw_data_prefix
-    bucket = pipeline_config.raw_data_bucket
-    logger.info("Checking for existing dataset in s3://%s/%s", bucket, prefix)
-    return s3_client.dataset_exists(bucket, prefix)
+    dataset_prefix = _dataset_s3_prefix(pipeline_config)
+
+    try:
+        latest_prefix = _find_latest_timestamp_prefix(
+            s3_client,
+            pipeline_config.raw_data_bucket,
+            dataset_prefix,
+        )
+        logger.info(
+            "Checking for existing dataset in s3://%s/%s",
+            pipeline_config.raw_data_bucket,
+            latest_prefix,
+        )
+        return s3_client.dataset_exists(pipeline_config.raw_data_bucket, latest_prefix)
+    except RuntimeError:
+        # No timestamps found = dataset doesn't exist
+        logger.info(
+            "No timestamp directories found under s3://%s/%s",
+            pipeline_config.raw_data_bucket,
+            dataset_prefix,
+        )
+        return False
 
 
 def run_data_ingestion(pipeline_config) -> Dict[str, Any]:
@@ -138,12 +216,27 @@ def run_data_ingestion(pipeline_config) -> Dict[str, Any]:
 
 def download_dataset_from_s3(pipeline_config, cache_dir: str) -> None:
     """Download dataset files from S3 to the local cache directory."""
+    from infra.s3client.client import S3Client
+
+    dataset_prefix = _dataset_s3_prefix(pipeline_config)
+    s3_client = S3Client(
+        region=pipeline_config.aws_region,
+        max_retries=pipeline_config.max_retries,
+    )
+
+    # Find latest timestamp directory
+    latest_prefix = _find_latest_timestamp_prefix(
+        s3_client,
+        pipeline_config.raw_data_bucket,
+        dataset_prefix,
+    )
+
     logger.info("=" * 70)
     logger.info("STEP: Downloading dataset from S3 to local cache")
     logger.info(
         "  s3://%s/%s → %s",
         pipeline_config.raw_data_bucket,
-        pipeline_config.raw_data_prefix,
+        latest_prefix,
         cache_dir,
     )
     logger.info("=" * 70)
@@ -152,7 +245,7 @@ def download_dataset_from_s3(pipeline_config, cache_dir: str) -> None:
 
     downloaded = download_s3_prefix(
         bucket=pipeline_config.raw_data_bucket,
-        s3_prefix=pipeline_config.raw_data_prefix,
+        s3_prefix=latest_prefix,  # Use latest timestamp prefix
         local_dir=cache_dir,
         aws_region=pipeline_config.aws_region,
         max_retries=pipeline_config.max_retries,
@@ -160,7 +253,7 @@ def download_dataset_from_s3(pipeline_config, cache_dir: str) -> None:
     if not downloaded:
         raise RuntimeError(
             f"No files downloaded from s3://{pipeline_config.raw_data_bucket}/"
-            f"{pipeline_config.raw_data_prefix}"
+            f"{latest_prefix}"
         )
     logger.info("Downloaded %d files to %s", len(downloaded), cache_dir)
 
@@ -279,7 +372,7 @@ def submit_batch_job(
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     job_name = f"tmoe-training-{config_name}-{timestamp}"
 
-    # Job command (only arguments, since entrypoint is python run_training_pipeline.py --mode container)
+    # Job command (only arguments, since entrypoint is python run_aws_training.py --mode container)
     command = ["--config", config_name]
     if overrides:
         command.extend(overrides)
@@ -438,7 +531,11 @@ def run_local_mode(args, pipeline_config, experiment_config) -> None:
     if not dataset_found:
         run_data_ingestion(pipeline_config)
 
-    cache_dir = experiment_config.compute.aws.cache_dir
+    from omegaconf import OmegaConf as _OC
+
+    cache_dir = _OC.select(
+        experiment_config, "compute.aws.cache_dir", default="/tmp/tmoe_data"
+    )
     download_dataset_from_s3(pipeline_config, cache_dir)
 
     output_dir, final_metrics = run_training(experiment_config, cache_dir)
@@ -488,14 +585,26 @@ def run_batch_mode(args, pipeline_config, experiment_config) -> None:
 def run_container_mode(args, pipeline_config, experiment_config) -> None:
     """
     CONTAINER mode: runs inside Docker on Batch GPU instance.
-    Downloads dataset, trains, uploads outputs.
+    Downloads dataset, trains (single- or multi-GPU via config), uploads outputs.
+
+    Uses try/finally to upload partial checkpoints to S3 even if training
+    crashes or the instance is preempted.
     """
-    cache_dir = experiment_config.compute.aws.cache_dir
+    from omegaconf import OmegaConf
+
+    cache_dir = OmegaConf.select(
+        experiment_config, "compute.aws.cache_dir", default="/tmp/tmoe_data"
+    )
     download_dataset_from_s3(pipeline_config, cache_dir)
 
-    output_dir, final_metrics = run_training(experiment_config, cache_dir)
-
-    upload_outputs_to_s3(pipeline_config, output_dir)
+    output_dir = None
+    final_metrics = {"loss": float("inf"), "best_loss": float("inf")}
+    try:
+        output_dir, final_metrics = run_training(experiment_config, cache_dir)
+    finally:
+        # Always attempt S3 upload — partial checkpoints are better than none.
+        if output_dir:
+            upload_outputs_to_s3(pipeline_config, output_dir)
 
     _log_completion(True, final_metrics, output_dir)
 
@@ -557,9 +666,9 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_training_pipeline.py --mode local --config gptneo_125m_lora
-  python run_training_pipeline.py --mode batch --config gptneo_125m_lora
-  python run_training_pipeline.py --mode batch --config gptneo_125m_lora --dry-run
+  python run_aws_training.py --mode local --config gptneo_125m_lora
+  python run_aws_training.py --mode batch --config gptneo_125m_lora
+  python run_aws_training.py --mode batch --config gptneo_125m_lora --dry-run
         """,
     )
     parser.add_argument(

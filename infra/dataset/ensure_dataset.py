@@ -22,11 +22,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _dataset_s3_prefix(config: PipelineConfig) -> str:
+    """Build the dataset-specific S3 prefix: datasets/raw/{dataset_name}/."""
+    safe_name = config.dataset_name.replace("/", "_")
+    base = config.raw_data_prefix.rstrip("/") + "/"
+    return f"{base}{safe_name}/"
+
+
 def ensure_dataset_in_s3(config: PipelineConfig) -> str:
     from infra.s3client.client import S3Client
 
     bucket = config.raw_data_bucket
-    prefix = config.raw_data_prefix
+    prefix = _dataset_s3_prefix(config)
     s3_path = f"s3://{bucket}/{prefix}"
 
     logger.info("=" * 70)
@@ -129,7 +136,7 @@ def check_dataset_exists(config: PipelineConfig) -> bool:
     )
 
     bucket = config.raw_data_bucket
-    prefix = config.raw_data_prefix
+    prefix = _dataset_s3_prefix(config)
 
     exists = s3_client.dataset_exists(bucket, prefix)
 

@@ -1,21 +1,15 @@
-import argparse
-from src.training.main import train_main
+"""
+T-MoE training entrypoint.
+
+Single-GPU:
+    python train.py --config experiments/gptneo_125m_metabolic_v2.yaml
+
+Multi-GPU (FSDP via torchrun):
+    torchrun --standalone --nproc_per_node=4 train.py \\
+        --config experiments/gptneo_125m_metabolic_v2.yaml
+"""
+
+from scripts.train import main
 
 if __name__ == "__main__":
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(
-        description="T-MoE Training Script",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    parser.add_argument(
-        "-c",
-        "--config",
-        type=str,
-        help="Name of the experiment configuration file in the experiments/ directory (without .yaml extension)",
-    )
-
-    # Allow passing extra arguments to override config
-    args, overrides = parser.parse_known_args()
-
-    # Run the main training logic
-    train_main(args, overrides)
+    main()
