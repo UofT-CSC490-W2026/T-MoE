@@ -18,10 +18,12 @@ class MockRouter(BaseRouter):
 
     def forward(self, x, return_metrics=False, record_usage=True):
         B, S, _ = x.shape
-        weights = torch.ones(B, S, 2) * 0.5
-        indices = torch.zeros(B, S, 2, dtype=torch.long)
-        indices[:, :, 1] = 1
-        return weights, indices, {}
+        N = B * S
+        # Dense (N, E) weight matrix: experts 0 and 1 each get 0.5
+        weights = torch.zeros(N, 2)
+        weights[:, 0] = 0.5
+        weights[:, 1] = 0.5
+        return weights, None, {}
 
     def compute_aux_loss(self):
         return torch.tensor(0.0)

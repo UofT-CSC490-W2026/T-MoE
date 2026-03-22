@@ -277,15 +277,13 @@ class TestForwardPass:
         batch, seq, hidden = test_input.shape
         weights, indices, metrics = router(test_input, return_metrics=True)
 
-        assert weights.shape == (batch, seq, router.top_k)
-        assert indices.shape == (batch, seq, router.top_k)
-        assert torch.allclose(
-            weights.sum(dim=-1),
-            torch.ones(batch, seq, device=weights.device),
-            atol=1e-5,
-        )
-        assert indices.min() >= 0
-        assert indices.max() < router.num_experts
+        N = batch * seq
+        assert weights.shape == (N, router.num_experts)
+        assert indices is None
+        # Each token's non-zero weights should sum to ~1
+        row_sums = weights.sum(dim=-1)
+        assert torch.allclose(row_sums, torch.ones(N, device=weights.device), atol=1e-5)
+        assert (weights > 0).sum(dim=-1).eq(router.top_k).all()
 
     def test_step_increments_counter(self, zero_fatigue_router, test_input):
         router = zero_fatigue_router

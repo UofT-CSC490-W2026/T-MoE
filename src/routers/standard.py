@@ -40,7 +40,7 @@ class StandardRouter(BaseRouter):
         # Create a weight matrix of shape (N, E)
         # This unified format is used by the LoRAMoELayer dispatcher
         expert_weights = torch.zeros_like(probs)
-        expert_weights.scatter_(1, top_indices := top_k_indices, F.normalize(top_k_values, p=1, dim=-1))
+        expert_weights.scatter_(1, top_k_indices, F.normalize(top_k_values, p=1, dim=-1))
 
         if self.training and self.use_aux_loss:
             self._last_probs = probs.view(batch, seq, -1)
@@ -72,7 +72,6 @@ class StandardRouter(BaseRouter):
         weights = self._last_weights
 
         bsz, seq_len, num_experts = probs.shape
-        num_tokens = bsz * seq_len
 
         # P_i: Mean gate probability across the batch
         P = probs.mean(dim=(0, 1))
