@@ -39,12 +39,10 @@ def _get_eval_param(config: Any, key: str, cli_value: Any, sentinel: Any = None)
     Resolve an eval parameter with priority: CLI > YAML eval section > hardcoded default.
     `sentinel` is the value that means "not provided by CLI" (usually None or argparse default).
     """
-    from omegaconf import OmegaConf
+    from omegaconf import OmegaConf, DictConfig
 
     if cli_value is not sentinel:
         return cli_value
-    from omegaconf import DictConfig
-
     if not isinstance(config, DictConfig):
         config = OmegaConf.create(config)
     yaml_val = OmegaConf.select(config, f"eval.{key}", default=None)

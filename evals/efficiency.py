@@ -121,29 +121,6 @@ def _profile_loaded_model(
     return metrics
 
 
-def _flatten_efficiency_results(
-    profile: Dict[str, Any], batch_sizes: Iterable[int]
-) -> Dict[str, float]:
-    results: Dict[str, float] = {}
-    for batch_size in batch_sizes:
-        batch_metrics = profile[f"batch_{batch_size}"]
-        results[f"batch_{batch_size}_throughput_tokens_per_sec_mean"] = batch_metrics[
-            "throughput_tokens_per_sec_mean"
-        ]
-        results[f"batch_{batch_size}_throughput_tokens_per_sec_std"] = batch_metrics[
-            "throughput_tokens_per_sec_std"
-        ]
-        results[f"batch_{batch_size}_latency_ms_per_token_p50"] = batch_metrics[
-            "latency_ms_per_token_p50"
-        ]
-        results[f"batch_{batch_size}_latency_ms_per_token_p95"] = batch_metrics[
-            "latency_ms_per_token_p95"
-        ]
-    if profile.get("peak_memory_bytes") is not None:
-        results["peak_memory_bytes"] = float(profile["peak_memory_bytes"])
-    return results
-
-
 def _compute_overhead_ratios(
     current_profile: Dict[str, Any],
     reference_profile: Dict[str, Any],
@@ -191,7 +168,20 @@ def run_efficiency_eval(
         autocast_dtype=autocast_dtype,
     )
 
-    results = _flatten_efficiency_results(profile, batch_sizes)
+    results: Dict[str, float] = {}
+    for bs in batch_sizes:
+        bm = profile[f"batch_{bs}"]
+        results[f"batch_{bs}_throughput_tokens_per_sec_mean"] = bm[
+            "throughput_tokens_per_sec_mean"
+        ]
+        results[f"batch_{bs}_throughput_tokens_per_sec_std"] = bm[
+            "throughput_tokens_per_sec_std"
+        ]
+        results[f"batch_{bs}_latency_ms_per_token_p50"] = bm["latency_ms_per_token_p50"]
+        results[f"batch_{bs}_latency_ms_per_token_p95"] = bm["latency_ms_per_token_p95"]
+    if profile.get("peak_memory_bytes") is not None:
+        results["peak_memory_bytes"] = float(profile["peak_memory_bytes"])
+
     metadata: Dict[str, Any] = {
         "device": device,
         "dtype": _dtype_name(autocast_dtype),

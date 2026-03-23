@@ -662,6 +662,7 @@ def main(
     """
     if not skip_data:
         stage_data.remote(config=config)
+        stage_eval_data.remote(config=config)
     stage_train.remote(config=config, overrides=overrides)
     for task in _resolve_eval_tasks(eval_tasks):
         stage_eval.remote(

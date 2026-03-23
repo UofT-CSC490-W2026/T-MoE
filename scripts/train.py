@@ -211,6 +211,7 @@ def build_model(cfg) -> torch.nn.Module:
             lambda_calib_step=cfg.router.get("lambda_calib_step", 600),
             tau_final=cfg.router.get("tau_final", cfg.router.get("temperature", 1.0)),
             tau_anneal_steps=cfg.router.get("tau_anneal_steps", 0),
+            noise_anneal_steps=cfg.router.get("noise_anneal_steps", 0),
             # metabolic-specific
             **(
                 {
@@ -238,6 +239,8 @@ def build_model(cfg) -> torch.nn.Module:
             init_scale=cfg.expert.lora.init_scale,
             b_init_scale=cfg.expert.lora.get("b_init_scale", 0.0),
             trainable_base=cfg.expert.lora.get("trainable_base", False),
+            shared_base_rank=cfg.expert.lora.get("shared_base_rank", 0),
+            shared_base_alpha=cfg.expert.lora.get("shared_base_alpha", 0.0),
         )
 
         moe_layers[actual_idx] = LoRAMoELayer.from_pretrained_mlp(
@@ -297,7 +300,7 @@ def _initialize_router_prototypes(
 
     # Use the unwrapped model to avoid DDP/compile complications during the warmup forward.
     base_model.eval()
-    with torch.compiler.disable():
+    with torch.no_grad():
         for i, (x, _) in enumerate(train_loader):
             if i >= n_warmup_batches:
                 break

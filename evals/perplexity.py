@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 import os
 import queue
 import struct
@@ -40,8 +41,6 @@ def _cfg_select(config: Any, key: str, default: Any = None) -> Any:
     current = config
     for part in key.split("."):
         if hasattr(current, "get"):
-            current = current.get(part)
-        elif isinstance(current, dict):
             current = current.get(part)
         else:
             return default
@@ -86,11 +85,11 @@ def summarize_language_model_metrics(
     if total_tokens <= 0:
         raise ValueError("total_tokens must be positive")
 
-    metrics = {"ppl": float(torch.exp(torch.tensor(total_nll / total_tokens)).item())}
+    metrics = {"ppl": math.exp(total_nll / total_tokens)}
     if total_bytes is not None:
         if total_bytes <= 0:
             raise ValueError("total_bytes must be positive when provided")
-        metrics["bpb"] = total_nll / (torch.log(torch.tensor(2.0)).item() * total_bytes)
+        metrics["bpb"] = total_nll / (math.log(2.0) * total_bytes)
     return metrics
 
 
@@ -293,8 +292,6 @@ def evaluate_text_documents(
     include_bpb: bool = True,
     progress_label: str | None = None,
     batch_size: int = 32,
-    # legacy kwarg — silently ignored (tqdm replaces it)
-    log_every_documents: int = 25,
     total_documents: int | None = None,
 ) -> Dict[str, float]:
     total_nll = 0.0
@@ -447,7 +444,6 @@ def evaluate_token_shards(
         n = min(n, max_tokens)
 
     all_window_starts = list(range(0, n - 1, stride))
-    n_windows = len(all_window_starts)
 
     # Distribute windows across ranks — each rank owns a contiguous slice
     # so window indices stay globally consistent (needed for valid_mask logic).
@@ -487,7 +483,7 @@ def evaluate_token_shards(
                 else:
                     valid_mask = torch.zeros(wlen - 1, dtype=torch.bool)
                     n_to_score = min(stride, wlen - 1)
-                    valid_mask[-(n_to_score):] = True
+                    valid_mask[-n_to_score:] = True
 
                 windows.append(
                     _Window(
@@ -520,7 +516,6 @@ def evaluate_token_shards(
         total_nll = stats[0].item()
         scored_tokens = int(stats[1].item())
         windows_scored = int(stats[2].item())
-        n_windows = n_windows  # already global
 
     if scored_tokens == 0:
         raise ValueError(f"No tokens scored from shards in {shard_dir}")
