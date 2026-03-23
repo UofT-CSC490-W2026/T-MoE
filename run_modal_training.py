@@ -32,7 +32,7 @@ from omegaconf import OmegaConf
 # CONFIGURATION — change this one line to switch experiments
 # =============================================================================
 
-CONFIG = "experiments/gptneo_125m_stress_v8b-fineweb.yaml"
+CONFIG = "experiments/qwen2_1.5b_switch_v1-fineweb.yaml"
 
 # GPU spec is read from compute.modal.gpu in the active config.
 # Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
@@ -64,10 +64,18 @@ SECRET_NAME = "tmoe-secrets"
 
 volume = Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
+_FLASH_ATTN_WHEEL = (
+    "https://huggingface.co/strangertoolshf/flash_attention_2_wheelhouse/resolve/main/"
+    "wheelhouse-flash_attn-2.8.3/linux_x86_64/torch2.8/cu12/abiFALSE/cp311/"
+    "flash_attn-2.8.3+cu12torch2.8cxx11abiFALSE-cp311-cp311-linux_x86_64.whl"
+)
+
 image = (
-    Image.debian_slim(python_version="3.11")
+    Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu24.04", add_python="3.11")
+    .pip_install("packaging", "ninja", "wheel", "setuptools")
     .pip_install_from_requirements("requirements.txt")
-    .env({"PYTHONPATH": "/app"})
+    .pip_install(_FLASH_ATTN_WHEEL)
+    .env({"PYTHONPATH": "/app", "OMP_NUM_THREADS": "1", "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"})
     .add_local_dir(
         ".",
         remote_path="/app",
