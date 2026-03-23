@@ -31,7 +31,11 @@ class StandardRouter(BaseRouter):
         self, x: torch.Tensor, return_metrics: bool = False, **kwargs
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Dict[str, Any]]]:
         batch, seq, _ = x.shape
-        logits = self.gate(x).view(-1, self.num_experts) / self.temperature
+        # Router weights stay in fp32 by default; mixed-precision backbones can
+        # emit bf16 hidden states. Cast inputs to the gate dtype before the
+        # linear op so validation/eval under bf16 does not trip dtype mismatch.
+        x_for_gate = x.to(self.gate.weight.dtype)
+        logits = self.gate(x_for_gate).view(-1, self.num_experts) / self.temperature
         probs = F.softmax(logits, dim=-1)  # (N, E)
 
         # Select top-k experts per token
