@@ -69,8 +69,8 @@ expert:
     dropout: 0.05
     init_scale: 0.01
     # b_init_scale=0.0: zero-init B restores LoRA zero-delta guarantee and expert symmetry at init
-    b_init_scale: 0.0
-    shared_base_rank: 8
+    b_init_scale: 0.02
+    shared_base_rank: 0
     shared_base_alpha: 8.0   # was 16.0 (scaling=2.0) → now 8.0 (scaling=1.0); Finding 1
 
 training:
@@ -120,4 +120,4 @@ eval:
 
 compute:
   modal:
-    gpu: "H100:8"
+    gpu: "H100:4"
