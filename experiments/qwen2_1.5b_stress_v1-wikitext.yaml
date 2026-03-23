@@ -1,0 +1,60 @@
+experiment_name: qwen2_1.5b_spar_wikitext
+seed: 42
+compile: false
+
+model:
+  model_key: qwen2-1.5b
+  freeze_backbone: true
+  moe_layer_indices: [2, 6, 10, 14, 18, 22]
+
+router:
+  type: stress_corrected
+  num_experts: 8
+  top_k: 2
+  temperature: 0.5
+  noise_std: 0.05
+  ema_alpha: 0.01
+  lambda_calib_step: 600
+
+expert:
+  type: qwen2_lora
+  count: 8
+  lora:
+    rank: 16
+    alpha: 32
+    dropout: 0.05
+    init_scale: 0.01
+    trainable_base: false
+
+training:
+  batch_size: 8
+  gradient_accumulation_steps: 8
+  steps: 5000
+  lr: 3.0e-4
+  warmup_steps: 400
+  weight_decay: 0.1
+  save_interval: 1000
+  eval_interval: 500
+  log_interval: 25
+  optimizer: adamw
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  clip_grad_norm: 1.0
+  num_workers: 2
+
+dataset:
+  dataset_key: wikitext-103
+  max_seq_len: 512
+
+logging:
+  enabled: true
+  log_gradients: false
+  log_interval: 25
+
+distributed:
+  strategy: ddp
+  find_unused_parameters: false
+
+compute:
+  modal:
+    gpu: "A100:4"

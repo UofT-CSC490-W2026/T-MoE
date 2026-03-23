@@ -81,3 +81,6 @@ class GPTNeoLoRAMLP(LoRAMLPExpert):
         proj_w, proj_b = _extract_linear_weight(proj_layer)
         self.c_fc = self._make_lora(fc_w, fc_b)
         self.c_proj = self._make_lora(proj_w, proj_b)
+
+    def get_lora_layer_names(self) -> list[str]:
+        return ["c_fc", "c_proj"]
