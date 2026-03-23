@@ -120,6 +120,7 @@ def _profile_loaded_model(
     metrics["peak_memory_bytes"] = peak_memory_bytes
     return metrics
 
+
 def _flatten_efficiency_results(
     profile: Dict[str, Any], batch_sizes: Iterable[int]
 ) -> Dict[str, float]:
