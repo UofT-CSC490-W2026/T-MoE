@@ -55,7 +55,8 @@ class Qwen2Backbone(BaseModelBackbone):
     def load_pretrained(self) -> None:
         self.backbone = AutoModelForCausalLM.from_pretrained(
             self.model_name,
-            torch_dtype=COMPUTE_DTYPE,
+            dtype=COMPUTE_DTYPE,
+            attn_implementation="flash_attention_2",
         ).to(self.device)
         self.vocab_size = self.backbone.config.vocab_size
 
@@ -90,7 +91,7 @@ class Qwen2Backbone(BaseModelBackbone):
                 use_cache=False,
             )
 
-        logits = outputs.logits
+        logits = outputs.logits if not self.training else None
         loss = outputs.loss if labels is not None else None
 
         if loss is not None and self.moe_layers:
