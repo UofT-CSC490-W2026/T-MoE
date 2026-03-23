@@ -50,12 +50,9 @@ class ShardDataset(Dataset):
     """
     Reads packed binary shards produced by scripts/prepare_data.py.
 
-    Each .bin file is: 8-byte header (uint64 token_count) + uint16 tokens.
-    Sequences are sliced out of the continuous token stream — no padding.
-
-    Memory-efficient: only shard headers are read at init time. Token data
-    is accessed via np.memmap on demand, so arbitrarily large datasets
-    (C4, The Pile) work without OOM.
+    Legacy format: [uint64 token_count (8 bytes)] [uint16 tokens ...]
+    New format:    [uint64 token_count (8 bytes)] [uint16 dtype_flag (2 bytes)] [tokens ...]
+                   dtype_flag=0 → uint16 tokens, dtype_flag=1 → uint32 tokens
     """
 
     def __init__(self, shard_dir: Path, split: str, seq_len: int):
@@ -67,14 +64,34 @@ class ShardDataset(Dataset):
                 f"Run 'python -m scripts.prepare_data --config <your_config.yaml>' first."
             )
 
-        # Read only 8-byte headers — no token data loaded into RAM.
         self.shard_sizes: list[int] = []
-        for path in self.shards:
-            with open(path, "rb") as f:
-                count = struct.unpack("<Q", f.read(8))[0]
-            self.shard_sizes.append(count)
+        self.shard_meta: list[tuple] = []  # (dtype, offset) per shard
 
-        # Cumulative token offsets for O(log N) shard resolution in __getitem__.
+        for path in self.shards:
+            file_size = path.stat().st_size
+            with open(path, "rb") as f:
+                token_count = struct.unpack("<Q", f.read(8))[0]
+
+            # Detect legacy (8-byte header) vs versioned (10-byte header)
+            if file_size - 8 == token_count * 2:
+                # Legacy uint16 shard
+                dtype = np.uint16
+                offset = 8
+            else:
+                with open(path, "rb") as f:
+                    f.read(8)
+                    dtype_flag = struct.unpack("<H", f.read(2))[0]
+                if dtype_flag == 0:
+                    dtype = np.uint16
+                elif dtype_flag == 1:
+                    dtype = np.uint32
+                else:
+                    raise ValueError(f"Unknown dtype_flag={dtype_flag} in {path}")
+                offset = 10
+
+            self.shard_sizes.append(token_count)
+            self.shard_meta.append((dtype, offset))
+
         self.cumulative = [0]
         for s in self.shard_sizes:
             self.cumulative.append(self.cumulative[-1] + s)
@@ -82,12 +99,9 @@ class ShardDataset(Dataset):
         total_tokens = self.cumulative[-1]
         self.n_seqs = (total_tokens - 1) // seq_len
 
-        # Cache one memmap per shard at init time — avoids re-opening file
-        # descriptors and recreating OS memory mappings on every __getitem__ call.
-        # Each mmap covers the full token payload of the shard (after the 8-byte header).
         self.mmaps: list[np.memmap] = [
-            np.memmap(path, dtype=np.uint16, mode="r", offset=8, shape=(size,))
-            for path, size in zip(self.shards, self.shard_sizes)
+            np.memmap(path, dtype=dtype, mode="r", offset=offset, shape=(size,))
+            for path, size, (dtype, offset) in zip(self.shards, self.shard_sizes, self.shard_meta)
         ]
 
     def __len__(self):
@@ -196,7 +210,7 @@ def build_model(cfg) -> torch.nn.Module:
     moe_layers = {}
     for layer_idx in cfg.model.moe_layer_indices:
         actual_idx = layer_idx if layer_idx >= 0 else model.num_layers + layer_idx
-        original_mlp = model.backbone.transformer.h[actual_idx].mlp
+        original_mlp = model.get_mlp_at(actual_idx)
 
         router = create_router(
             router_type=cfg.router.type,
@@ -233,6 +247,7 @@ def build_model(cfg) -> torch.nn.Module:
 
         lora_cfg = LoRAConfig(
             hidden_dim=model.hidden_dim,
+            intermediate_dim=model_info.get("intermediate_dim"),
             rank=cfg.expert.lora.rank,
             alpha=cfg.expert.lora.alpha,
             dropout=cfg.expert.lora.dropout,

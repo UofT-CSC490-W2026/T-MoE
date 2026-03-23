@@ -137,8 +137,10 @@ def _iter_token_arrays(
     tokenizer_name: str,
     eos_id: int,
     num_proc: int,
+    vocab_size: int,
     batch_size: int = 512,
 ) -> Iterator[np.ndarray]:
+    token_dtype = np.uint32 if vocab_size > 65535 else np.uint16
     """
     Yield numpy uint16 token arrays for each document in the dataset.
 
@@ -152,8 +154,6 @@ def _iter_token_arrays(
     is_streaming = isinstance(dataset, IterableDataset)
 
     if is_streaming:
-        # Streaming: tokenize in batches via HF batched map
-        # (sequential but overlaps network I/O with tokenization)
         from transformers import AutoTokenizer
 
         tok = AutoTokenizer.from_pretrained(tokenizer_name)
@@ -166,15 +166,13 @@ def _iter_token_arrays(
             if len(batch_texts) >= batch_size:
                 encoded = tok(batch_texts, add_special_tokens=False)
                 for ids in encoded["input_ids"]:
-                    yield np.array(ids + [eos_id], dtype=np.uint16)
+                    yield np.array(ids + [eos_id], dtype=token_dtype)
                 batch_texts = []
         if batch_texts:
             encoded = tok(batch_texts, add_special_tokens=False)
             for ids in encoded["input_ids"]:
-                yield np.array(ids + [eos_id], dtype=np.uint16)
+                yield np.array(ids + [eos_id], dtype=token_dtype)
     else:
-        # Non-streaming: parallel tokenization via multiprocessing pool.
-        # Batches are generated lazily so we never load the full dataset into RAM.
         def _batch_gen():
             batch = []
             for ex in dataset:
@@ -194,7 +192,7 @@ def _iter_token_arrays(
                 pool.imap(_tokenize_batch, _batch_gen(), chunksize=16)
             ):
                 for ids in token_lists:
-                    yield np.array(ids, dtype=np.uint16)
+                    yield np.array(ids, dtype=token_dtype)
                 docs_done += len(token_lists)
                 if i > 0 and i % 200 == 0:
                     print(f"  ... {docs_done:,} docs tokenized ({i} batches)")
@@ -208,6 +206,7 @@ def tokenize_and_pack(cfg, out_dir: Path, num_proc: int = 1) -> None:
     model_key = cfg.model.model_key
     tokenizer, eos_id = get_tokenizer(model_key)
     tokenizer_name = tokenizer.name_or_path
+    vocab_size = tokenizer.vocab_size
 
     use_streaming = dataset_info.get("streaming", False)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -237,14 +236,16 @@ def tokenize_and_pack(cfg, out_dir: Path, num_proc: int = 1) -> None:
         )
 
         shard_index = 0
-        token_buffer = np.empty(SHARD_SIZE, dtype=np.uint16)
+        dtype_flag = 1 if vocab_size > 65535 else 0
+        token_dtype = np.uint32 if dtype_flag else np.uint16
+        token_buffer = np.empty(SHARD_SIZE, dtype=token_dtype)
         token_count = 0
         total_tokens_written = 0
 
         def flush_shard(buf: np.ndarray, count: int, idx: int) -> Path:
             path = out_dir / f"{split_name}_shard_{idx:04d}.bin"
             with open(path, "wb") as f:
-                f.write(struct.pack("<Q", count))
+                f.write(struct.pack("<QH", count, dtype_flag))
                 f.write(buf[:count].tobytes())
             return path
 
@@ -254,6 +255,7 @@ def tokenize_and_pack(cfg, out_dir: Path, num_proc: int = 1) -> None:
             tokenizer_name,
             eos_id,
             num_proc,
+            vocab_size,
         )
 
         for tokens in token_iter:

@@ -50,19 +50,13 @@ class LoRAMoELayer(BaseMoELayer):
         self._shared_base_alpha = lora_config.shared_base_alpha
 
     def _init_shared_base_lora(self) -> None:
-        """
-        Instantiate shared_proj_lora after expert weights are loaded.
-
-        Reads intermediate_dim and hidden_dim from expert 0's c_proj shape.
-        Must be called after expert_pool.load_from_mlp() so c_proj is populated.
-        """
         if self._shared_base_rank <= 0:
             return
         e0 = self.expert_pool.experts[0]
-        if not (hasattr(e0, "c_proj") and e0.c_proj is not None):
+        out_proj = getattr(e0, "c_proj", None) or getattr(e0, "down_proj", None)
+        if out_proj is None:
             return
-        # c_proj: [hidden_dim, intermediate_dim] in Linear convention [out, in]
-        out_features, in_features = e0.c_proj.shared_weight.shape
+        out_features, in_features = out_proj.shared_weight.shape
         self.shared_proj_lora = SharedBaseLoRA(
             in_features=in_features,
             out_features=out_features,
@@ -104,7 +98,7 @@ class LoRAMoELayer(BaseMoELayer):
             # Batch across experts per projection to reduce CUDA syncs from N*2 to 2.
             with torch.no_grad():
                 norms = None  # [num_experts] accumulated on-device
-                for attr in ("c_fc", "c_proj"):
+                for attr in ("c_fc", "c_proj", "gate_proj", "up_proj", "down_proj"):
                     layers = [getattr(e, attr, None) for e in self.expert_pool.experts]
                     valid = [
                         (layer, i)

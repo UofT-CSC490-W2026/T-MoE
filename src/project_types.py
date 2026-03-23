@@ -31,12 +31,11 @@ class ExpertType(str, Enum):
     """Expert types for MoE layers."""
 
     GPTNEO_LORA = "gpt_neo_lora"
-    # Future expert types can be added here
-    # LLAMA_LORA = "llama_lora"
+    QWEN2_LORA = "qwen2_lora"
 
 
 class ModelType(str, Enum):
     """Supported model architectures."""
 
     GPTNEO = "gpt_neo"
-    # LLAMA = "llama"
+    QWEN2 = "qwen2"

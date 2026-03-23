@@ -4,6 +4,7 @@ from src.experts.pool import ExpertPool
 
 # Import concrete experts so their @register decorators run
 import src.experts.gpt_neo_lora  # noqa: F401
+import src.experts.qwen2_lora  # noqa: F401
 
 __all__ = [
     "BaseExpert",
