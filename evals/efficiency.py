@@ -162,6 +162,8 @@ def run_efficiency_eval(
     config: Any,
     checkpoint_path: str | Path,
     *,
+    model: Any | None = None,
+    checkpoint_info: Dict[str, Any] | None = None,
     output_path: str | Path | None = None,
     device: str = "cuda",
     batch_sizes: Sequence[int] = (1, 32),
@@ -172,12 +174,13 @@ def run_efficiency_eval(
     reference_config: Any | None = None,
     autocast_dtype: torch.dtype = torch.bfloat16,
 ) -> Dict[str, Any]:
-    model, checkpoint_info = load_model_for_eval(
-        config=config,
-        checkpoint_path=checkpoint_path,
-        device=device,
-        dtype=autocast_dtype if device.startswith("cuda") else None,
-    )
+    if model is None:
+        model, checkpoint_info = load_model_for_eval(
+            config=config,
+            checkpoint_path=checkpoint_path,
+            device=device,
+            dtype=autocast_dtype if device.startswith("cuda") else None,
+        )
     profile = _profile_loaded_model(
         model,
         device=device,
@@ -232,4 +235,13 @@ def run_efficiency_eval(
 
     if output_path is not None:
         write_results_json(payload, output_path)
+
+    print("\n── Efficiency Results ──────────────────────────")
+    for k, v in results.items():
+        if k == "peak_memory_bytes":
+            print(f"  {'peak_memory_mb':<30} {v / 1024**2:.1f}")
+        else:
+            print(f"  {k:<30} {v:.4f}")
+    print("────────────────────────────────────────────────\n")
+
     return payload

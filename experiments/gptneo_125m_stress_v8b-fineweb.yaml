@@ -102,6 +102,22 @@ distributed:
   strategy: ddp
   find_unused_parameters: false
 
+eval:
+  # Perplexity
+  stride: 2048           # non-overlapping windows — standard for paper numbers
+  max_documents: null     # set to null for full dataset (paper runs)
+  max_eval_length: 2048  # context length cap; matches GPT-Neo training context
+  batch_size: 16              # paper uses 16 for GPT-Neo-125M, but may need to reduce for memory with longer context and MoE overhead; v8a used 8 to fit on A100-40GB with batch_size=32 training; keep same for fair comparison
+
+  # LM Harness
+  lm_harness_batch_size: 32
+  limit: null            # set to e.g. 100 for fast smoke-tests
+
+  # Efficiency profiling
+  seq_len: 1024
+  warmup_iters: 10
+  benchmark_iters: 100
+
 compute:
   modal:
-    gpu: "H100:4"
+    gpu: "H100:8"

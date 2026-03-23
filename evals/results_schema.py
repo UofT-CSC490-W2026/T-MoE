@@ -18,6 +18,10 @@ except ImportError:  # pragma: no cover - optional dependency in lightweight env
     WANDB_AVAILABLE = False
     wandb = None
 
+# Silence wandb's C-level "wandb: Syncing run …" / "Run history:" terminal output.
+# Must be set before wandb.init() is called; setting it at import time is safe.
+os.environ.setdefault("WANDB_SILENT", "true")
+
 try:
     from omegaconf import OmegaConf
 except ImportError:  # pragma: no cover - exercised implicitly in lightweight envs
@@ -329,6 +333,9 @@ def log_results_to_wandb(
         init_kwargs["entity"] = entity
 
     init_kwargs["mode"] = mode
+    _Settings = getattr(wandb, "Settings", None)
+    if _Settings is not None:
+        init_kwargs["settings"] = _Settings(quiet=True, silent=True)
 
     try:
         run = wandb.init(**init_kwargs)

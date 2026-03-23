@@ -32,18 +32,21 @@ from omegaconf import OmegaConf
 # CONFIGURATION — change this one line to switch experiments
 # =============================================================================
 
-CONFIG = "experiments/gptneo_125m_stress_v8a-fineweb.yaml"
+CONFIG = "experiments/gptneo_125m_stress_v8b-fineweb.yaml"
 
 # GPU spec is read from compute.modal.gpu in the active config.
 # Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
 try:
     _cfg = OmegaConf.load(CONFIG)
     GPU = str(OmegaConf.select(_cfg, "compute.modal.gpu", default="A100:4"))
-    # Eval runs on a single GPU — use the same GPU family but strip the count suffix.
-    EVAL_GPU = GPU.split(":")[0]
+    # Eval uses same GPU family as training but with a configurable count (default 4).
+    _eval_gpu_base = GPU.split(":")[0]
+    _N_EVAL_GPUS = int(GPU.split(":")[1]) if ":" in GPU else 1
+    EVAL_GPU = f"{_eval_gpu_base}:{_N_EVAL_GPUS}"
 except Exception:  # noqa: BLE001
     GPU = "A100:4"
-    EVAL_GPU = "A100"
+    EVAL_GPU = "A100:4"
+    _N_EVAL_GPUS = 4
 
 _N_GPUS = int(GPU.split(":")[1]) if ":" in GPU else 1
 SUPPORTED_EVAL_TASKS = ("perplexity", "lm_harness", "efficiency")
@@ -394,18 +397,14 @@ def stage_eval(
     checkpoint: str = "",
     all_checkpoints: bool = False,
     device: str = "cuda",
-    stride: int = 512,
-    max_documents: int | None = None,
-    batch_size: str = "32",
-    limit: float | None = None,
-    seq_len: int = 1024,
-    warmup_iters: int = 10,
-    benchmark_iters: int = 100,
     reference_checkpoint: str = "",
     reference_config: str = "",
 ):
     """
     Run post-training evaluation against the best saved checkpoint by default.
+    All eval hyperparameters (stride, max_documents, batch_size, etc.) are read
+    from the `eval:` section of the experiment YAML. Override any of them via
+    the `overrides` arg, e.g. overrides="eval.stride=2048,eval.max_documents=null".
 
     Args:
         task:                Comma-separated eval tasks, or 'all'. Options: perplexity, lm_harness, efficiency.
@@ -414,13 +413,6 @@ def stage_eval(
         checkpoint:          Optional checkpoint path, or 'latest'/'best'. Defaults to best_model.pt.
         all_checkpoints:     Sweep every checkpoint_step_*.pt in the experiment's checkpoints dir.
         device:              Eval device, e.g. cuda, cuda:0, or cpu.
-        stride:              Sliding-window stride for perplexity evaluation.
-        max_documents:       Optional smoke-test cap for perplexity.
-        batch_size:          Window batch size for perplexity; batch size for lm-harness.
-        limit:               Optional lm-eval example cap.
-        seq_len:             Sequence length for efficiency profiling.
-        warmup_iters:        Warmup iterations for efficiency profiling.
-        benchmark_iters:     Timed iterations for efficiency profiling.
         reference_checkpoint: Optional reference checkpoint for router overhead ratio.
         reference_config:    Optional config for the reference checkpoint.
     """
@@ -430,11 +422,31 @@ def stage_eval(
     cfg = _load_cfg(cfg_path, overrides)
     checkpoint_path = _resolve_eval_checkpoint(cfg, checkpoint, all_checkpoints)
     output_dir = f"{_experiment_output_dir(cfg)}/eval"
+    hf_cache = f"{VOLUME_MOUNT}/hf_cache"
+
+    # Read eval params from YAML (with fallback defaults matching scripts/eval.py)
+    from omegaconf import OmegaConf as _OC
+
+    def _ep(key, default):
+        return _OC.select(cfg, f"eval.{key}", default=default)
+
+    stride = _ep("stride", 512)
+    max_documents = _ep("max_documents", None)
+    max_eval_length = _ep("max_eval_length", 2048)
+    batch_size = str(_ep("batch_size", 32))
+    lm_batch_size = _ep("lm_harness_batch_size", 1)
+    limit = _ep("limit", None)
+    seq_len = _ep("seq_len", 1024)
+    warmup_iters = _ep("warmup_iters", 10)
+    benchmark_iters = _ep("benchmark_iters", 100)
 
     print(f"[stage_eval] Experiment : {cfg.experiment_name}")
     print(f"[stage_eval] Tasks      : {', '.join(tasks)}")
     print(f"[stage_eval] Checkpoint : {checkpoint_path}")
     print(f"[stage_eval] Output     : {output_dir}")
+    print(
+        f"[stage_eval] Eval cfg   : stride={stride}, max_documents={max_documents}, max_eval_length={max_eval_length}, batch_size={batch_size}"
+    )
 
     # Ensure eval shards exist before running perplexity.
     if "perplexity" in tasks:
@@ -442,7 +454,6 @@ def stage_eval(
         from src.configs.dataset import get_shard_dir
 
         model_key = cfg.model.model_key
-        hf_cache = f"{VOLUME_MOUNT}/hf_cache"
         for dataset_key in _EVAL_DATASETS:
             out_dir = str(get_shard_dir(dataset_key, model_key, base=SHARDS_DIR))
             if not _glob.glob(f"{out_dir}/val_shard_*.bin"):
@@ -474,15 +485,26 @@ def stage_eval(
                 volume.commit()
                 print(f"[stage_eval] Eval shards ready: {out_dir}")
 
-    hf_cache = f"{VOLUME_MOUNT}/hf_cache"
-    for t in tasks:
-        print(f"[stage_eval] --- Running task: {t} ---")
-        cmd = [
-            sys.executable,
-            "-m",
-            "scripts.eval",
+    # ---------------------------------------------------------------------------
+    # Perplexity: torchrun subprocess (distributed across all GPUs)
+    # ---------------------------------------------------------------------------
+    if "perplexity" in tasks:
+        print("[stage_eval] --- Running task: perplexity ---")
+        use_torchrun = _N_EVAL_GPUS > 1
+        cmd = (
+            [
+                "torchrun",
+                "--standalone",
+                f"--nproc_per_node={_N_EVAL_GPUS}",
+                "-m",
+                "scripts.eval",
+            ]
+            if use_torchrun
+            else [sys.executable, "-m", "scripts.eval"]
+        )
+        cmd += [
             "--task",
-            t,
+            "perplexity",
             "--checkpoint",
             checkpoint_path,
             "--config",
@@ -495,27 +517,14 @@ def stage_eval(
             str(stride),
             "--batch-size",
             str(batch_size),
-            "--seq-len",
-            str(seq_len),
-            "--warmup-iters",
-            str(warmup_iters),
-            "--benchmark-iters",
-            str(benchmark_iters),
+            "--max-eval-length",
+            str(max_eval_length),
         ]
         if all_checkpoints:
             cmd.append("--all-checkpoints")
         if max_documents is not None:
             cmd.extend(["--max-documents", str(max_documents)])
-        if limit is not None:
-            cmd.extend(["--limit", str(limit)])
-        if reference_checkpoint:
-            cmd.extend(
-                ["--reference-checkpoint", _resolve_runtime_path(reference_checkpoint)]
-            )
-        if reference_config:
-            cmd.extend(["--reference-config", _config_path(reference_config)])
         cmd.extend(_override_list(overrides))
-
         subprocess.run(
             cmd,
             cwd="/app",
@@ -527,6 +536,100 @@ def stage_eval(
                 "SHARD_BASE_DIR": SHARDS_DIR,
             },
         )
+
+    # ---------------------------------------------------------------------------
+    # lm_harness + efficiency: in-process, model loaded once and shared
+    # ---------------------------------------------------------------------------
+    inprocess_tasks = [t for t in tasks if t in ("lm_harness", "efficiency")]
+    if inprocess_tasks:
+        import torch
+        from pathlib import Path as _Path
+        from evals.loading import load_model_for_eval
+        from evals.results_schema import log_results_to_wandb, infer_checkpoint_step
+
+        checkpoint_p = _Path(checkpoint_path)
+        if checkpoint_p.is_dir() or all_checkpoints:
+            checkpoint_dir = (
+                checkpoint_p if checkpoint_p.is_dir() else checkpoint_p.parent
+            )
+            checkpoint_paths = sorted(
+                checkpoint_dir.glob("checkpoint_step_*.pt"),
+                key=lambda p: (infer_checkpoint_step(p) or 10**18, p.name),
+            )
+            if not checkpoint_paths:
+                raise FileNotFoundError(
+                    f"No checkpoint_step_*.pt in '{checkpoint_dir}'"
+                )
+        else:
+            checkpoint_paths = [checkpoint_p]
+
+        multiple = len(checkpoint_paths) > 1
+        autocast_dtype = torch.bfloat16 if device.startswith("cuda") else None
+
+        for ckpt in checkpoint_paths:
+            output_base = _Path(output_dir)
+
+            model, checkpoint_info = load_model_for_eval(
+                config=cfg,
+                checkpoint_path=ckpt,
+                device=device,
+                dtype=autocast_dtype,
+            )
+
+            if "lm_harness" in inprocess_tasks:
+                print("[stage_eval] --- Running task: lm_harness ---")
+                from evals.lm_harness_runner import run_lm_harness_eval
+
+                out_path = (
+                    output_base / "history" / ckpt.stem / "lm_harness.json"
+                    if multiple
+                    else output_base / "lm_harness.json"
+                )
+                payload = run_lm_harness_eval(
+                    config=cfg,
+                    checkpoint_path=ckpt,
+                    model=model,
+                    checkpoint_info=checkpoint_info,
+                    output_path=out_path,
+                    device=device,
+                    batch_size=lm_batch_size,
+                    limit=limit,
+                )
+                log_results_to_wandb(payload, config=cfg)
+
+            if "efficiency" in inprocess_tasks:
+                print("[stage_eval] --- Running task: efficiency ---")
+                from evals.efficiency import run_efficiency_eval
+
+                out_path = (
+                    output_base / "history" / ckpt.stem / "efficiency.json"
+                    if multiple
+                    else output_base / "efficiency.json"
+                )
+                ref_ckpt = (
+                    _resolve_runtime_path(reference_checkpoint)
+                    if reference_checkpoint
+                    else None
+                )
+                ref_cfg = (
+                    _load_cfg(_config_path(reference_config), "")
+                    if reference_config
+                    else None
+                )
+                payload = run_efficiency_eval(
+                    config=cfg,
+                    checkpoint_path=ckpt,
+                    model=model,
+                    checkpoint_info=checkpoint_info,
+                    output_path=out_path,
+                    device=device,
+                    seq_len=seq_len,
+                    warmup_iters=warmup_iters,
+                    benchmark_iters=benchmark_iters,
+                    reference_checkpoint_path=ref_ckpt,
+                    reference_config=ref_cfg,
+                )
+                log_results_to_wandb(payload, config=cfg)
 
     volume.commit()
     print(f"[stage_eval] Done → {output_dir}")
@@ -546,18 +649,13 @@ def main(
     checkpoint: str = "",
     all_checkpoints: bool = False,
     device: str = "cuda",
-    stride: int = 512,
-    max_documents: int | None = None,
-    batch_size: str = "32",
-    limit: float | None = None,
-    seq_len: int = 1024,
-    warmup_iters: int = 10,
-    benchmark_iters: int = 100,
     reference_checkpoint: str = "",
     reference_config: str = "",
 ):
     """
     Run Stage 1 (data) then Stage 2 (train), with optional post-training evals.
+    All eval hyperparameters are read from the `eval:` section of the experiment YAML.
+    Override any of them via overrides, e.g. --overrides "eval.stride=2048,eval.max_documents=null".
 
     Set eval_tasks to a comma-separated list like "perplexity,lm_harness" or "all"
     to chain evals after training completes.
@@ -573,13 +671,6 @@ def main(
             checkpoint=checkpoint,
             all_checkpoints=all_checkpoints,
             device=device,
-            stride=stride,
-            max_documents=max_documents,
-            batch_size=batch_size,
-            limit=limit,
-            seq_len=seq_len,
-            warmup_iters=warmup_iters,
-            benchmark_iters=benchmark_iters,
             reference_checkpoint=reference_checkpoint,
             reference_config=reference_config,
         )

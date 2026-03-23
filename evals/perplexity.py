@@ -167,19 +167,26 @@ def _run_batched_forward(
     device: str,
     autocast_dtype: torch.dtype,
 ) -> list[tuple[torch.Tensor, torch.BoolTensor]]:
-    # Right-pad windows to common length; real tokens sit at [0:wlen]
     lengths = [w.window_input.size(1) for w in windows]
-    max_len = max(lengths)
-    padded = []
-    for w in windows:
-        wlen = w.window_input.size(1)
-        if wlen < max_len:
-            pad = torch.zeros(1, max_len - wlen, dtype=w.window_input.dtype)
-            padded.append(torch.cat([w.window_input, pad], dim=1))
-        else:
-            padded.append(w.window_input)
 
-    batch = torch.cat(padded, dim=0)  # [B, max_len]
+    # Fast path: all windows same length (stride=max_length, no overlap) — no padding needed
+    all_same_len = len(set(lengths)) == 1
+
+    if all_same_len:
+        batch = torch.cat([w.window_input for w in windows], dim=0)
+    else:
+        # Right-pad windows to common length; real tokens sit at [0:wlen]
+        max_len = max(lengths)
+        padded = []
+        for w in windows:
+            wlen = w.window_input.size(1)
+            if wlen < max_len:
+                pad = torch.zeros(1, max_len - wlen, dtype=w.window_input.dtype)
+                padded.append(torch.cat([w.window_input, pad], dim=1))
+            else:
+                padded.append(w.window_input)
+        batch = torch.cat(padded, dim=0)
+
     if device.startswith("cuda"):
         batch = batch.pin_memory().to(device, non_blocking=True)
     else:
@@ -189,16 +196,18 @@ def _run_batched_forward(
         outputs = model(input_ids=batch)
 
     logits = outputs[0] if isinstance(outputs, (tuple, list)) else outputs.logits
-    logits = logits.float()  # [B, max_len, V]
+    # Compute cross-entropy in the model's native dtype (bf16/fp16) to avoid
+    # materializing a full float32 logits tensor — critical for large vocab models
+    # like Qwen (vocab=151k) where float32 cast causes ~40GB memory spike at B=32.
 
     results = []
     for i, w in enumerate(windows):
         wlen = lengths[i]
-        # Only look at the real (non-padded) portion
-        shift_logits = logits[i, : wlen - 1, :]  # [wlen-1, V]
-        shift_labels = batch[i, 1:wlen].to(device)  # [wlen-1]
+        shift_logits = logits[i, : wlen - 1, :]  # [wlen-1, V] — still in autocast dtype
+        shift_labels = batch[i, 1:wlen]  # [wlen-1]
+        # F.cross_entropy upcasts internally to float32 for numerical stability
         token_losses = F.cross_entropy(
-            shift_logits, shift_labels, reduction="none"
+            shift_logits.float(), shift_labels, reduction="none"
         )  # [wlen-1]
         results.append((token_losses, w.valid_mask))
 
@@ -350,7 +359,7 @@ def evaluate_text_documents(
         desc=progress_label or "perplexity",
         file=sys.stderr,
         dynamic_ncols=True,
-        leave=False,
+        leave=True,
     ) as pbar:
         while True:
             item = tok_queue.get()
@@ -408,7 +417,15 @@ def evaluate_token_shards(
     autocast_dtype: torch.dtype,
     batch_size: int,
     progress_label: str = "shard-eval",
+    max_tokens: int | None = None,
+    rank: int = 0,
+    world_size: int = 1,
 ) -> Dict[str, float]:
+    """Evaluate perplexity over token shards.
+
+    When world_size > 1, each rank processes a disjoint slice of windows and
+    the results are all-reduced so every rank returns identical metrics.
+    """
     shard_dir = Path(shard_dir)
     shard_files = sorted(shard_dir.glob("val_shard_*.bin"))
     if not shard_files:
@@ -426,30 +443,34 @@ def evaluate_token_shards(
 
     all_tokens = np.concatenate(token_arrays)
     n = len(all_tokens)
+    if max_tokens is not None:
+        n = min(n, max_tokens)
 
-    window_starts = list(range(0, n - 1, stride))
-    n_windows = len(window_starts)
+    all_window_starts = list(range(0, n - 1, stride))
+    n_windows = len(all_window_starts)
+
+    # Distribute windows across ranks — each rank owns a contiguous slice
+    # so window indices stay globally consistent (needed for valid_mask logic).
+    rank_window_starts = all_window_starts[rank::world_size]
 
     total_nll = 0.0
     scored_tokens = 0
     windows_scored = 0
 
     with tqdm(
-        total=n_windows,
+        total=len(rank_window_starts),
         unit="win",
-        desc=progress_label,
+        desc=f"{progress_label}" + (f"[{rank}/{world_size}]" if world_size > 1 else ""),
         file=sys.stderr,
         dynamic_ncols=True,
-        leave=False,
+        leave=True,
+        disable=rank != 0,
     ) as pbar:
-        for batch_start in range(0, n_windows, batch_size):
-            batch_starts = window_starts[batch_start : batch_start + batch_size]
+        for batch_start in range(0, len(rank_window_starts), batch_size):
+            batch_ws = rank_window_starts[batch_start : batch_start + batch_size]
             windows: list[_Window] = []
 
-            for i, ws in enumerate(batch_starts):
-                begin_loc = max(ws - (max_length - stride), 0) if ws > 0 else 0
-                # For token shard windows: context is [ws - (max_length-stride), ws+stride)
-                # Simpler: window is [ws : ws+max_length] capped at n; score only last stride tokens
+            for ws in batch_ws:
                 begin_loc = ws
                 end_loc = min(ws + max_length, n)
                 if end_loc - begin_loc < 2:
@@ -457,12 +478,11 @@ def evaluate_token_shards(
 
                 tokens = torch.tensor(
                     all_tokens[begin_loc:end_loc], dtype=torch.long
-                ).unsqueeze(0)  # [1, wlen]
+                ).unsqueeze(0)
 
                 wlen = tokens.size(1)
-                # First window scores all wlen-1 positions; subsequent windows score only last `stride`
-                global_win_idx = batch_start + i
-                if global_win_idx == 0:
+                # First global window scores all positions; rest score only last stride
+                if ws == 0:
                     valid_mask = torch.ones(wlen - 1, dtype=torch.bool)
                 else:
                     valid_mask = torch.zeros(wlen - 1, dtype=torch.bool)
@@ -471,7 +491,7 @@ def evaluate_token_shards(
 
                 windows.append(
                     _Window(
-                        doc_idx=global_win_idx,
+                        doc_idx=ws,  # use token offset as stable doc_idx
                         window_input=tokens,
                         valid_mask=valid_mask,
                     )
@@ -488,6 +508,19 @@ def evaluate_token_shards(
                     scored_tokens += int(vm.sum().item())
             windows_scored += len(windows)
             pbar.update(len(windows))
+
+    # All-reduce across ranks so every rank returns the same aggregate metrics
+    if world_size > 1:
+        import torch.distributed as dist
+
+        stats = torch.tensor(
+            [total_nll, float(scored_tokens), float(windows_scored)], device=device
+        )
+        dist.all_reduce(stats, op=dist.ReduceOp.SUM)
+        total_nll = stats[0].item()
+        scored_tokens = int(stats[1].item())
+        windows_scored = int(stats[2].item())
+        n_windows = n_windows  # already global
 
     if scored_tokens == 0:
         raise ValueError(f"No tokens scored from shards in {shard_dir}")
@@ -558,6 +591,8 @@ def run_perplexity_eval(
     config: Any,
     checkpoint_path: str | Path,
     *,
+    model: Any | None = None,
+    checkpoint_info: Dict[str, Any] | None = None,
     output_path: str | Path | None = None,
     device: str = "cuda",
     stride: int = 512,
@@ -565,15 +600,23 @@ def run_perplexity_eval(
     dataset_specs: Sequence[Dict[str, Any]] = DEFAULT_PERPLEXITY_DATASETS,
     autocast_dtype: torch.dtype = torch.bfloat16,
     batch_size: int = 32,
+    # Hard cap on context length — prevents OOM on large-context models (e.g. Qwen 32k).
+    # PPL is evaluated at 2048 tokens regardless of model's max_position_embeddings.
+    max_eval_length: int = 2048,
+    rank: int = 0,
+    world_size: int = 1,
 ) -> Dict[str, Any]:
-    model, checkpoint_info = load_model_for_eval(
-        config=config,
-        checkpoint_path=checkpoint_path,
-        device=device,
-        dtype=autocast_dtype if device.startswith("cuda") else None,
-    )
+    if model is None:
+        model, checkpoint_info = load_model_for_eval(
+            config=config,
+            checkpoint_path=checkpoint_path,
+            device=device,
+            dtype=autocast_dtype if device.startswith("cuda") else None,
+        )
     tokenizer = _load_tokenizer_for_model(config)
-    max_length = infer_eval_context_length(model, config, tokenizer)
+    max_length = min(
+        infer_eval_context_length(model, config, tokenizer), max_eval_length
+    )
     model_key = _cfg_select(config, "model.model_key", "gpt-neo-125m")
 
     results: Dict[str, float] = {}
@@ -586,6 +629,8 @@ def run_perplexity_eval(
         if dataset_spec.get("source") == "shards":
             dataset_key = dataset_spec["dataset_key"]
             shard_dir = get_shard_dir(dataset_key, model_key, base=_SHARD_BASE_DIR)
+            # Convert max_documents to a token cap: pile-val averages ~75k tokens/doc
+            max_tokens = max_documents * 75_000 if max_documents is not None else None
             summary = evaluate_token_shards(
                 model,
                 shard_dir,
@@ -595,6 +640,9 @@ def run_perplexity_eval(
                 autocast_dtype=autocast_dtype,
                 batch_size=batch_size,
                 progress_label=prefix,
+                max_tokens=max_tokens,
+                rank=rank,
+                world_size=world_size,
             )
             dataset_metadata[prefix] = {
                 "tokens_scored": int(summary["tokens_scored"]),
@@ -645,6 +693,13 @@ def run_perplexity_eval(
         },
     )
 
-    if output_path is not None:
+    if output_path is not None and rank == 0:
         write_results_json(payload, output_path)
+
+    if rank == 0:
+        print("\n── Perplexity Results ──────────────────────────")
+        for k, v in results.items():
+            print(f"  {k:<30} {v:.2f}")
+        print("────────────────────────────────────────────────\n")
+
     return payload

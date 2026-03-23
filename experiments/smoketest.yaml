@@ -53,3 +53,14 @@ distributed:
 compute:
   modal:
     gpu: "A100:1"
+
+eval:
+  stride: 128
+  max_documents: 5
+  max_eval_length: 128
+  batch_size: 2
+  lm_harness_batch_size: 2
+  limit: 5
+  seq_len: 128
+  warmup_iters: 2
+  benchmark_iters: 5

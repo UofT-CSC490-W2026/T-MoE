@@ -19,13 +19,11 @@ def _log_state_dict_result(result, label: str) -> None:
         return
     if result.missing_keys:
         print(
-            f"[checkpoint] {label} missing keys ({len(result.missing_keys)}): "
-            f"{result.missing_keys[:5]}..."
+            f"[checkpoint] {label} missing keys ({len(result.missing_keys)}): {result.missing_keys[:5]}..."
         )
     if result.unexpected_keys:
         print(
-            f"[checkpoint] {label} unexpected keys ({len(result.unexpected_keys)}): "
-            f"{result.unexpected_keys[:5]}..."
+            f"[checkpoint] {label} unexpected keys ({len(result.unexpected_keys)}): {result.unexpected_keys[:5]}..."
         )
 
 

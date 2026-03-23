@@ -3,6 +3,14 @@ from pathlib import Path
 from scripts.eval import main, run_task
 
 
+def _fake_load_model(monkeypatch):
+    """Patch load_model_for_eval to avoid needing real checkpoints."""
+    monkeypatch.setattr(
+        "evals.loading.load_model_for_eval",
+        lambda **kwargs: (object(), {}),
+    )
+
+
 def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
     captured = {}
 
@@ -22,6 +30,7 @@ def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
+    _fake_load_model(monkeypatch)
 
     result = main(
         [
@@ -71,6 +80,7 @@ def test_run_task_uses_default_eval_dir(monkeypatch):
     monkeypatch.setattr(
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
+    _fake_load_model(monkeypatch)
 
     main(
         [
@@ -104,8 +114,15 @@ def test_run_task_rejects_unimplemented_tasks(monkeypatch):
             "device": "cpu",
             "stride": 512,
             "max_documents": None,
+            "max_eval_length": None,
             "batch_size": 1,
+            "lm_harness_batch_size": None,
             "limit": None,
+            "seq_len": None,
+            "warmup_iters": None,
+            "benchmark_iters": None,
+            "reference_checkpoint": None,
+            "reference_config": None,
             "overrides": [],
         },
     )()
@@ -117,6 +134,7 @@ def test_run_task_rejects_unimplemented_tasks(monkeypatch):
     monkeypatch.setattr(
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
+    _fake_load_model(monkeypatch)
 
     assert run_task(args)["task"] == "lm_harness"
 
@@ -137,6 +155,7 @@ def test_run_task_dispatches_lm_harness(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
+    _fake_load_model(monkeypatch)
 
     result = main(
         [
@@ -178,6 +197,7 @@ def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
+    _fake_load_model(monkeypatch)
 
     result = main(
         [
@@ -232,6 +252,7 @@ def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
         return True
 
     monkeypatch.setattr("scripts.eval.log_results_to_wandb", fake_log_results_to_wandb)
+    _fake_load_model(monkeypatch)
 
     result = main(
         [
@@ -278,6 +299,7 @@ def test_run_task_sweeps_all_checkpoints_into_history_outputs(monkeypatch, tmp_p
     monkeypatch.setattr(
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
+    _fake_load_model(monkeypatch)
 
     result = main(
         [

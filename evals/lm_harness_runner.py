@@ -43,9 +43,57 @@ def _build_harness_model(
 
 
 def _simple_evaluate(**kwargs):
-    from lm_eval.evaluator import simple_evaluate
+    import logging
+    import warnings
+    import datasets as _ds
 
-    return simple_evaluate(**kwargs)
+    _ds.disable_progress_bars()
+    logging.getLogger("datasets").setLevel(logging.ERROR)
+    logging.getLogger("lm_eval").setLevel(logging.ERROR)
+    logging.getLogger("lm_eval.evaluator").setLevel(logging.ERROR)
+    logging.getLogger("lm_eval.tasks").setLevel(logging.ERROR)
+
+    warnings.filterwarnings("ignore", message=".*pretrained.*not of type str.*")
+    warnings.filterwarnings("ignore", message=".*Overwriting default num_fewshot.*")
+    warnings.filterwarnings(
+        "ignore", message=".*Combined length of context.*exceeds.*maximum length.*"
+    )
+    warnings.filterwarnings("ignore", message=".*Truncating.*tokens from the left.*")
+    warnings.filterwarnings("ignore", message=".*Token indices sequence length.*")
+
+    # lm_eval.models.huggingface emits these two via its module logger at WARNING level.
+    # We install a filter on that logger to drop them while keeping everything else
+    # (so tqdm "Running loglikelihood requests" bars still render — tqdm uses its own
+    # output path and is unaffected by logger filters).
+    _hflm_logger = logging.getLogger("lm_eval.models.huggingface")
+    _hflm_logger.setLevel(logging.WARNING)
+
+    _BLOCKED_MSGS = (
+        "pretrained` model kwarg is not of type",
+        "Passed an already-initialized model",
+        "assuming single-process call",
+        "Token indices sequence length is longer",
+        "Combined length of context",
+    )
+
+    class _BlockFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            return not any(b in record.getMessage() for b in _BLOCKED_MSGS)
+
+    _f = _BlockFilter()
+    _hflm_logger.addFilter(_f)
+    # Also add to root logger to catch any re-routed messages
+    logging.getLogger().addFilter(_f)
+
+    try:
+        from lm_eval.evaluator import simple_evaluate
+
+        result = simple_evaluate(**kwargs)
+    finally:
+        _hflm_logger.removeFilter(_f)
+        logging.getLogger().removeFilter(_f)
+        _ds.enable_progress_bars()
+    return result
 
 
 def _extract_primary_metric(raw_results: Dict[str, Any], task_name: str) -> float:
@@ -91,6 +139,8 @@ def run_lm_harness_eval(
     config: Any,
     checkpoint_path: str | Path,
     *,
+    model: Any | None = None,
+    checkpoint_info: Dict[str, Any] | None = None,
     output_path: str | Path | None = None,
     device: str = "cuda",
     batch_size: int | str | Mapping[str, int | str] = 1,
@@ -98,12 +148,13 @@ def run_lm_harness_eval(
     zero_shot_tasks: Sequence[str] = ZERO_SHOT_TASKS,
     five_shot_tasks: Sequence[str] = FIVE_SHOT_TASKS,
 ) -> Dict[str, Any]:
-    model, checkpoint_info = load_model_for_eval(
-        config=config,
-        checkpoint_path=checkpoint_path,
-        device=device,
-        dtype=torch.bfloat16 if device.startswith("cuda") else None,
-    )
+    if model is None:
+        model, checkpoint_info = load_model_for_eval(
+            config=config,
+            checkpoint_path=checkpoint_path,
+            device=device,
+            dtype=torch.bfloat16 if device.startswith("cuda") else None,
+        )
     tokenizer = _load_tokenizer_for_model(config)
     zero_shot_batch_size, five_shot_batch_size = _resolve_batch_sizes(batch_size)
 
@@ -192,4 +243,10 @@ def run_lm_harness_eval(
 
     if output_path is not None:
         write_results_json(payload, output_path)
+
+    print("\n── LM Harness Results ──────────────────────────")
+    for task, score in results.items():
+        print(f"  {task:<30} {score:.4f}")
+    print("────────────────────────────────────────────────\n")
+
     return payload
