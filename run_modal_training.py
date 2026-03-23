@@ -75,7 +75,13 @@ image = (
     .pip_install("packaging", "ninja", "wheel", "setuptools")
     .pip_install_from_requirements("requirements.txt")
     .pip_install(_FLASH_ATTN_WHEEL)
-    .env({"PYTHONPATH": "/app", "OMP_NUM_THREADS": "1", "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"})
+    .env(
+        {
+            "PYTHONPATH": "/app",
+            "OMP_NUM_THREADS": "1",
+            "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True",
+        }
+    )
     .add_local_dir(
         ".",
         remote_path="/app",

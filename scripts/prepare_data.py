@@ -173,6 +173,7 @@ def _iter_token_arrays(
             for ids in encoded["input_ids"]:
                 yield np.array(ids + [eos_id], dtype=token_dtype)
     else:
+
         def _batch_gen():
             batch = []
             for ex in dataset:

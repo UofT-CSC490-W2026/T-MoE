@@ -101,7 +101,9 @@ class ShardDataset(Dataset):
 
         self.mmaps: list[np.memmap] = [
             np.memmap(path, dtype=dtype, mode="r", offset=offset, shape=(size,))
-            for path, size, (dtype, offset) in zip(self.shards, self.shard_sizes, self.shard_meta)
+            for path, size, (dtype, offset) in zip(
+                self.shards, self.shard_sizes, self.shard_meta
+            )
         ]
 
     def __len__(self):
