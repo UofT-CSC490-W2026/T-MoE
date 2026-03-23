@@ -26,15 +26,16 @@ DATASET_REGISTRY: Dict[str, Dict[str, Any]] = {
         "splits": {"train": "train", "val": "test"},
         "streaming": False,
     },
-    # Eval-only: 5k-doc validation sample from the Pile.
+    # Eval-only: full Pile validation split (~214k docs).
     # No train split — only val shards needed for perplexity eval.
+    # Tokenized once into val_shard_*.bin; shard-based eval reads token windows
+    # directly so document count doesn't affect eval speed.
     "pile-val": {
         "hf_path": "monology/pile-test-val",
         "hf_name": None,
         "text_column": "text",
         "splits": {"train": None, "val": "validation"},
         "streaming": False,
-        "max_documents": 5000,
     },
     # ~100 shards x 200MB = ~20GB. Recommended for 125M-1.3B runs.
     # streaming=False: HF downloads parquet files to cache, then parallel tokenization
