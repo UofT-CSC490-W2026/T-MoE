@@ -111,3 +111,19 @@ def test_standard_router_aux_loss_reflects_imbalance(device):
 
     print("aux_loss_imbalance_vs_uniform:", aux_imbalanced.item(), aux_uniform.item())
     assert aux_imbalanced.item() >= aux_uniform.item()
+
+
+def test_standard_router_accepts_bfloat16_inputs(device):
+    if device == "cpu":
+        return
+
+    config = StandardRouterConfig(hidden_dim=32, num_experts=4, top_k=2)
+    router = StandardRouter(config).to(device)
+    router.eval()
+
+    x = torch.randn(2, 3, config.hidden_dim, device=device, dtype=torch.bfloat16)
+    weights, indices, _ = router(x, return_metrics=False)
+
+    assert indices is None
+    assert weights.shape == (2 * 3, config.num_experts)
+    assert torch.isfinite(weights).all()

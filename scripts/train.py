@@ -22,7 +22,9 @@ from __future__ import annotations
 import argparse
 import bisect
 import contextlib
+import json
 import math
+import os
 import random
 import struct
 import time
@@ -31,7 +33,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import json
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import Dataset, DataLoader
 
@@ -409,17 +410,39 @@ def init_wandb(cfg) -> None:
     logging_cfg = cfg.get("logging", {})
     if not logging_cfg.get("enabled", False):
         return
+    mode = logging_cfg.get("mode")
+    if mode == "disabled":
+        print("WandB disabled by config. Skipping.")
+        return
     try:
         import wandb
 
-        wandb.init(
-            project="tmoe",
-            name=cfg.experiment_name,
-            config=OmegaConf.to_container(cfg, resolve=True),
-        )
-        print("WandB initialized.")
+        if mode not in {"online", "offline"}:
+            env_mode = os.environ.get("WANDB_MODE")
+            mode = env_mode if env_mode in {"online", "offline"} else "online"
+
+        init_kwargs = {
+            "project": logging_cfg.get("project")
+            or os.environ.get("WANDB_PROJECT")
+            or "tmoe",
+            "name": cfg.experiment_name,
+            "config": OmegaConf.to_container(cfg, resolve=True),
+            "mode": mode,
+        }
+        entity = logging_cfg.get("entity") or os.environ.get("WANDB_ENTITY")
+        if entity:
+            init_kwargs["entity"] = entity
+
+        run = wandb.init(**init_kwargs)
+        run_url = getattr(run, "url", None)
+        if run_url:
+            print(f"WandB initialized: {run_url}")
+        else:
+            print("WandB initialized.")
     except ImportError:
         print("WandB not installed. Skipping.")
+    except Exception as exc:
+        print(f"WandB init failed. Skipping. ({exc})")
 
 
 def log_wandb(metrics: dict) -> None:
