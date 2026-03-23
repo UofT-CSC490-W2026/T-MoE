@@ -22,8 +22,19 @@ DATASET_REGISTRY: Dict[str, Dict[str, Any]] = {
         "hf_path": "wikitext",
         "hf_name": "wikitext-103-raw-v1",
         "text_column": "text",
-        "splits": {"train": "train", "val": "validation"},
+        # HF "test" split is the standard PPL eval split; "val" shard → val_shard_*.bin
+        "splits": {"train": "train", "val": "test"},
         "streaming": False,
+    },
+    # Eval-only: 5k-doc validation sample from the Pile.
+    # No train split — only val shards needed for perplexity eval.
+    "pile-val": {
+        "hf_path": "monology/pile-test-val",
+        "hf_name": None,
+        "text_column": "text",
+        "splits": {"train": None, "val": "validation"},
+        "streaming": False,
+        "max_documents": 5000,
     },
     # ~100 shards x 200MB = ~20GB. Recommended for 125M-1.3B runs.
     # streaming=False: HF downloads parquet files to cache, then parallel tokenization

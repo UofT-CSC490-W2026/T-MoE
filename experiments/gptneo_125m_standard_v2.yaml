@@ -56,7 +56,7 @@ expert:
 training:
   batch_size: 16
   lr: 3.0e-4
-  steps: 5000
+  steps: 1000
   warmup_steps: 400
   weight_decay: 0.1
   save_interval: 500

@@ -75,7 +75,7 @@ class MetabolicRouter(BaseRouter):
 
     def compute_alignment(self, x: torch.Tensor) -> torch.Tensor:
         """Pure cosine similarity in [-1, 1]."""
-        x = F.normalize(x, p=2, dim=-1, eps=1e-8)
+        x = F.normalize(x.to(self.gate.weight.dtype), p=2, dim=-1, eps=1e-8)
         w = F.normalize(self.gate.weight, p=2, dim=-1, eps=1e-8)
         return F.linear(x, w)
 

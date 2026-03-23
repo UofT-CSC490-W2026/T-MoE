@@ -772,15 +772,17 @@ def main():
             )
 
         for step in range(start_step, max_steps):
-            # Evaluate periodically
+            # Evaluate periodically — ALL ranks evaluate together to avoid
+            # the rank-0-only pattern that deadlocks NCCL with num_workers>0.
             if step % eval_interval == 0 and val_loader is not None:
-                if is_main_process():
-                    # Unwrap DDP to avoid internal collectives hanging other ranks
-                    base_model = get_model_for_attr_access(model)
-                    val_loss = evaluate(base_model, val_loader, device)
-                else:
-                    val_loss = 0.0
-                val_loss = _broadcast_scalar(val_loss, device, is_distributed)
+                base_model = get_model_for_attr_access(model)
+                val_loss = evaluate(base_model, val_loader, device)
+                if is_distributed:
+                    import torch.distributed as dist
+
+                    _vl = torch.tensor(val_loss, device=device)
+                    dist.all_reduce(_vl, op=dist.ReduceOp.AVG)
+                    val_loss = _vl.item()
                 val_ppl = math.exp(min(val_loss, 20.0))
                 val_bpb = val_loss / math.log(2)
                 if is_main_process():
@@ -795,6 +797,15 @@ def main():
                         "step": step,
                     }
                 )
+
+                # Clear cached routing tensors written by eval forwards so that
+                # the training-step metrics collected immediately after eval
+                # (when step % log_interval == 0 == step % eval_interval) reflect
+                # the training forward, not the last val-batch forward.
+                if _moe_layers_ref:
+                    for _moe_lyr in _moe_layers_ref.values():
+                        _moe_lyr._last_routing_weights = None
+                        _moe_lyr._last_routing_indices = None
 
                 # Reset Welford accumulators at each eval to prevent fp32
                 # precision degradation when welford_n grows large (~10^8).
@@ -1250,13 +1261,14 @@ def main():
         # Final save
         print("\nTraining complete.")
         if val_loader is not None:
-            if is_main_process():
-                # Unwrap DDP for final evaluation
-                base_model = get_model_for_attr_access(model)
-                val_loss = evaluate(base_model, val_loader, device)
-            else:
-                val_loss = 0.0
-            val_loss = _broadcast_scalar(val_loss, device, is_distributed)
+            base_model = get_model_for_attr_access(model)
+            val_loss = evaluate(base_model, val_loader, device)
+            if is_distributed:
+                import torch.distributed as dist
+
+                _vl = torch.tensor(val_loss, device=device)
+                dist.all_reduce(_vl, op=dist.ReduceOp.AVG)
+                val_loss = _vl.item()
             val_ppl = math.exp(min(val_loss, 20.0))
             is_best = val_loss < best_val_loss
             if is_best:
