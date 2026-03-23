@@ -76,6 +76,9 @@ class StandardRouter(BaseRouter):
         # aux = α * num_experts * Σ_i (f_i * P_i)
         # f_i = fraction of total weight assigned to expert i
         # P_i = average gate probability for expert i
+        # Note: uses mean routing weights (soft f_i) rather than the hard dispatch
+        # fraction in the original Switch Transformer (Fedus et al. 2021). Equivalent
+        # in the limit but differs in gradient signal.
         probs = self._last_probs
         weights = self._last_weights
 

@@ -257,7 +257,10 @@ class RouterMetricsTracker:
         sorted_usage, _ = torch.sort(usage)
         n = self.num_experts
         device = indices.device if indices is not None else weights.device
-        index = self.gini_index.to(device)
+        if not hasattr(self, "_gini_index_device") or self._gini_index_device != device:
+            self._gini_index_cache = self.gini_index.to(device)
+            self._gini_index_device = device
+        index = self._gini_index_cache
         gini = (2 * (index * sorted_usage).sum()) / (n * sorted_usage.sum() + 1e-10) - (
             n + 1
         ) / n

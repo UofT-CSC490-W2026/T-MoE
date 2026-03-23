@@ -22,7 +22,19 @@ DATASET_REGISTRY: Dict[str, Dict[str, Any]] = {
         "hf_path": "wikitext",
         "hf_name": "wikitext-103-raw-v1",
         "text_column": "text",
-        "splits": {"train": "train", "val": "validation"},
+        # HF "test" split is the standard PPL eval split; "val" shard → val_shard_*.bin
+        "splits": {"train": "train", "val": "test"},
+        "streaming": False,
+    },
+    # Eval-only: full Pile validation split (~214k docs).
+    # No train split — only val shards needed for perplexity eval.
+    # Tokenized once into val_shard_*.bin; shard-based eval reads token windows
+    # directly so document count doesn't affect eval speed.
+    "pile-val": {
+        "hf_path": "monology/pile-test-val",
+        "hf_name": None,
+        "text_column": "text",
+        "splits": {"train": None, "val": "validation"},
         "streaming": False,
     },
     # ~100 shards x 200MB = ~20GB. Recommended for 125M-1.3B runs.

@@ -75,7 +75,7 @@ class MetabolicRouter(BaseRouter):
 
     def compute_alignment(self, x: torch.Tensor) -> torch.Tensor:
         """Pure cosine similarity in [-1, 1]."""
-        x = F.normalize(x, p=2, dim=-1, eps=1e-8)
+        x = F.normalize(x.to(self.gate.weight.dtype), p=2, dim=-1, eps=1e-8)
         w = F.normalize(self.gate.weight, p=2, dim=-1, eps=1e-8)
         return F.linear(x, w)
 
@@ -165,13 +165,20 @@ class MetabolicRouter(BaseRouter):
         )
         top_k_weights = F.softmax(top_k_values / temp, dim=-1)
 
-        # Build dense (N, E) weight matrix for unified dispatcher
+        # Build dense (N, E) weight matrix for unified dispatcher.
+        # Use out-of-place scatter (not scatter_) so autograd can propagate
+        # gradients through top_k_weights back to the gate.
         bsz, seq, _ = potential.shape
-        potential_flat = potential.view(-1, self.num_experts)
         top_k_indices_flat = top_k_indices.view(-1, self.top_k)
-        expert_weights = torch.zeros_like(potential_flat)
-        expert_weights.scatter_(
-            1, top_k_indices_flat, top_k_weights.view(-1, self.top_k)
+        top_k_weights_flat = top_k_weights.view(-1, self.top_k)
+        expert_weights = torch.zeros(
+            bsz * seq,
+            self.num_experts,
+            dtype=top_k_weights_flat.dtype,
+            device=top_k_weights_flat.device,
+        )
+        expert_weights = expert_weights.scatter(
+            1, top_k_indices_flat, top_k_weights_flat
         )
 
         if self.training and record_usage:

@@ -211,6 +211,7 @@ def build_model(cfg) -> torch.nn.Module:
             lambda_calib_step=cfg.router.get("lambda_calib_step", 600),
             tau_final=cfg.router.get("tau_final", cfg.router.get("temperature", 1.0)),
             tau_anneal_steps=cfg.router.get("tau_anneal_steps", 0),
+            noise_anneal_steps=cfg.router.get("noise_anneal_steps", 0),
             # metabolic-specific
             **(
                 {
@@ -238,6 +239,8 @@ def build_model(cfg) -> torch.nn.Module:
             init_scale=cfg.expert.lora.init_scale,
             b_init_scale=cfg.expert.lora.get("b_init_scale", 0.0),
             trainable_base=cfg.expert.lora.get("trainable_base", False),
+            shared_base_rank=cfg.expert.lora.get("shared_base_rank", 0),
+            shared_base_alpha=cfg.expert.lora.get("shared_base_alpha", 0.0),
         )
 
         moe_layers[actual_idx] = LoRAMoELayer.from_pretrained_mlp(
@@ -297,10 +300,11 @@ def _initialize_router_prototypes(
 
     # Use the unwrapped model to avoid DDP/compile complications during the warmup forward.
     base_model.eval()
-    for i, (x, _) in enumerate(train_loader):
-        if i >= n_warmup_batches:
-            break
-        base_model(input_ids=x.to(device), return_metrics=False)
+    with torch.no_grad():
+        for i, (x, _) in enumerate(train_loader):
+            if i >= n_warmup_batches:
+                break
+            base_model(input_ids=x.to(device), return_metrics=False)
 
     for h in hooks:
         h.remove()
@@ -389,13 +393,12 @@ def evaluate(
     model: torch.nn.Module, val_loader: DataLoader, device: str, max_batches: int = 20
 ) -> float:
     """Compute validation loss over up to max_batches batches."""
-    torch.cuda.empty_cache()
     model.eval()
     losses = []
     for i, (x, y) in enumerate(val_loader):
         if i >= max_batches:
             break
-        x, y = x.to(device), y.to(device)
+        x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
         _, loss, _ = model(
             input_ids=x, labels=y, return_metrics=False, record_usage=False
         )
@@ -556,7 +559,11 @@ def main():
         try:
             val_ds = ShardDataset(shard_dir, "val", seq_len)
             val_loader = DataLoader(
-                val_ds, batch_size=batch_size, shuffle=False, num_workers=num_workers
+                val_ds,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=num_workers,
+                pin_memory=torch.cuda.is_available(),
             )
         except FileNotFoundError:
             print("No validation shards found. Skipping validation.")
@@ -768,15 +775,17 @@ def main():
             )
 
         for step in range(start_step, max_steps):
-            # Evaluate periodically
+            # Evaluate periodically — ALL ranks evaluate together to avoid
+            # the rank-0-only pattern that deadlocks NCCL with num_workers>0.
             if step % eval_interval == 0 and val_loader is not None:
-                if is_main_process():
-                    # Unwrap DDP to avoid internal collectives hanging other ranks
-                    base_model = get_model_for_attr_access(model)
-                    val_loss = evaluate(base_model, val_loader, device)
-                else:
-                    val_loss = 0.0
-                val_loss = _broadcast_scalar(val_loss, device, is_distributed)
+                base_model = get_model_for_attr_access(model)
+                val_loss = evaluate(base_model, val_loader, device)
+                if is_distributed:
+                    import torch.distributed as dist
+
+                    _vl = torch.tensor(val_loss, device=device)
+                    dist.all_reduce(_vl, op=dist.ReduceOp.AVG)
+                    val_loss = _vl.item()
                 val_ppl = math.exp(min(val_loss, 20.0))
                 val_bpb = val_loss / math.log(2)
                 if is_main_process():
@@ -791,6 +800,15 @@ def main():
                         "step": step,
                     }
                 )
+
+                # Clear cached routing tensors written by eval forwards so that
+                # the training-step metrics collected immediately after eval
+                # (when step % log_interval == 0 == step % eval_interval) reflect
+                # the training forward, not the last val-batch forward.
+                if _moe_layers_ref:
+                    for _moe_lyr in _moe_layers_ref.values():
+                        _moe_lyr._last_routing_weights = None
+                        _moe_lyr._last_routing_indices = None
 
                 # Reset Welford accumulators at each eval to prevent fp32
                 # precision degradation when welford_n grows large (~10^8).
@@ -872,7 +890,10 @@ def main():
                         train_iter = iter(train_loader)
                         x, y = next(train_iter)
 
-                    x, y = x.to(device), y.to(device)
+                    x, y = (
+                        x.to(device, non_blocking=True),
+                        y.to(device, non_blocking=True),
+                    )
 
                     # Only compute metrics on the last accumulation step at log intervals.
                     # spec_trackers only needs indices (included in metrics), not full stats.
@@ -1243,13 +1264,14 @@ def main():
         # Final save
         print("\nTraining complete.")
         if val_loader is not None:
-            if is_main_process():
-                # Unwrap DDP for final evaluation
-                base_model = get_model_for_attr_access(model)
-                val_loss = evaluate(base_model, val_loader, device)
-            else:
-                val_loss = 0.0
-            val_loss = _broadcast_scalar(val_loss, device, is_distributed)
+            base_model = get_model_for_attr_access(model)
+            val_loss = evaluate(base_model, val_loader, device)
+            if is_distributed:
+                import torch.distributed as dist
+
+                _vl = torch.tensor(val_loss, device=device)
+                dist.all_reduce(_vl, op=dist.ReduceOp.AVG)
+                val_loss = _vl.item()
             val_ppl = math.exp(min(val_loss, 20.0))
             is_best = val_loss < best_val_loss
             if is_best:

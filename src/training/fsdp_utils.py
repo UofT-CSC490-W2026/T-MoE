@@ -151,12 +151,15 @@ def wrap_model_with_fsdp(model: nn.Module, cfg, device: torch.device) -> nn.Modu
     use_activation_checkpointing = getattr(dist_cfg, "activation_checkpointing", False)
 
     # Mixed precision
+    # buffer_dtype=fp32: router buffers (ema_load, lambda_val, welford_*, fatigue)
+    # must stay fp32 to avoid O(T) rounding error over 19k steps. GPT-Neo has no
+    # backbone buffers (use_cache=False), so fp32 buffers cost nothing extra.
     mp_policy = None
     if use_mixed_precision and is_mixed_precision():
         mp_policy = MixedPrecision(
             param_dtype=COMPUTE_DTYPE,
             reduce_dtype=torch.float32,
-            buffer_dtype=COMPUTE_DTYPE,
+            buffer_dtype=torch.float32,
         )
 
     cpu_offload = CPUOffload(offload_params=True) if use_cpu_offload else None
@@ -203,6 +206,7 @@ def wrap_model_with_fsdp(model: nn.Module, cfg, device: torch.device) -> nn.Modu
             f"| wrap_target=GPTNeoBlock "
             f"| inner_fsdp_units={_fsdp_count} "
             f"| compute_dtype={COMPUTE_DTYPE} "
+            f"| buffer_dtype=float32 "
             f"| mixed_precision={use_mixed_precision and is_mixed_precision()} "
             f"| cpu_offload={use_cpu_offload} "
             f"| act_ckpt={use_activation_checkpointing}"

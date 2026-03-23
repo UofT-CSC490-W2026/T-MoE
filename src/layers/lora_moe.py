@@ -97,7 +97,8 @@ class LoRAMoELayer(BaseMoELayer):
             )
             # Include raw weights/indices so trainer._log_metrics() can gate on them
             metrics["weights"] = self._last_routing_weights
-            metrics["indices"] = self._last_routing_indices
+            if self._last_routing_indices is not None:
+                metrics["indices"] = self._last_routing_indices
 
             # LoRA adapter metrics: per-expert delta magnitude ||B @ A||_F * scaling.
             # Batch across experts per projection to reduce CUDA syncs from N*2 to 2.
@@ -144,15 +145,25 @@ class LoRAMoELayer(BaseMoELayer):
         self,
         hidden_states: torch.Tensor,
         return_metrics: bool = False,
-        record_usage: bool = True,
+        record_usage: Optional[bool] = None,
         **kwargs,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Optional[Dict[str, Any]]]]:
         x = hidden_states
         batch, seq, hidden = x.shape
 
+        # record_usage=None means "use whatever the layer-level override says".
+        # GPTNeoBackbone.forward() sets self._forced_record_usage before calling
+        # backbone() so the HuggingFace inner call (which passes no kwargs) picks
+        # up the right value without requiring changes to the HF forward signature.
+        effective_record_usage = (
+            record_usage
+            if record_usage is not None
+            else getattr(self, "_forced_record_usage", True)
+        )
+
         router_kwargs: Dict[str, Any] = {"return_metrics": return_metrics}
         if self._router_accepts_record_usage:
-            router_kwargs["record_usage"] = record_usage
+            router_kwargs["record_usage"] = effective_record_usage
         weights, indices, metrics = self.router(x, **router_kwargs)
 
         self._last_routing_weights = weights.detach()

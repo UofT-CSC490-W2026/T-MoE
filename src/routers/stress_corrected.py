@@ -120,9 +120,10 @@ class StressCorrectedRouter(BaseRouter):
                                experts only, leaving underloaded ones unpenalised.
         λ                    — auto-calibrated once at step lambda_calib_step
                                (default: warmup_steps + 200, post-LR-warmup):
-                               λ = min(σ_cos / mean(L), 5.0)
-                               A 1-sigma routing variation equals a 1× fair-share
-                               penalty. No manual tuning required.
+                               λ = min(σ_cos · N, 5.0)
+                               Equivalently: σ_cos / mean(L) at equilibrium
+                               when mean(L) = 1/N. A 1-sigma routing variation
+                               equals a 1× fair-share penalty. No manual tuning.
 
     Output weight:
         w_i = softmax(cos(x, W_i) / τ_t)   over top-k selected experts only
@@ -280,8 +281,9 @@ class StressCorrectedRouter(BaseRouter):
 
     @torch.no_grad()
     def _calibrate_lambda(self, cos_sim_flat: torch.Tensor) -> None:
-        """λ = min(σ_cos / mean(L), 5.0). Calibrates once at lambda_calib_step.
+        """λ = min(σ_cos · N, 5.0). Calibrates once at lambda_calib_step.
 
+        Equivalent to σ_cos / mean(L) at equilibrium (when mean(L) = 1/N).
         Floor: σ_cos is clamped to ≥ 1e-4 to prevent λ=0 in degenerate cases
         (e.g., all cosines identical after random init in high-D). A zero λ
         would permanently disable the load penalty with no recovery path.
@@ -323,6 +325,7 @@ class StressCorrectedRouter(BaseRouter):
             if not self._lambda_init_done:
                 self._pending_cos_sims.append(cos_sim.reshape(-1, self.num_experts))
 
+    @torch._dynamo.disable
     def forward(
         self,
         x: torch.Tensor,
@@ -353,18 +356,26 @@ class StressCorrectedRouter(BaseRouter):
 
         topk_vals, topk_idx = logits.topk(self.top_k, dim=-1)  # [B, S, k]
 
-        # Output weights: cosine-only softmax (factored from selection)
+        # Output weights: cosine-only softmax over top-k selected experts only (not all N).
+        # Selection carries the load signal; weighting reflects alignment quality only.
         tau = max(
             temperature if temperature is not None else self._tau, MIN_TEMPERATURE
         )
         topk_cos = cos_sim.gather(-1, topk_idx)
         topk_weights = F.softmax(topk_cos / tau, dim=-1)  # [B, S, k]
 
-        # Build dense (N, E) weight matrix for unified dispatcher
-        cos_flat = cos_sim.view(-1, self.num_experts)
+        # Build dense (N, E) weight matrix for unified dispatcher.
+        # Use out-of-place scatter (not scatter_) so autograd can propagate
+        # gradients through topk_weights back to cos_sim and self.W.
         topk_idx_flat = topk_idx.view(-1, self.top_k)
-        expert_weights = torch.zeros_like(cos_flat)
-        expert_weights.scatter_(1, topk_idx_flat, topk_weights.view(-1, self.top_k))
+        topk_weights_flat = topk_weights.view(-1, self.top_k)
+        expert_weights = torch.zeros(
+            B * S,
+            self.num_experts,
+            dtype=topk_weights_flat.dtype,
+            device=topk_weights_flat.device,
+        )
+        expert_weights = expert_weights.scatter(1, topk_idx_flat, topk_weights_flat)
 
         if self.training and record_usage:
             # Detach all tensors at the call site so the Dynamo-resumed graph
@@ -392,6 +403,10 @@ class StressCorrectedRouter(BaseRouter):
             self._lambda_init_done = True
 
         self.num_steps += 1
+        # Recompute annealing state from the just-incremented num_steps buffer.
+        # This also corrects _tau/_noise_std after checkpoint resume — the Python
+        # floats are re-initialized from config in __init__ but num_steps is
+        # restored from the checkpoint buffer.
         self._tau = self._current_tau()
         self._noise_std = self._current_noise_std()
 
