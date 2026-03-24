@@ -56,7 +56,7 @@ def execute_training_workflow(
 
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     base_cmd = (
-        ["torchrun", "--standalone", f"--nproc_per_node={num_gpus}"]
+        ["torchrun", f"--nproc_per_node={num_gpus}"]
         if num_gpus > 1
         else [sys.executable]
     )
