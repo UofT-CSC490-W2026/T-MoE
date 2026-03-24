@@ -372,8 +372,7 @@ def submit_batch_job(
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     job_name = f"tmoe-training-{config_name}-{timestamp}"
 
-    # Job command (only arguments, since entrypoint is python run_aws_training.py --mode container)
-    command = ["--config", config_name]
+    command = ["--mode", "container", "--config", config_name]
     if overrides:
         command.extend(overrides)
 
