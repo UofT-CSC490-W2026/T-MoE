@@ -79,6 +79,16 @@ def parse_args():
             "Ignored for streaming datasets (streaming tokenizes sequentially)."
         ),
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default=None,
+        help=(
+            "HuggingFace datasets cache directory. "
+            "Pass the S3-downloaded data path to avoid re-downloading from the hub "
+            "(required in VPC-isolated environments)."
+        ),
+    )
     return parser.parse_args()
 
 
