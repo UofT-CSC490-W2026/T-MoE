@@ -30,10 +30,10 @@ def execute_training_workflow(
     model_key = OmegaConf.select(
         experiment_config, "model.model_key", default="gpt-neo-125m"
     )
-    shard_dir = get_shard_dir(dataset_key, model_key, base="/tmp/tmoe_shards")
+    shard_dir = get_shard_dir(dataset_key, model_key, base=str(Path(cache_dir) / "shards"))
 
-    # Output directory inside container
-    output_dir = Path("/tmp/tmoe_outputs") / config_name
+    # Output directory alongside cache
+    output_dir = Path(cache_dir) / "outputs" / config_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Step 1: Prepare shards (idempotent — skips if already done)
@@ -46,6 +46,8 @@ def execute_training_workflow(
             str(config_path),
             "--out-dir",
             str(shard_dir),
+            "--cache-dir",
+            str(cache_dir),
         ]
         subprocess.run(prep_cmd, check=True)
 
