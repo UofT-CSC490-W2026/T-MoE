@@ -747,12 +747,8 @@ def main():
         for step in range(start_step, max_steps):
             # Evaluate periodically
             if step % eval_interval == 0 and val_loader is not None:
-                if is_main_process():
-                    # Unwrap DDP to avoid internal collectives hanging other ranks
-                    base_model = get_model_for_attr_access(model)
-                    val_loss = evaluate(base_model, val_loader, device)
-                else:
-                    val_loss = 0.0
+                base_model = get_model_for_attr_access(model)
+                val_loss = evaluate(base_model, val_loader, device)
                 val_loss = _broadcast_scalar(val_loss, device, is_distributed)
                 val_ppl = math.exp(min(val_loss, 20.0))
                 val_bpb = val_loss / math.log(2)
@@ -1220,12 +1216,8 @@ def main():
         # Final save
         print("\nTraining complete.")
         if val_loader is not None:
-            if is_main_process():
-                # Unwrap DDP for final evaluation
-                base_model = get_model_for_attr_access(model)
-                val_loss = evaluate(base_model, val_loader, device)
-            else:
-                val_loss = 0.0
+            base_model = get_model_for_attr_access(model)
+            val_loss = evaluate(base_model, val_loader, device)
             val_loss = _broadcast_scalar(val_loss, device, is_distributed)
             val_ppl = math.exp(min(val_loss, 20.0))
             is_best = val_loss < best_val_loss
