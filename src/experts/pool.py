@@ -39,46 +39,30 @@ class ExpertPool(nn.Module):
             expert.load_from_mlp(mlp)
 
     def consolidate_shared_weights(self) -> None:
-        """
-        Collapse N independent GPU copies of frozen MLP weights → 1 shared copy.
-
-        Problem: after ExpertPool.load_from_mlp(), each GPTNeoLoRAMLP independently
-        calls SharedLoRALayer(shared_weight=w.detach()), creating N CPU tensors that
-        point to the same storage (data_ptr equality). But model.to("cuda") calls
-        _apply() on each buffer independently, breaking storage sharing and creating
-        N separate GPU allocations (one per expert × 2 linears × 6 MoE layers).
-
-        At 125M: 8 experts × 6 layers × 2 linears × 4.7M params × 2 bytes ≈ 900 MB waste.
-        At 1.3B: 8 × 12 × 2 × ~33M params × 2 bytes ≈ 12 GB waste — a showstopper.
-
-        Fix: after model.to(device), make experts 1..N-1 reference expert 0's buffer
-        tensors directly. The weights are frozen (never written after load_from_mlp),
-        so aliasing is safe. Call this method once, after model.to(device) and before
-        DDP/FSDP wrapping.
-
-        Memory saved: (N-1)/N of shared-weight GPU footprint per MoE layer.
-        """
         if self.num_experts < 2:
             return
 
         e0 = self.experts[0]
-        if not (hasattr(e0, "c_fc") and e0.c_fc is not None):
-            return  # not a GPTNeoLoRAMLP pool; skip silently
 
-        ref = {
-            "c_fc_w": e0.c_fc._buffers["shared_weight"],
-            "c_fc_b": e0.c_fc._buffers.get("shared_bias"),
-            "c_proj_w": e0.c_proj._buffers["shared_weight"],
-            "c_proj_b": e0.c_proj._buffers.get("shared_bias"),
-        }
+        if hasattr(e0, "get_lora_layer_names"):
+            layer_names = e0.get_lora_layer_names()
+        elif hasattr(e0, "c_fc") and e0.c_fc is not None:
+            layer_names = ["c_fc", "c_proj"]
+        else:
+            return
+
+        ref = {}
+        for name in layer_names:
+            layer = getattr(e0, name, None)
+            if layer is not None:
+                ref[name] = {k: v for k, v in layer._buffers.items()}
 
         for expert in self.experts[1:]:
-            if hasattr(expert, "c_fc") and expert.c_fc is not None:
-                expert.c_fc._buffers["shared_weight"] = ref["c_fc_w"]
-                expert.c_fc._buffers["shared_bias"] = ref["c_fc_b"]
-            if hasattr(expert, "c_proj") and expert.c_proj is not None:
-                expert.c_proj._buffers["shared_weight"] = ref["c_proj_w"]
-                expert.c_proj._buffers["shared_bias"] = ref["c_proj_b"]
+            for name, buffers in ref.items():
+                layer = getattr(expert, name, None)
+                if layer is not None:
+                    for buf_name, buf_val in buffers.items():
+                        layer._buffers[buf_name] = buf_val
 
     def make_base_trainable(self) -> None:
         """

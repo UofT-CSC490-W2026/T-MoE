@@ -50,19 +50,13 @@ class LoRAMoELayer(BaseMoELayer):
         self._shared_base_alpha = lora_config.shared_base_alpha
 
     def _init_shared_base_lora(self) -> None:
-        """
-        Instantiate shared_proj_lora after expert weights are loaded.
-
-        Reads intermediate_dim and hidden_dim from expert 0's c_proj shape.
-        Must be called after expert_pool.load_from_mlp() so c_proj is populated.
-        """
         if self._shared_base_rank <= 0:
             return
         e0 = self.expert_pool.experts[0]
-        if not (hasattr(e0, "c_proj") and e0.c_proj is not None):
+        out_proj = getattr(e0, "c_proj", None) or getattr(e0, "down_proj", None)
+        if out_proj is None:
             return
-        # c_proj: [hidden_dim, intermediate_dim] in Linear convention [out, in]
-        out_features, in_features = e0.c_proj.shared_weight.shape
+        out_features, in_features = out_proj.shared_weight.shape
         self.shared_proj_lora = SharedBaseLoRA(
             in_features=in_features,
             out_features=out_features,
@@ -104,7 +98,7 @@ class LoRAMoELayer(BaseMoELayer):
             # Batch across experts per projection to reduce CUDA syncs from N*2 to 2.
             with torch.no_grad():
                 norms = None  # [num_experts] accumulated on-device
-                for attr in ("c_fc", "c_proj"):
+                for attr in ("c_fc", "c_proj", "gate_proj", "up_proj", "down_proj"):
                     layers = [getattr(e, attr, None) for e in self.expert_pool.experts]
                     valid = [
                         (layer, i)
@@ -189,19 +183,30 @@ class LoRAMoELayer(BaseMoELayer):
             combined[token_ids] += expert_out * scale
 
         if self.shared_proj_lora is not None:
-            # Compute frozen fc hidden state for ALL tokens (no grad — frozen path).
+            # Compute frozen hidden state for ALL tokens (no grad — frozen path).
             # expert 0's shared_weight is the canonical frozen buffer post-consolidation.
             e0 = self.expert_pool.experts[0]
-            fc_w = e0.c_fc.shared_weight
-            fc_b = e0.c_fc.shared_bias
-            if fc_w.dtype != x_flat.dtype:
-                fc_w = fc_w.to(x_flat.dtype)
-                if fc_b is not None:
-                    fc_b = fc_b.to(x_flat.dtype)
             with torch.no_grad():
-                h_all = e0.act(torch.nn.functional.linear(x_flat, fc_w, fc_b))
-            # Trainable delta on c_proj for all tokens — gradient flows through lora_A/B only.
-            combined = combined + self.shared_proj_lora(h_all)
+                if hasattr(e0, "c_fc") and e0.c_fc is not None:
+                    # GPT-Neo: hidden -> c_fc -> act -> c_proj
+                    fc_w = e0.c_fc.shared_weight
+                    fc_b = e0.c_fc.shared_bias
+                    if fc_w.dtype != x_flat.dtype:
+                        fc_w = fc_w.to(x_flat.dtype)
+                        if fc_b is not None:
+                            fc_b = fc_b.to(x_flat.dtype)
+                    h_all = e0.act(torch.nn.functional.linear(x_flat, fc_w, fc_b))
+                elif hasattr(e0, "gate_proj") and e0.gate_proj is not None:
+                    # Qwen2 SwiGLU: silu(gate_proj(x)) * up_proj(x)
+                    gate_w = e0.gate_proj.shared_weight.to(x_flat.dtype)
+                    up_w = e0.up_proj.shared_weight.to(x_flat.dtype)
+                    gate_out = e0.act_fn(torch.nn.functional.linear(x_flat, gate_w))
+                    h_all = gate_out * torch.nn.functional.linear(x_flat, up_w)
+                else:
+                    h_all = None
+            # Trainable delta on output proj for all tokens — gradient flows through lora_A/B only.
+            if h_all is not None:
+                combined = combined + self.shared_proj_lora(h_all)
 
         output = combined.view(batch, seq, hidden)
 

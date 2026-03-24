@@ -198,6 +198,9 @@ class MetabolicRouter(BaseRouter):
             return
 
         with torch.no_grad():
+            # Sync usage counts across DDP ranks before computing fatigue update.
+            self._sync_usage_distributed()
+
             usage_avg = (
                 self._pending_usage_sum.float()
                 / self._pending_tokens.float().clamp(min=1)
@@ -206,6 +209,17 @@ class MetabolicRouter(BaseRouter):
             self.num_steps += 1
             self._step_count += 1
             self._usage_pending = False
+
+    @torch.no_grad()
+    def _sync_usage_distributed(self) -> None:
+        try:
+            import torch.distributed as dist
+        except ImportError:
+            return
+        if not dist.is_initialized() or dist.get_world_size() <= 1:
+            return
+        dist.all_reduce(self._pending_usage_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(self._pending_tokens, op=dist.ReduceOp.SUM)
 
     def compute_aux_loss(self) -> torch.Tensor:
         """Always zero — fatigue IS the load balancing mechanism."""

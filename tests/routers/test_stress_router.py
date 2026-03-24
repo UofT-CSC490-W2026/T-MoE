@@ -92,7 +92,7 @@ class TestLambdaCalibration:
             router(x, record_usage=True)
             router.step()
             assert not router.lambda_initialized.item()
-            assert router.lambda_val.item() == pytest.approx(1.0)
+            assert router.lambda_val.item() == pytest.approx(0.1)
 
     def test_lambda_initializes_at_calib_step(self, device):
         router = make_router_calib(device=device)

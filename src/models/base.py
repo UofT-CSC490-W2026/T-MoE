@@ -67,6 +67,9 @@ class BaseModelBackbone(nn.Module, ABC):
         """
         pass
 
+    def get_mlp_at(self, idx: int) -> nn.Module:
+        raise NotImplementedError
+
     def inject_moe_layers(self, moe_layers: Dict[int, nn.Module]) -> None:
         """
         Inject MoE layers at specified positions.

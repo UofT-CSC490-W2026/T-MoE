@@ -115,6 +115,8 @@ def wrap_model_with_ddp(model: nn.Module, local_rank: int, cfg=None) -> nn.Modul
         device_ids=[local_rank],
         output_device=local_rank,
         find_unused_parameters=find_unused,
+        gradient_as_bucket_view=True,
+        bucket_cap_mb=100,
     )
 
     if dist.is_initialized():
@@ -128,9 +130,27 @@ def wrap_model_with_ddp(model: nn.Module, local_rank: int, cfg=None) -> nn.Modul
     return wrapped
 
 
+def _get_fsdp_wrap_targets(cfg) -> set:
+    """Resolve the FSDP wrapping target classes based on model type."""
+    from src.configs.model import model_lookup
+
+    model_key = getattr(getattr(cfg, "model", {}), "model_key", "gpt-neo-125m")
+    model_info = model_lookup(model_key)
+    model_type = model_info["model_type"]
+
+    if model_type == "qwen2":
+        from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer
+
+        return {Qwen2DecoderLayer}
+    else:
+        from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoBlock
+
+        return {GPTNeoBlock}
+
+
 def wrap_model_with_fsdp(model: nn.Module, cfg, device: torch.device) -> nn.Module:
     """
-    Wrap model with FSDP using per-GPTNeoBlock sharding.
+    Wrap model with FSDP using per-block sharding.
 
     DO NOT call model.to(device) before this — FSDP handles device placement.
     """
@@ -141,7 +161,6 @@ def wrap_model_with_fsdp(model: nn.Module, cfg, device: torch.device) -> nn.Modu
         CPUOffload,
     )
     from torch.distributed.fsdp.wrap import ModuleWrapPolicy
-    from transformers.models.gpt_neo.modeling_gpt_neo import GPTNeoBlock
 
     from src.training.precision import COMPUTE_DTYPE, is_mixed_precision
 
@@ -152,8 +171,7 @@ def wrap_model_with_fsdp(model: nn.Module, cfg, device: torch.device) -> nn.Modu
 
     # Mixed precision
     # buffer_dtype=fp32: router buffers (ema_load, lambda_val, welford_*, fatigue)
-    # must stay fp32 to avoid O(T) rounding error over 19k steps. GPT-Neo has no
-    # backbone buffers (use_cache=False), so fp32 buffers cost nothing extra.
+    # must stay fp32 to avoid O(T) rounding error over 19k steps.
     mp_policy = None
     if use_mixed_precision and is_mixed_precision():
         mp_policy = MixedPrecision(
@@ -172,7 +190,9 @@ def wrap_model_with_fsdp(model: nn.Module, cfg, device: torch.device) -> nn.Modu
         "NO_SHARD": ShardingStrategy.NO_SHARD,
     }.get(strategy_name, ShardingStrategy.SHARD_GRAD_OP)
 
-    auto_wrap_policy = ModuleWrapPolicy({GPTNeoBlock})
+    wrap_targets = _get_fsdp_wrap_targets(cfg)
+    auto_wrap_policy = ModuleWrapPolicy(wrap_targets)
+    wrap_target_names = ", ".join(c.__name__ for c in wrap_targets)
 
     # Suppress expected mixed frozen/trainable param warning
     with warnings.catch_warnings():
@@ -203,7 +223,7 @@ def wrap_model_with_fsdp(model: nn.Module, cfg, device: torch.device) -> nn.Modu
     if is_main_process():
         print(
             f"FSDP enabled | strategy={strategy_name} "
-            f"| wrap_target=GPTNeoBlock "
+            f"| wrap_target={wrap_target_names} "
             f"| inner_fsdp_units={_fsdp_count} "
             f"| compute_dtype={COMPUTE_DTYPE} "
             f"| buffer_dtype=float32 "
@@ -212,7 +232,10 @@ def wrap_model_with_fsdp(model: nn.Module, cfg, device: torch.device) -> nn.Modu
             f"| act_ckpt={use_activation_checkpointing}"
         )
         if _fsdp_count == 0:
-            print("⚠️  No inner modules wrapped — verify GPTNeoBlock instances exist.")
+            print(
+                f"WARNING: No inner modules wrapped"
+                f" — verify {wrap_target_names} instances exist."
+            )
 
     if dist.is_initialized():
         dist.barrier()

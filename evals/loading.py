@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import fields
 from pathlib import Path
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 
@@ -109,6 +109,7 @@ def _build_moe_layers(model, config: Any) -> Dict[int, LoRAMoELayer]:
     model_info = model_lookup(_require(config, "model.model_key"))
     lora_config = LoRAConfig(
         hidden_dim=int(model_info["hidden_dim"]),
+        intermediate_dim=model_info.get("intermediate_dim"),
         rank=int(_cfg_select(config, "expert.lora.rank", 16)),
         alpha=int(_cfg_select(config, "expert.lora.alpha", 16)),
         dropout=float(_cfg_select(config, "expert.lora.dropout", 0.0)),
@@ -122,11 +123,12 @@ def _build_moe_layers(model, config: Any) -> Dict[int, LoRAMoELayer]:
             f"(got expert.count={expert_count}, router.num_experts={num_experts})"
         )
 
-    blocks: Iterable[Any] = model.backbone.transformer.h
-    num_layers = len(blocks)
+    # Use the model's own get_mlp_at() to be architecture-agnostic.
+    num_layers = model.num_layers
     moe_layers: Dict[int, LoRAMoELayer] = {}
     for layer_idx in moe_layer_indices:
-        if layer_idx < 0 or layer_idx >= num_layers:
+        actual_idx = layer_idx if layer_idx >= 0 else num_layers + layer_idx
+        if actual_idx < 0 or actual_idx >= num_layers:
             raise ValueError(
                 f"Invalid model.moe_layer_indices entry {layer_idx}; "
                 f"valid range is [0, {num_layers - 1}]"
@@ -139,8 +141,8 @@ def _build_moe_layers(model, config: Any) -> Dict[int, LoRAMoELayer]:
             top_k=top_k,
             **router_kwargs,
         )
-        base_mlp = model.backbone.transformer.h[layer_idx].mlp
-        moe_layers[layer_idx] = LoRAMoELayer.from_pretrained_mlp(
+        base_mlp = model.get_mlp_at(actual_idx)
+        moe_layers[actual_idx] = LoRAMoELayer.from_pretrained_mlp(
             mlp=base_mlp,
             router=router,
             lora_config=lora_config,

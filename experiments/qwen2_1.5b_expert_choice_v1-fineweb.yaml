@@ -1,0 +1,69 @@
+experiment_name: qwen2_1.5b_expert_choice_v1_fineweb
+seed: 42
+compile: true
+
+model:
+  model_key: qwen2-1.5b
+  freeze_backbone: true
+  moe_layer_indices: [2, 6, 10, 14, 18, 22]
+
+router:
+  type: expert_choice
+  num_experts: 8
+  top_k: 2
+  temperature: 1.0
+  noise_std: 0.0
+
+expert:
+  type: qwen2_lora
+  count: 8
+  lora:
+    rank: 32
+    alpha: 32
+    dropout: 0.0
+    init_scale: 0.01
+    b_init_scale: 0.0
+
+training:
+  batch_size: 8
+  gradient_accumulation_steps: 4
+  steps: 19000
+  lr: 3.0e-4
+  warmup_steps: 800
+  weight_decay: 0.1
+  save_interval: 1000
+  eval_interval: 500
+  log_interval: 25
+  optimizer: adamw
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  clip_grad_norm: 1.0
+  num_workers: 4
+
+dataset:
+  dataset_key: fineweb-edu
+  max_seq_len: 2048
+
+logging:
+  enabled: true
+  log_gradients: false
+  log_interval: 25
+
+distributed:
+  strategy: ddp
+  find_unused_parameters: false
+
+eval:
+  stride: 512
+  max_documents: null
+  max_eval_length: 2048
+  batch_size: 8
+  lm_harness_batch_size: 16
+  limit: null
+  seq_len: 2048
+  warmup_iters: 10
+  benchmark_iters: 100
+
+compute:
+  modal:
+    gpu: "H100:8"
