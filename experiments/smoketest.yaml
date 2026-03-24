@@ -1,5 +1,5 @@
 # CI smoke test only — 2 steps, not for real runs.
-experiment_name: gptneo_125m_smoketest
+experiment_name: smoketest
 seed: 42
 
 model:

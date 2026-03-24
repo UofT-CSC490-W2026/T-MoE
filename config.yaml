@@ -120,8 +120,8 @@ dataset:
   dataset_key: wikitext-2  # Options: wikitext-2, wikitext-103, c4, openwebtext, the_pile, code
 
   # Custom dataset (overrides dataset_key if provided)
-  custom_dataset_name: null  # e.g., "my-org/my-dataset"
-  custom_dataset_config: null
+  custom_dataset_name: wikitext  # HuggingFace dataset name
+  custom_dataset_config: wikitext-2-v1  # Required config: wikitext-103-raw-v1, wikitext-103-v1, wikitext-2-raw-v1, wikitext-2-v1
   text_column: text
 
   # Data processing
