@@ -273,13 +273,18 @@ class S3Client:
             logger.debug("Bucket exists: %s", bucket)
             return True
         except ClientError as exc:
-            code = int(exc.response["Error"]["Code"])
-            if code == 404:
+            raw_code = exc.response["Error"]["Code"]
+            try:
+                code = int(raw_code)
+            except (ValueError, TypeError):
+                code = raw_code  # keep as string for string comparisons below
+
+            if code in (404, "404", "NoSuchBucket"):
                 logger.info("Bucket does not exist: %s", bucket)
-            elif code == 403:
+            elif code in (403, "403", "AccessDenied"):
                 logger.warning("Bucket exists but access denied: %s", bucket)
             else:
-                logger.error("head_bucket error %d for %s", code, bucket)
+                logger.error("head_bucket error %s for %s", code, bucket)
             return False
 
     # ------------------------------------------------------------------
