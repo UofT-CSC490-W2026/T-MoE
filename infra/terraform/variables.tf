@@ -54,7 +54,7 @@ variable "batch_instance_types" {
 variable "batch_max_vcpus" {
   description = "Maximum vCPUs for Batch compute environment (cost control)"
   type        = number
-  default     = 8
+  default     = 16
 }
 
 variable "batch_min_vcpus" {
@@ -72,5 +72,5 @@ variable "batch_job_vcpus" {
 variable "batch_job_memory" {
   description = "Memory (MiB) per training job"
   type        = number
-  default     = 15000
+  default     = 12000
 }

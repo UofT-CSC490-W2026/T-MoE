@@ -44,7 +44,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip && \
 COPY . /app
 
 # --- Default: run training pipeline in container mode ---
-ENTRYPOINT ["python", "run_training_pipeline.py", "--mode", "container"]
+ENTRYPOINT ["python", "run_aws_training.py", "--mode", "container"]
 
 # --- Default config (overridden by Batch job command) ---
 CMD ["--config", "gptneo_125m_lora"]

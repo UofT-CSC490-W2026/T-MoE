@@ -1,0 +1,62 @@
+# ============================================================================
+# GPT-Neo 125M / Standard LoRA-MoE — General Purpose Config
+# ============================================================================
+# Default config referenced by Dockerfile CMD and run_aws_training.py examples.
+# Uses standard router with wikitext-2 for quick iteration.
+# ============================================================================
+
+experiment_name: gptneo_125m_lora
+seed: 42
+
+model:
+  model_key: gpt-neo-125m
+  freeze_backbone: true
+  moe_layer_indices: [-1]
+
+router:
+  type: standard
+  num_experts: 4
+  top_k: 1
+  temperature: 1.0
+  noise_std: 0.0
+  use_aux_loss: false
+  aux_loss_coef: 0.01
+
+expert:
+  type: gpt_neo_lora
+  count: 4
+  lora:
+    rank: 16
+    alpha: 16
+    dropout: 0.0
+    init_scale: 0.01
+
+training:
+  batch_size: 8
+  lr: 1.0e-3
+  steps: 1000
+  warmup_steps: 100
+  weight_decay: 0.01
+  save_interval: 500
+  eval_interval: 100
+  log_interval: 10
+  optimizer: adamw
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+  gradient_accumulation_steps: 1
+  clip_grad_norm: 1.0
+
+dataset:
+  dataset_key: wikitext-2
+  max_seq_len: 512
+
+logging:
+  enabled: false
+  log_interval: 10
+
+distributed:
+  strategy: ddp
+
+compute:
+  aws:
+    cache_dir: /tmp/tmoe_data
