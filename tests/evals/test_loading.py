@@ -30,9 +30,14 @@ class _FakeModel(torch.nn.Module):
         self.freeze_backbone = freeze_backbone
         self.moe_layer_indices = list(moe_layer_indices)
         self.device = device
+        self.hidden_dim = 768
+        self.num_layers = 12
         self.backbone = _FakeBackbone(hidden_dim=768, num_layers=12)
         self.moe_layers = {}
         self.to_calls = []
+
+    def get_mlp_at(self, idx):
+        return self.backbone.transformer.h[idx].mlp
 
     def inject_moe_layers(self, moe_layers):
         for idx, moe_layer in moe_layers.items():

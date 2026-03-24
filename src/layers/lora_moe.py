@@ -183,19 +183,30 @@ class LoRAMoELayer(BaseMoELayer):
             combined[token_ids] += expert_out * scale
 
         if self.shared_proj_lora is not None:
-            # Compute frozen fc hidden state for ALL tokens (no grad — frozen path).
+            # Compute frozen hidden state for ALL tokens (no grad — frozen path).
             # expert 0's shared_weight is the canonical frozen buffer post-consolidation.
             e0 = self.expert_pool.experts[0]
-            fc_w = e0.c_fc.shared_weight
-            fc_b = e0.c_fc.shared_bias
-            if fc_w.dtype != x_flat.dtype:
-                fc_w = fc_w.to(x_flat.dtype)
-                if fc_b is not None:
-                    fc_b = fc_b.to(x_flat.dtype)
             with torch.no_grad():
-                h_all = e0.act(torch.nn.functional.linear(x_flat, fc_w, fc_b))
-            # Trainable delta on c_proj for all tokens — gradient flows through lora_A/B only.
-            combined = combined + self.shared_proj_lora(h_all)
+                if hasattr(e0, "c_fc") and e0.c_fc is not None:
+                    # GPT-Neo: hidden -> c_fc -> act -> c_proj
+                    fc_w = e0.c_fc.shared_weight
+                    fc_b = e0.c_fc.shared_bias
+                    if fc_w.dtype != x_flat.dtype:
+                        fc_w = fc_w.to(x_flat.dtype)
+                        if fc_b is not None:
+                            fc_b = fc_b.to(x_flat.dtype)
+                    h_all = e0.act(torch.nn.functional.linear(x_flat, fc_w, fc_b))
+                elif hasattr(e0, "gate_proj") and e0.gate_proj is not None:
+                    # Qwen2 SwiGLU: silu(gate_proj(x)) * up_proj(x)
+                    gate_w = e0.gate_proj.shared_weight.to(x_flat.dtype)
+                    up_w = e0.up_proj.shared_weight.to(x_flat.dtype)
+                    gate_out = e0.act_fn(torch.nn.functional.linear(x_flat, gate_w))
+                    h_all = gate_out * torch.nn.functional.linear(x_flat, up_w)
+                else:
+                    h_all = None
+            # Trainable delta on output proj for all tokens — gradient flows through lora_A/B only.
+            if h_all is not None:
+                combined = combined + self.shared_proj_lora(h_all)
 
         output = combined.view(batch, seq, hidden)
 

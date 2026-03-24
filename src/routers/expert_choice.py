@@ -34,7 +34,10 @@ class ExpertChoiceRouter(BaseRouter):
         x = x.contiguous()
         batch, seq, hidden = x.shape
 
-        logits_flat = self.gate(x).view(-1, self.num_experts) / self.temperature
+        x_for_gate = x.to(self.gate.weight.dtype)
+        logits_flat = (
+            self.gate(x_for_gate).view(-1, self.num_experts) / self.temperature
+        )
 
         # Stability Guard: Check for NaNs/Infs that could stall the softmax/topk
         if not torch.isfinite(logits_flat).all():
@@ -55,7 +58,7 @@ class ExpertChoiceRouter(BaseRouter):
 
         # Create a unified weight matrix of shape (N, E)
         expert_weights = torch.zeros_like(probs)  # (N, E)
-        expert_weights.scatter_(0, top_indices, top_probs)
+        expert_weights = expert_weights.scatter(0, top_indices, top_probs)
 
         metrics = None
         if return_metrics:

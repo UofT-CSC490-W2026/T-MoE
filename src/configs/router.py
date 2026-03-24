@@ -117,6 +117,9 @@ class StressCorrectedRouterConfig(BaseRouterConfig):
     lambda_calib_step: int = (
         600  # warmup_steps + 200; calibrate after LR warmup completes
     )
+    lambda_init: float = (
+        0.1  # pre-calibration λ; must not overwhelm σ_cos (~0.025–0.036)
+    )
     tau_final: float = 0.5  # τ at end of annealing; if == temperature, no annealing
     tau_anneal_steps: int = (
         0  # steps over which τ anneals from temperature → tau_final; 0 = disabled

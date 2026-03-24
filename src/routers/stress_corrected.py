@@ -174,7 +174,10 @@ class StressCorrectedRouter(BaseRouter):
         )
 
         # Lambda — calibrated once at lambda_calib_step, then fixed.
-        self.register_buffer("lambda_val", torch.tensor(1.0))
+        # Pre-calibration: use lambda_init (default 0.1) to avoid overwhelming
+        # the cosine signal. At D=1536 σ_cos≈0.025; the old default of 1.0 was
+        # 5x the expected calibrated λ≈0.2, suppressing all routing signal.
+        self.register_buffer("lambda_val", torch.tensor(config.lambda_init))
         self.register_buffer("lambda_initialized", torch.tensor(False))
         self._lambda_init_done: bool = False  # compile-safe Python mirror
 
@@ -430,7 +433,7 @@ class StressCorrectedRouter(BaseRouter):
                 self._calibrate_lambda(pending)
             self._lambda_init_done = True
             # ALL ranks must call this together — no branching.
-            # If pending was empty on this rank, lambda stays at 1.0 and participates
+            # If pending was empty on this rank, lambda stays at lambda_init and participates
             # in the AVG so other ranks' calibrated value is preserved.
             self._sync_lambda_distributed()
 
@@ -569,7 +572,7 @@ class StressCorrectedRouter(BaseRouter):
     def reset_state(self) -> None:
         with torch.no_grad():
             self.ema_load.fill_(1.0 / self.num_experts)
-            self.lambda_val.fill_(1.0)
+            self.lambda_val.fill_(self.config.lambda_init)
             self.lambda_initialized.fill_(False)
             self.welford_n.zero_()
             self.welford_mu.zero_()

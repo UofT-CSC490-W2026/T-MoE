@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import multiprocessing
 import struct
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Iterator
 
@@ -138,7 +139,7 @@ def _iter_token_arrays(
     eos_id: int,
     num_proc: int,
     vocab_size: int,
-    batch_size: int = 512,
+    batch_size: int = 2048,
 ) -> Iterator[np.ndarray]:
     token_dtype = np.uint32 if vocab_size > 65535 else np.uint16
     """
@@ -190,7 +191,7 @@ def _iter_token_arrays(
         docs_done = 0
         with multiprocessing.Pool(num_proc) as pool:
             for i, token_lists in enumerate(
-                pool.imap(_tokenize_batch, _batch_gen(), chunksize=16)
+                pool.imap(_tokenize_batch, _batch_gen(), chunksize=4)
             ):
                 for ids in token_lists:
                     yield np.array(ids, dtype=token_dtype)
@@ -243,12 +244,17 @@ def tokenize_and_pack(cfg, out_dir: Path, num_proc: int = 1) -> None:
         token_count = 0
         total_tokens_written = 0
 
-        def flush_shard(buf: np.ndarray, count: int, idx: int) -> Path:
+        def flush_shard(
+            buf: np.ndarray, count: int, idx: int, partial: bool = False
+        ) -> None:
             path = out_dir / f"{split_name}_shard_{idx:04d}.bin"
             with open(path, "wb") as f:
                 f.write(struct.pack("<QH", count, dtype_flag))
                 f.write(buf[:count].tobytes())
-            return path
+            label = "[partial]" if partial else ""
+            print(
+                f"  Wrote shard {idx:04d}: {path.name} ({count:,} tokens) {label}".rstrip()
+            )
 
         token_iter = _iter_token_arrays(
             dataset,
@@ -259,33 +265,40 @@ def tokenize_and_pack(cfg, out_dir: Path, num_proc: int = 1) -> None:
             vocab_size,
         )
 
-        for tokens in token_iter:
-            pos = 0
-            while pos < len(tokens):
-                space = SHARD_SIZE - token_count
-                chunk = tokens[pos : pos + space]
-                token_buffer[token_count : token_count + len(chunk)] = chunk
-                token_count += len(chunk)
-                pos += len(chunk)
+        with ThreadPoolExecutor(max_workers=2) as io_pool:
+            futures = []
+            for tokens in token_iter:
+                pos = 0
+                while pos < len(tokens):
+                    space = SHARD_SIZE - token_count
+                    chunk = tokens[pos : pos + space]
+                    token_buffer[token_count : token_count + len(chunk)] = chunk
+                    token_count += len(chunk)
+                    pos += len(chunk)
 
-                if token_count == SHARD_SIZE:
-                    shard_path = flush_shard(token_buffer, token_count, shard_index)
-                    print(
-                        f"  Wrote shard {shard_index:04d}: {shard_path.name} "
-                        f"({token_count:,} tokens)"
+                    if token_count == SHARD_SIZE:
+                        buf_snapshot = token_buffer.copy()
+                        futures.append(
+                            io_pool.submit(
+                                flush_shard, buf_snapshot, token_count, shard_index
+                            )
+                        )
+                        total_tokens_written += token_count
+                        shard_index += 1
+                        token_count = 0
+
+            if token_count > 0:
+                buf_snapshot = token_buffer.copy()
+                futures.append(
+                    io_pool.submit(
+                        flush_shard, buf_snapshot, token_count, shard_index, True
                     )
-                    total_tokens_written += token_count
-                    shard_index += 1
-                    token_count = 0
+                )
+                total_tokens_written += token_count
+                shard_index += 1
 
-        if token_count > 0:
-            shard_path = flush_shard(token_buffer, token_count, shard_index)
-            print(
-                f"  Wrote shard {shard_index:04d}: {shard_path.name} "
-                f"({token_count:,} tokens) [partial]"
-            )
-            total_tokens_written += token_count
-            shard_index += 1
+            for f in futures:
+                f.result()  # propagate any write errors
 
         print(
             f"  '{split_name}' complete: "

@@ -42,9 +42,10 @@ class StandardRouter(BaseRouter):
         top_k_values, top_k_indices = torch.topk(probs, self.top_k, dim=-1)
 
         # Create a weight matrix of shape (N, E)
-        # This unified format is used by the LoRAMoELayer dispatcher
+        # Use out-of-place scatter so autograd can propagate gradients through
+        # top_k_values back to the gate.
         expert_weights = torch.zeros_like(probs)
-        expert_weights.scatter_(
+        expert_weights = expert_weights.scatter(
             1, top_k_indices, F.normalize(top_k_values, p=1, dim=-1)
         )
 

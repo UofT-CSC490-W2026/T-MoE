@@ -32,7 +32,7 @@ from omegaconf import OmegaConf
 # CONFIGURATION — change this one line to switch experiments
 # =============================================================================
 
-CONFIG = "experiments/qwen2_1.5b_switch_v1-fineweb.yaml"
+CONFIG = "experiments/qwen2_1.5b_stress_v1-fineweb.yaml"
 
 # GPU spec is read from compute.modal.gpu in the active config.
 # Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
@@ -71,7 +71,9 @@ _FLASH_ATTN_WHEEL = (
 )
 
 image = (
-    Image.from_registry("nvidia/cuda:12.8.1-devel-ubuntu24.04", add_python="3.11")
+    Image.from_registry(
+        "nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu24.04", add_python="3.11"
+    )
     .pip_install("packaging", "ninja", "wheel", "setuptools")
     .pip_install_from_requirements("requirements.txt")
     .pip_install(_FLASH_ATTN_WHEEL)
@@ -202,8 +204,8 @@ def _resolve_eval_checkpoint(cfg, checkpoint: str, all_checkpoints: bool) -> str
 
 @app.function(
     volumes={VOLUME_MOUNT: volume},
-    cpu=8,
-    memory=32768,
+    cpu=16,
+    memory=49152,
     timeout=18000,  # 5h: ~10 min download + ~30 min tokenization + buffer
 )
 def stage_data(config: str = CONFIG, force: bool = False):  # noqa: B008
@@ -217,17 +219,17 @@ def stage_data(config: str = CONFIG, force: bool = False):  # noqa: B008
     cfg = OmegaConf.load(cfg_path)
     dataset_key = cfg.dataset.dataset_key
 
-    if glob.glob(f"{SHARDS_DIR}/{dataset_key}/**/train_shard_*.bin") and not force:
-        n = len(glob.glob(f"{SHARDS_DIR}/{dataset_key}/**/train_shard_*.bin"))
-        print(
-            f"[stage_data] {n} shard(s) already in {SHARDS_DIR}/{dataset_key}/. Skipping (--force to redo)."
-        )
-        volume.commit()
-        return
-
     from src.configs.dataset import get_shard_dir
 
     out_dir = str(get_shard_dir(dataset_key, cfg.model.model_key, base=SHARDS_DIR))
+
+    if glob.glob(f"{out_dir}/train_shard_*.bin") and not force:
+        n = len(glob.glob(f"{out_dir}/train_shard_*.bin"))
+        print(
+            f"[stage_data] {n} shard(s) already in {out_dir}/. Skipping (--force to redo)."
+        )
+        volume.commit()
+        return
 
     print(f"[stage_data] Preparing '{dataset_key}' → {out_dir}")
     hf_cache = f"{VOLUME_MOUNT}/hf_cache"
@@ -241,7 +243,7 @@ def stage_data(config: str = CONFIG, force: bool = False):  # noqa: B008
             "--out-dir",
             out_dir,
             "--num-proc",
-            "8",
+            "16",
         ],
         cwd="/app",
         check=True,

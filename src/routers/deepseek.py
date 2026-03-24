@@ -60,7 +60,8 @@ class DeepSeekRouter(BaseRouter):
         record_usage: bool = True,
         **kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[Dict[str, Any]]]:
-        logits = self.gate(x) / self.temperature
+        x_for_gate = x.to(self.gate.weight.dtype)
+        logits = self.gate(x_for_gate) / self.temperature
 
         if self.training and self.noise_std > 0.0:
             noise = torch.randn_like(logits) * self.noise_std
@@ -86,7 +87,7 @@ class DeepSeekRouter(BaseRouter):
             top_k_weights = F.normalize(top_k_values, p=1, dim=-1)
 
         expert_weights = torch.zeros_like(probs_flat)
-        expert_weights.scatter_(
+        expert_weights = expert_weights.scatter(
             1, top_k_indices_flat, top_k_weights.view(-1, self.top_k)
         )
 
@@ -109,6 +110,9 @@ class DeepSeekRouter(BaseRouter):
             return
 
         with torch.no_grad():
+            # Sync usage counts across DDP ranks before computing bias update.
+            self._sync_usage_distributed()
+
             usage_avg = (
                 self._pending_usage_sum.float()
                 / self._pending_tokens.float().clamp(min=1)
@@ -127,6 +131,17 @@ class DeepSeekRouter(BaseRouter):
             self._pending_usage_sum.zero_()
             self._pending_tokens.zero_()
             self._usage_pending = False
+
+    @torch.no_grad()
+    def _sync_usage_distributed(self) -> None:
+        try:
+            import torch.distributed as dist
+        except ImportError:
+            return
+        if not dist.is_initialized() or dist.get_world_size() <= 1:
+            return
+        dist.all_reduce(self._pending_usage_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(self._pending_tokens, op=dist.ReduceOp.SUM)
 
     def compute_aux_loss(self) -> torch.Tensor:
         return torch.tensor(0.0, device=self.gate.weight.device)

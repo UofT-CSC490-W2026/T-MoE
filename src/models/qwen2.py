@@ -53,10 +53,20 @@ class Qwen2Backbone(BaseModelBackbone):
             self.freeze_parameters()
 
     def load_pretrained(self) -> None:
+        kwargs = {
+            "dtype": COMPUTE_DTYPE,
+        }
+        # Use flash_attention_2 when available (requires CUDA + flash-attn package).
+        # Falls back to HF's default (sdpa) otherwise — e.g., during tests on CPU.
+        try:
+            import flash_attn  # noqa: F401
+
+            if torch.cuda.is_available():
+                kwargs["attn_implementation"] = "flash_attention_2"
+        except ImportError:
+            pass
         self.backbone = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            dtype=COMPUTE_DTYPE,
-            attn_implementation="flash_attention_2",
+            self.model_name, **kwargs
         ).to(self.device)
         self.vocab_size = self.backbone.config.vocab_size
 
@@ -79,8 +89,15 @@ class Qwen2Backbone(BaseModelBackbone):
         attention_mask: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         return_metrics: bool = False,
+        record_usage: bool = True,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Dict[str, Any]]]:
+        # Thread record_usage into each MoE layer. HuggingFace's inner forward
+        # calls mlp(hidden_states) with no kwargs, so we use a per-layer attribute
+        # that LoRAMoELayer.forward() reads when no explicit kwarg is passed.
+        for moe_layer in self.moe_layers.values():
+            moe_layer._forced_record_usage = record_usage
+
         needs_grad = not self.freeze_backbone or bool(self.moe_layers)
         with torch.set_grad_enabled(needs_grad and torch.is_grad_enabled()):
             outputs = self.backbone(
@@ -91,7 +108,7 @@ class Qwen2Backbone(BaseModelBackbone):
                 use_cache=False,
             )
 
-        logits = outputs.logits if not self.training else None
+        logits = outputs.logits
         loss = outputs.loss if labels is not None else None
 
         if loss is not None and self.moe_layers:

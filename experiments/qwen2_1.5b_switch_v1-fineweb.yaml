@@ -12,9 +12,9 @@ router:
   num_experts: 8
   top_k: 1
   temperature: 1.0
-  noise_std: 0.05
+  noise_std: 0.0
   use_aux_loss: true
-  aux_loss_coef: 0.001
+  aux_loss_coef: 0.01
 
 expert:
   type: qwen2_lora
@@ -22,7 +22,7 @@ expert:
   lora:
     rank: 32
     alpha: 32
-    dropout: 0.05
+    dropout: 0.0
     init_scale: 0.01
     b_init_scale: 0.0
 
@@ -56,7 +56,7 @@ distributed:
   find_unused_parameters: false
 
 eval:
-  stride: 2048
+  stride: 512
   max_documents: null
   max_eval_length: 2048
   batch_size: 8
