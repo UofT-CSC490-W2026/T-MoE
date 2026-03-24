@@ -264,11 +264,11 @@ def download_dataset_from_s3(pipeline_config, cache_dir: str) -> None:
     for archive in cache_path.glob("*.tar.gz"):
         logger.info("Extracting %s", archive.name)
         with tarfile.open(archive, "r:gz") as tar:
-            tar.extractall(cache_path)
+            tar.extractall(cache_path, filter="data")
     for archive in cache_path.glob("*.tar"):
         logger.info("Extracting %s", archive.name)
         with tarfile.open(archive, "r") as tar:
-            tar.extractall(cache_path)
+            tar.extractall(cache_path, filter="data")
     for archive in cache_path.glob("*.zip"):
         logger.info("Extracting %s", archive.name)
         with zipfile.ZipFile(archive, "r") as zip_ref:
