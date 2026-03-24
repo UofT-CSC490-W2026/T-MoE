@@ -284,7 +284,8 @@ def upload_outputs_to_s3(pipeline_config, output_dir: str) -> None:
     from infra.s3client.s3_sync import upload_experiment_dir
 
     output_path = Path(output_dir)
-    s3_prefix = f"experiments/{output_path.name}/"
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    s3_prefix = f"checkpoints/{output_path.name}/{timestamp}/"
 
     result = upload_experiment_dir(
         local_dir=output_dir,
