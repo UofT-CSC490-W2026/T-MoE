@@ -844,12 +844,7 @@ def main():
             if step % eval_interval == 0 and val_loader is not None:
                 base_model = get_model_for_attr_access(model)
                 val_loss = evaluate(base_model, val_loader, device)
-                if is_distributed:
-                    import torch.distributed as dist
-
-                    _vl = torch.tensor(val_loss, device=device)
-                    dist.all_reduce(_vl, op=dist.ReduceOp.AVG)
-                    val_loss = _vl.item()
+                val_loss = _broadcast_scalar(val_loss, device, is_distributed)
                 val_ppl = math.exp(min(val_loss, 20.0))
                 val_bpb = val_loss / math.log(2)
                 if is_main_process():
@@ -1334,12 +1329,7 @@ def main():
         if val_loader is not None:
             base_model = get_model_for_attr_access(model)
             val_loss = evaluate(base_model, val_loader, device)
-            if is_distributed:
-                import torch.distributed as dist
-
-                _vl = torch.tensor(val_loss, device=device)
-                dist.all_reduce(_vl, op=dist.ReduceOp.AVG)
-                val_loss = _vl.item()
+            val_loss = _broadcast_scalar(val_loss, device, is_distributed)
             val_ppl = math.exp(min(val_loss, 20.0))
             is_best = val_loss < best_val_loss
             if is_best:
