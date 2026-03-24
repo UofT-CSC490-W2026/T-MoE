@@ -381,6 +381,7 @@ def submit_batch_job(
         {"name": "RAW_DATA_BUCKET", "value": pipeline_config.raw_data_bucket},
         {"name": "AWS_REGION", "value": pipeline_config.aws_region},
         {"name": "ENVIRONMENT", "value": os.environ.get("ENVIRONMENT", "dev")},
+        {"name": "DATASET_NAME", "value": pipeline_config.dataset_name},
     ]
 
     if wandb_api_key := os.environ.get("WANDB_API_KEY"):
