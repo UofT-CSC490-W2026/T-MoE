@@ -45,7 +45,7 @@ class StandardRouter(BaseRouter):
         # This unified format is used by the LoRAMoELayer dispatcher
         expert_weights = torch.zeros_like(probs)
         expert_weights.scatter_(
-            1, top_k_indices, F.normalize(top_k_values, p=1, dim=-1)
+            1, top_k_indices, F.normalize(top_k_values, p=1, dim=-1).to(probs.dtype)
         )
 
         if self.training and self.use_aux_loss:

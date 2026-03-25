@@ -93,7 +93,7 @@ class DeepSeekRouter(BaseRouter):
 
         expert_weights = torch.zeros_like(raw_scores_flat)
         expert_weights = expert_weights.scatter(
-            1, top_k_indices_flat, top_k_weights_flat
+            1, top_k_indices_flat, top_k_weights_flat.to(expert_weights.dtype)
         )
 
         if self.training and record_usage:

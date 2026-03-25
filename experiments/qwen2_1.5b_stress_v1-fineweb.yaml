@@ -42,7 +42,7 @@ router:
   eps: 1.0e-3               # Numerical floor; kept for config compatibility
   ema_alpha: 0.01           # Slow EMA (~100-step window); prevents load oscillation on large corpus
   lambda_calib_step: 1000   # warmup_steps(800) + 200; ensures EMA has stabilized before λ is frozen
-  lambda_init: 0.1          # pre-calibration λ (steps 0–1000); 4× σ_cos at D=1536 — aggressive but corrected at calib step
+  lambda_init: 0.1          # pre-calibration λ (steps 0–lambda_calib_step); ~0.5× expected λ_calib (σ_cos≈0.025×N=8→λ≈0.20) — conservative start, auto-corrected at step 1000
   init_from_data: true      # K-means prototype init from layer activations before training begins
 
 expert:
