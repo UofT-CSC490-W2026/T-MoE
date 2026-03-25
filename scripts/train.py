@@ -50,9 +50,13 @@ class ShardDataset(Dataset):
     """
     Reads packed binary shards produced by scripts/prepare_data.py.
 
-    Legacy format: [uint64 token_count (8 bytes)] [uint16 tokens ...]
-    New format:    [uint64 token_count (8 bytes)] [uint16 dtype_flag (2 bytes)] [tokens ...]
-                   dtype_flag=0 → uint16 tokens, dtype_flag=1 → uint32 tokens
+    Each .bin file is: 8-byte header (uint64 token_count) + optional 2-byte dtype_flag + tokens (uint16 or uint32).
+    Legacy shards omit the dtype_flag and always use uint16 (GPT-Neo). Versioned shards (Qwen2) use uint32.
+    Sequences are sliced out of the continuous token stream — no padding.
+
+    Memory-efficient: only shard headers are read at init time. Token data
+    is accessed via np.memmap on demand, so arbitrarily large datasets
+    (C4, The Pile) work without OOM.
     """
 
     def __init__(self, shard_dir: Path, split: str, seq_len: int):
@@ -64,9 +68,12 @@ class ShardDataset(Dataset):
                 f"Run 'python -m scripts.prepare_data --config <your_config.yaml>' first."
             )
 
+        # Read shard headers — detect legacy (8-byte) vs versioned (10-byte) format.
+        # prepare_data.py writes: struct.pack("<QH", token_count, dtype_flag)
+        #   dtype_flag=0 → uint16 (vocab ≤ 65535, e.g. GPT-Neo)
+        #   dtype_flag=1 → uint32 (vocab > 65535, e.g. Qwen2 ~150k vocab)
         self.shard_sizes: list[int] = []
         self.shard_meta: list[tuple] = []  # (dtype, offset) per shard
-
         for path in self.shards:
             file_size = path.stat().st_size
             with open(path, "rb") as f:
@@ -92,6 +99,7 @@ class ShardDataset(Dataset):
             self.shard_sizes.append(token_count)
             self.shard_meta.append((dtype, offset))
 
+        # Cumulative token offsets for O(log N) shard resolution in __getitem__.
         self.cumulative = [0]
         for s in self.shard_sizes:
             self.cumulative.append(self.cumulative[-1] + s)
@@ -99,10 +107,13 @@ class ShardDataset(Dataset):
         total_tokens = self.cumulative[-1]
         self.n_seqs = (total_tokens - 1) // seq_len
 
+        # Cache one memmap per shard at init time — avoids re-opening file
+        # descriptors and recreating OS memory mappings on every __getitem__ call.
+        # Each mmap covers the full token payload of the shard (after the header).
         self.mmaps: list[np.memmap] = [
             np.memmap(path, dtype=dtype, mode="r", offset=offset, shape=(size,))
-            for path, size, (dtype, offset) in zip(
-                self.shards, self.shard_sizes, self.shard_meta
+            for path, (dtype, offset), size in zip(
+                self.shards, self.shard_meta, self.shard_sizes
             )
         ]
 
@@ -212,7 +223,7 @@ def build_model(cfg) -> torch.nn.Module:
     moe_layers = {}
     for layer_idx in cfg.model.moe_layer_indices:
         actual_idx = layer_idx if layer_idx >= 0 else model.num_layers + layer_idx
-        original_mlp = model.get_mlp_at(actual_idx)
+        original_mlp = model.backbone.transformer.h[actual_idx].mlp
 
         router = create_router(
             router_type=cfg.router.type,
@@ -225,7 +236,6 @@ def build_model(cfg) -> torch.nn.Module:
             # SPAR-specific — filtered out for non-SPAR routers by create_router
             ema_alpha=cfg.router.get("ema_alpha", 0.01),
             lambda_calib_step=cfg.router.get("lambda_calib_step", 600),
-            lambda_init=cfg.router.get("lambda_init", 0.1),
             tau_final=cfg.router.get("tau_final", cfg.router.get("temperature", 1.0)),
             tau_anneal_steps=cfg.router.get("tau_anneal_steps", 0),
             noise_anneal_steps=cfg.router.get("noise_anneal_steps", 0),
@@ -250,7 +260,6 @@ def build_model(cfg) -> torch.nn.Module:
 
         lora_cfg = LoRAConfig(
             hidden_dim=model.hidden_dim,
-            intermediate_dim=model_info.get("intermediate_dim"),
             rank=cfg.expert.lora.rank,
             alpha=cfg.expert.lora.alpha,
             dropout=cfg.expert.lora.dropout,
@@ -384,26 +393,12 @@ def build_optimizer(model: torch.nn.Module, cfg) -> torch.optim.Optimizer:
     if lr_base is not None and base_params:
         param_groups.append({"params": base_params, "lr": lr_base})
 
-    # fused=True fuses per-param updates into a single CUDA kernel (5-15% faster on H100/A100).
-    # Requires all params on CUDA — always true during training.
-    _use_fused = torch.cuda.is_available()
     if opt_name == "adamw":
         return torch.optim.AdamW(
-            param_groups,
-            lr=lr,
-            betas=betas,
-            eps=eps,
-            weight_decay=wd,
-            fused=_use_fused,
+            param_groups, lr=lr, betas=betas, eps=eps, weight_decay=wd
         )
     elif opt_name == "adam":
-        return torch.optim.Adam(
-            param_groups,
-            lr=lr,
-            betas=betas,
-            eps=eps,
-            fused=_use_fused,
-        )
+        return torch.optim.Adam(param_groups, lr=lr, betas=betas, eps=eps)
     else:
         raise ValueError(f"Unknown optimizer: {cfg.training.optimizer}")
 
@@ -577,8 +572,6 @@ def main():
                 sampler=train_sampler,
                 num_workers=num_workers,
                 pin_memory=torch.cuda.is_available(),
-                persistent_workers=num_workers > 0,
-                prefetch_factor=4 if num_workers > 0 else None,
             )
         else:
             train_loader = DataLoader(
@@ -587,8 +580,6 @@ def main():
                 shuffle=True,
                 num_workers=num_workers,
                 pin_memory=torch.cuda.is_available(),
-                persistent_workers=num_workers > 0,
-                prefetch_factor=4 if num_workers > 0 else None,
             )
 
         val_loader = None
@@ -600,8 +591,6 @@ def main():
                 shuffle=False,
                 num_workers=num_workers,
                 pin_memory=torch.cuda.is_available(),
-                persistent_workers=num_workers > 0,
-                prefetch_factor=4 if num_workers > 0 else None,
             )
         except FileNotFoundError:
             print("No validation shards found. Skipping validation.")
@@ -678,10 +667,6 @@ def main():
         # (attention + frozen MLP matmuls) without fighting dynamo on the MoE path.
         if cfg.get("compile", False):
             print("Compiling model with torch.compile...")
-            # layer_idx is an integer attr on Qwen2/GPT-Neo attention layers.
-            # Without this, Dynamo recompiles once per layer (28x for Qwen2-1.5B),
-            # hits the recompile limit, and falls back to eager for later layers.
-            torch._dynamo.config.allow_unspec_int_on_nn_module = True
             base = get_model_for_attr_access(model)
             if hasattr(base, "backbone"):
                 base.backbone = torch.compile(base.backbone)
@@ -750,17 +735,12 @@ def main():
         # If training.steps is set in the YAML it overrides; otherwise Chinchilla is used.
         _global_batch = batch_size * grad_accum * world_size
         _tokens_per_step = _global_batch * cfg.dataset.max_seq_len
-        from src.configs.model import model_lookup as _ml
-
-        _model_info_chinchilla = _ml(cfg.model.model_key)
-        _hidden = _model_info_chinchilla["hidden_dim"]
-        _inter = _model_info_chinchilla.get("intermediate_dim", 4 * _hidden)
+        _hidden = getattr(cfg.model, "hidden_size", 768)
+        _inter = getattr(cfg.model, "intermediate_size", 3072)
         _rank = cfg.expert.lora.rank
         _n_exp = cfg.router.num_experts
         _n_moe = len(cfg.model.moe_layer_indices)
-        # GPT-Neo: 2 projections (c_fc, c_proj); Qwen2 SwiGLU: 3 (gate, up, down)
-        _n_proj = 3 if cfg.expert.type == "qwen2_lora" else 2
-        _lora_per_expert = _n_proj * (_rank * _hidden + _rank * _inter)
+        _lora_per_expert = 2 * (_rank * _hidden + _rank * _inter)
         trainable_params = (
             _lora_per_expert * _n_exp * _n_moe + _n_exp * _hidden * _n_moe
         )
@@ -1125,9 +1105,8 @@ def main():
                 # Diagnostic A: merge per-expert gradient norms (collected before optimizer step)
                 metrics.update(_diag_a_metrics)
 
-                # Diagnostic B: lambda trajectory for first 200 steps (every log_interval) OR every eval_interval.
-                # Reveals whether lambda blows up at init or stays in healthy range.
-                if (step < 200 or step % eval_interval == 0) and _moe_layers_ref:
+                # Captures the calibration jump at lambda_calib_step — critical for paper figures.
+                if step % log_interval == 0 and _moe_layers_ref:
                     _base_m_diag_b = get_model_for_attr_access(model)
                     for _layer_idx_b, _moe_layer_b in getattr(
                         _base_m_diag_b, "moe_layers", {}
@@ -1170,6 +1149,10 @@ def main():
                     "eff_E_hard",
                     "mean_k",
                     "all_zero_frac",
+                    # Paper metrics
+                    "aux_loss",
+                    "noise_std",
+                    "sigma_cos_at_calib",
                 )
                 if moe_metrics:
                     for layer_name, layer_m in moe_metrics.items():
