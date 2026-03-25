@@ -233,6 +233,12 @@ def build_model(cfg) -> torch.nn.Module:
             noise_std=cfg.router.get("noise_std", 0.1),
             temperature=cfg.router.get("temperature", 1.0),
             eps=cfg.router.get("eps", 1e-3),
+            # standard/switch-specific — aux loss; filtered out for non-standard routers
+            use_aux_loss=cfg.router.get("use_aux_loss", False),
+            aux_loss_coef=cfg.router.get("aux_loss_coef", 0.01),
+            # deepseek-specific — filtered out for non-deepseek routers
+            use_sigmoid=cfg.router.get("use_sigmoid", False),
+            bias_update_rate=cfg.router.get("bias_update_rate", 1e-3),
             # SPAR-specific — filtered out for non-SPAR routers by create_router
             ema_alpha=cfg.router.get("ema_alpha", 0.01),
             lambda_calib_step=cfg.router.get("lambda_calib_step", 600),
