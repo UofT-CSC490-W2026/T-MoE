@@ -13,8 +13,8 @@ router:
   top_k: 2
   temperature: 1.0
   noise_std: 0.0
-  bias_update_rate: 5.0e-3
-  use_sigmoid: false
+  bias_update_rate: 1.0e-3   # DeepSeek V2/V3 paper value (γ=1e-3); 5e-3 was 5× too aggressive
+  use_sigmoid: true           # DeepSeek V3 uses sigmoid gating; false would reduce to softmax+bias (not V3)
 
 expert:
   type: qwen2_lora
@@ -34,6 +34,7 @@ training:
   warmup_steps: 800
   weight_decay: 0.1
   save_interval: 1000
+  keep_last_n_checkpoints: 10
   eval_interval: 500
   log_interval: 25
   optimizer: adamw

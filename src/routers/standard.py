@@ -42,11 +42,10 @@ class StandardRouter(BaseRouter):
         top_k_values, top_k_indices = torch.topk(probs, self.top_k, dim=-1)
 
         # Create a weight matrix of shape (N, E)
-        # Use out-of-place scatter so autograd can propagate gradients through
-        # top_k_values back to the gate.
+        # This unified format is used by the LoRAMoELayer dispatcher
         expert_weights = torch.zeros_like(probs)
-        expert_weights = expert_weights.scatter(
-            1, top_k_indices, F.normalize(top_k_values, p=1, dim=-1)
+        expert_weights.scatter_(
+            1, top_k_indices, F.normalize(top_k_values, p=1, dim=-1).to(probs.dtype)
         )
 
         if self.training and self.use_aux_loss:
@@ -56,11 +55,21 @@ class StandardRouter(BaseRouter):
 
         metrics = None
         if return_metrics:
-            # For backward compatibility with the tracker, we pass the sparse format
-            # but usually the layer only needs expert_weights
             metrics = self.metrics_tracker.compute_all_metrics(
                 top_k_indices, top_k_values
             )
+            # eff_E_hard: hard assignment effective experts — matches StressCorrectedRouter
+            # metric for paper comparison parity (WandB router/layer_*/eff_E_hard).
+            hard = torch.zeros(
+                self.num_experts, device=top_k_indices.device, dtype=torch.float32
+            )
+            hard.scatter_add_(
+                0,
+                top_k_indices.reshape(-1).clamp(min=0),
+                torch.ones(top_k_indices.numel(), device=top_k_indices.device),
+            )
+            hard = hard / hard.sum().clamp(min=1e-8)
+            metrics["eff_E_hard"] = (1.0 / (hard**2).sum().clamp(min=1e-8)).item()
 
         return expert_weights, None, metrics
 
@@ -74,24 +83,28 @@ class StandardRouter(BaseRouter):
         ):
             return torch.tensor(0.0, device=self.gate.weight.device)
 
-        # aux = α * num_experts * Σ_i (f_i * P_i)
-        # f_i = fraction of total weight assigned to expert i
-        # P_i = average gate probability for expert i
-        # Note: uses mean routing weights (soft f_i) rather than the hard dispatch
-        # fraction in the original Switch Transformer (Fedus et al. 2021). Equivalent
-        # in the limit but differs in gradient signal.
+        # Switch Transformer aux loss: α · N · Σᵢ(fᵢ · Pᵢ)
+        # fᵢ = hard dispatch fraction (stop-gradient): fraction of tokens routed to expert i.
+        #       Uses hard top-k selection counts, detached — no gradient through selection.
+        # Pᵢ = mean full softmax probability for expert i — differentiable, carries gradient.
+        # Reference: Fedus et al. 2021, equation (4).
         probs = self._last_probs
-        weights = self._last_weights
+        indices = self._last_indices
 
         bsz, seq_len, num_experts = probs.shape
 
-        # P_i: Mean gate probability across the batch
+        # fᵢ: hard dispatch counts, stop-gradient
+        indices_flat = indices.reshape(-1)
+        dispatch = torch.zeros(num_experts, device=probs.device, dtype=probs.dtype)
+        dispatch.scatter_add_(
+            0, indices_flat, torch.ones_like(indices_flat, dtype=probs.dtype)
+        )
+        f = (dispatch / (bsz * seq_len * self.top_k)).detach()
+
+        # Pᵢ: mean gate probability — differentiable
         P = probs.mean(dim=(0, 1))
 
-        # f_i: Mean routing weight across the batch
-        usage = weights.mean(dim=(0, 1))
-
-        aux = self.aux_loss_coef * num_experts * (usage * P).sum()
+        aux = self.aux_loss_coef * num_experts * (f * P).sum()
         return aux
 
     def get_state(self) -> Dict[str, Any]:

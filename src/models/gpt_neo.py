@@ -153,6 +153,11 @@ class GPTNeoBackbone(BaseModelBackbone):
                 if hasattr(moe_layer, "get_cached_metrics"):
                     layer_metrics = moe_layer.get_cached_metrics()
                     if layer_metrics:
+                        # Log per-layer aux_loss: nonzero for standard/switch, zero for SPAR.
+                        if hasattr(moe_layer, "router"):
+                            layer_metrics["aux_loss"] = (
+                                moe_layer.router.compute_aux_loss().item()
+                            )
                         all_metrics[f"layer_{int(layer_idx_str)}"] = layer_metrics
 
         return logits, loss, all_metrics if return_metrics else None
