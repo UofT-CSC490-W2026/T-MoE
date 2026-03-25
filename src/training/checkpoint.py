@@ -99,9 +99,17 @@ def _remap_legacy_moe_key(key: str) -> str | None:
 
 
 def _remap_legacy_moe_state_dict(state_dict: dict) -> tuple[dict, bool]:
-    remapped = {}
+    # Strip _orig_mod. prefix injected by torch.compile before any other remapping.
+    stripped: dict = {}
     changed = False
     for key, value in state_dict.items():
+        new_key = key.replace("._orig_mod.", ".")
+        if new_key != key:
+            changed = True
+        stripped[new_key] = value
+
+    remapped = {}
+    for key, value in stripped.items():
         mapped_key = _remap_legacy_moe_key(key)
         if mapped_key is None:
             changed = True

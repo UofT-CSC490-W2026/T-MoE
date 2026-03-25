@@ -15,6 +15,8 @@ ZERO_SHOT_TASKS: tuple[str, ...] = (
     "winogrande",
     "arc_easy",
     "arc_challenge",
+    "boolq",
+    "openbookqa",
 )
 FIVE_SHOT_TASKS: tuple[str, ...] = ("mmlu",)
 
@@ -24,6 +26,8 @@ PRIMARY_METRICS: dict[str, tuple[str, ...]] = {
     "winogrande": ("acc,none", "acc"),
     "arc_easy": ("acc_norm,none", "acc_norm"),
     "arc_challenge": ("acc_norm,none", "acc_norm"),
+    "boolq": ("acc,none", "acc"),
+    "openbookqa": ("acc_norm,none", "acc_norm"),
     "mmlu": ("acc,none", "acc"),
 }
 
