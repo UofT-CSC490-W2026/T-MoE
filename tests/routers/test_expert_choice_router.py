@@ -12,3 +12,19 @@ def test_expert_choice_router_forward(device):
     assert weights.shape == (N, config.num_experts)
     assert indices is None
     assert "token_drop_rate" in metrics
+
+
+def test_expert_choice_gate_receives_gradient(device):
+    # Regression test: zeros_like + scatter_ (in-place) detaches gate.weight from
+    # the autograd graph. Out-of-place scatter must be used instead.
+    config = ExpertChoiceRouterConfig(hidden_dim=32, num_experts=4, top_k=2)
+    router = ExpertChoiceRouter(config).to(device)
+    router.train()
+    x = torch.randn(2, 4, config.hidden_dim, device=device)
+    weights, _, _ = router(x)
+    loss = weights.sum()
+    loss.backward()
+    assert router.gate.weight.grad is not None, (
+        "gate.weight has no gradient — scatter_ detached the graph"
+    )
+    assert router.gate.weight.grad.abs().sum() > 0

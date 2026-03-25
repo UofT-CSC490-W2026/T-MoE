@@ -60,8 +60,8 @@ eval:
   stride: 512
   max_documents: null
   max_eval_length: 2048
-  batch_size: 8
-  lm_harness_batch_size: 16
+  batch_size: 64
+  lm_harness_batch_size: 64
   limit: null
   seq_len: 2048
   warmup_iters: 10

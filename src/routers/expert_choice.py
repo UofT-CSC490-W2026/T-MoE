@@ -57,9 +57,13 @@ class ExpertChoiceRouter(BaseRouter):
         # Select top-c tokens per expert
         top_probs, top_indices = torch.topk(probs, capacity, dim=0)  # (capacity, E)
 
-        # Create a unified weight matrix of shape (N, E)
-        expert_weights = torch.zeros_like(probs)  # (N, E)
-        expert_weights.scatter_(0, top_indices, top_probs)
+        # Out-of-place scatter keeps top_probs in the autograd graph so
+        # gate.weight receives gradient from the task loss through top_probs.
+        # zeros_like + scatter_ (in-place) would detach gate.weight from the graph.
+        expert_weights = torch.zeros(
+            max_tokens, self.num_experts, dtype=probs.dtype, device=probs.device
+        )
+        expert_weights = expert_weights.scatter(0, top_indices, top_probs)
 
         metrics = None
         if return_metrics:

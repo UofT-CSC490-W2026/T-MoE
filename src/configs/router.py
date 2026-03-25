@@ -99,10 +99,14 @@ class StressCorrectedRouterConfig(BaseRouterConfig):
     """
     SPAR Router configuration.
 
-    Selection:     z_i = cos(x,W_i) - λ · max(0, L_i - 1/N)
+    Selection:     z_i = cos(x,W_i) - λ · (L_i - 1/N)
     Output weight: w_i = softmax(cos(x,W_i) / τ_t)   [over top-k selected experts]
     Lambda calib:  λ = min(σ_cos · N, 5.0)   [auto at step lambda_calib_step]
-                   (equiv. σ_cos / mean(L) at equilibrium when mean(L) = 1/N)
+                   σ_cos = within-token inter-expert std (averaged across tokens).
+                   Scaling: a 1-sigma cosine variation equals a 1× fair-share correction.
+
+    Penalty is symmetric: overloaded experts are penalised, underloaded experts
+    receive a bonus. Restoring force toward fair share from both directions.
 
     Free hyperparameters: τ (one value). λ is data-derived, α is standard.
     τ anneals linearly from temperature → tau_final over tau_anneal_steps optimizer steps.
@@ -118,7 +122,7 @@ class StressCorrectedRouterConfig(BaseRouterConfig):
         600  # warmup_steps + 200; calibrate after LR warmup completes
     )
     lambda_init: float = (
-        0.1  # pre-calibration λ; must not overwhelm σ_cos (~0.025–0.036)
+        0.1  # pre-calibration λ; must not overwhelm σ_cos (empirically ~0.025–0.04)
     )
     tau_final: float = 0.5  # τ at end of annealing; if == temperature, no annealing
     tau_anneal_steps: int = (

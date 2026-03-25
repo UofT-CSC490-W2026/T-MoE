@@ -108,22 +108,20 @@ def _kmeans_init(activations: torch.Tensor, k: int, n_iter: int = 20) -> torch.T
 @RouterRegistry.register(RouterType.STRESS_CORRECTED.value)
 class StressCorrectedRouter(BaseRouter):
     r"""
-    SPAR Router: one-sided adaptive load penalty, no auxiliary loss.
+    SPAR Router: symmetric adaptive load penalty, no auxiliary loss.
 
     Selection logit:
-        z_i(x,t) = cos(x, W_i) - λ · max(0, L_i(t) - 1/N)
+        z_i(x,t) = cos(x, W_i) - λ · (L_i(t) - 1/N)
 
-        cos(x, W_i)          — cosine similarity: directional, scale-invariant
-        max(0, L_i - 1/N)    — one-sided penalty: zero at equilibrium, positive
-                               only for overloaded experts. Zero-sum differential:
-                               Σ_i max(0, L_i - 1/N) concentrates on overloaded
-                               experts only, leaving underloaded ones unpenalised.
-        λ                    — auto-calibrated once at step lambda_calib_step
-                               (default: warmup_steps + 200, post-LR-warmup):
-                               λ = min(σ_cos · N, 5.0)
-                               Equivalently: σ_cos / mean(L) at equilibrium
-                               when mean(L) = 1/N. A 1-sigma routing variation
-                               equals a 1× fair-share penalty. No manual tuning.
+        cos(x, W_i)     — cosine similarity: directional, scale-invariant
+        L_i - 1/N       — symmetric correction: negative (bonus) for underloaded
+                          experts, positive (penalty) for overloaded ones.
+                          Restoring force toward fair share from both directions.
+        λ               — auto-calibrated once at step lambda_calib_step:
+                          λ = min(σ_cos · N, 5.0)
+                          where σ_cos is the within-token inter-expert std
+                          (averaged across tokens). A 1-sigma routing variation
+                          equals a 1× fair-share correction. No manual tuning.
 
     Output weight:
         w_i = softmax(cos(x, W_i) / τ_t)   over top-k selected experts only
@@ -289,7 +287,7 @@ class StressCorrectedRouter(BaseRouter):
         (e.g., all cosines identical after random init in high-D). A zero λ
         would permanently disable the load penalty with no recovery path.
         """
-        sigma_cos = cos_sim_flat.std().clamp(min=1e-4)
+        sigma_cos = cos_sim_flat.std(dim=-1).mean().clamp(min=1e-4)
         self.lambda_val.fill_((sigma_cos * self.num_experts).clamp(max=5.0).item())
         self.lambda_initialized.fill_(True)
         self.sigma_cos_at_calib.fill_(sigma_cos.item())
@@ -324,8 +322,12 @@ class StressCorrectedRouter(BaseRouter):
             self._update_welford(x_norm, topk_idx, W_norm)
 
             # Accumulate cosines for λ calibration (pre-calibration only).
+            # Move to CPU immediately — calibration is a one-shot offline computation
+            # and doesn't need GPU memory for 1000 steps of accumulation.
             if not self._lambda_init_done:
-                self._pending_cos_sims.append(cos_sim.reshape(-1, self.num_experts))
+                self._pending_cos_sims.append(
+                    cos_sim.reshape(-1, self.num_experts).cpu()
+                )
 
     @torch._dynamo.disable
     def forward(
@@ -349,12 +351,10 @@ class StressCorrectedRouter(BaseRouter):
             u = torch.empty_like(cos_sim).uniform_(1e-10, 1.0 - 1e-10)
             noise = used_noise * (-torch.log(-torch.log(u)))
 
-        # SPAR selection logit: cosine - λ·max(0, L_i - 1/N)
+        # SPAR selection logit: cosine - λ·(L_i - 1/N)  [symmetric: bonus for underloaded, penalty for overloaded]
         ema_load = self._read_ema_load()
         fair_share = 1.0 / self.num_experts
-        logits = (
-            cos_sim - self.lambda_val * (ema_load - fair_share).clamp(min=0.0) + noise
-        )
+        logits = cos_sim - self.lambda_val * (ema_load - fair_share) + noise
 
         topk_vals, topk_idx = logits.topk(self.top_k, dim=-1)  # [B, S, k]
 
@@ -429,17 +429,21 @@ class StressCorrectedRouter(BaseRouter):
             self._pending_count_n.zero_()
 
         if (
-            self.num_steps.item() == self.lambda_calib_step
+            self.num_steps.item() >= self.lambda_calib_step
             and not self._lambda_init_done
         ):
             if self._pending_cos_sims:
-                pending = torch.cat(self._pending_cos_sims, dim=0)
+                pending = torch.cat(self._pending_cos_sims, dim=0).to(self.W.device)
                 self._calibrate_lambda(pending)
-            self._lambda_init_done = True
-            # Broadcast rank-0's calibrated λ to all ranks.
-            # Rank 0 has the most reliable σ_cos (it ran k-means and sees representative
-            # activations). AVG would underestimate λ if any rank had empty cos_sims.
-            self._sync_lambda_distributed()
+                self._lambda_init_done = True
+                # Broadcast rank-0's calibrated λ to all ranks.
+                # Rank 0 has the most reliable σ_cos (it ran k-means and sees
+                # representative activations). AVG would underestimate λ if any
+                # rank had empty cos_sims (e.g., after checkpoint resume).
+                self._sync_lambda_distributed()
+            # If _pending_cos_sims is empty (e.g., resumed from a checkpoint taken
+            # before lambda_calib_step), do NOT set _lambda_init_done — retry next
+            # step when forward() has populated the accumulator.
 
         # Clear cosine accumulator each step — bounds memory to one grad-accum window.
         self._pending_cos_sims.clear()
@@ -584,7 +588,7 @@ class StressCorrectedRouter(BaseRouter):
         return metrics
 
     def compute_aux_loss(self) -> torch.Tensor:
-        """Always zero — one-sided load penalty IS the balancing mechanism."""
+        """Always zero — symmetric load penalty IS the balancing mechanism."""
         return self.W.new_zeros(1).squeeze()
 
     def clear_aux_state(self) -> None:

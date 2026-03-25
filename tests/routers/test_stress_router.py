@@ -133,26 +133,32 @@ class TestLambdaCalibration:
 
 
 class TestOneSidedPenalty:
-    def test_zero_penalty_at_fair_share(self, device):
+    def test_zero_correction_at_fair_share(self, device):
+        """At equilibrium (all L_i = 1/N), the load correction is zero for all experts."""
         router = make_router(num_experts=4, device=device)
         router.eval()
         fair = 1.0 / 4
         router.ema_load.fill_(fair)
         with torch.no_grad():
-            penalty = (router.ema_load - fair).clamp(min=0.0)
-        assert penalty.max().item() == pytest.approx(0.0, abs=1e-7), (
-            "One-sided penalty must be zero when all experts are at fair share"
+            correction = router.ema_load - fair  # symmetric: no clamp
+
+        assert correction.abs().max().item() == pytest.approx(0.0, abs=1e-7), (
+            "Symmetric correction must be zero when all experts are at fair share"
         )
 
-    def test_penalty_only_for_overloaded(self, device):
+    def test_symmetric_correction(self, device):
+        """Overloaded experts get a positive penalty; underloaded experts get a negative bonus."""
         router = make_router(num_experts=4, device=device)
         router.eval()
         router.ema_load.copy_(torch.tensor([0.5, 0.1, 0.2, 0.2], device=device))
         fair = 1.0 / 4
-        penalty = (router.ema_load - fair).clamp(min=0.0)
-        assert penalty[0].item() > 0.0, "Overloaded expert should have positive penalty"
-        assert penalty[1].item() == pytest.approx(0.0, abs=1e-7), (
-            "Underloaded expert should have zero penalty"
+        correction = router.ema_load - fair  # symmetric
+
+        assert correction[0].item() > 0.0, (
+            "Overloaded expert should have positive correction (penalty)"
+        )
+        assert correction[1].item() < 0.0, (
+            "Underloaded expert should have negative correction (bonus)"
         )
 
     def test_overloaded_expert_selected_less(self, device):
@@ -165,8 +171,11 @@ class TestOneSidedPenalty:
             router.W[1] = direction.clone()
             router.W[2] = F.normalize(torch.randn(64, device=device), dim=-1)
             router.W[3] = F.normalize(torch.randn(64, device=device), dim=-1)
-            router.lambda_val.fill_(2.0)
-        x = direction.unsqueeze(0).unsqueeze(0)
+            router.lambda_val.fill_(
+                2.0
+            )  # expert 0 penalty: 2.0*(0.7-0.25)=+0.90; expert 1 bonus: 2.0*(0.1-0.25)=-0.30 → gap=1.20
+
+        x = direction.unsqueeze(0).unsqueeze(0)  # [1,1,64]
         count_0, count_1 = 0, 0
         for _ in range(20):
             weights, _, _ = router(x)
