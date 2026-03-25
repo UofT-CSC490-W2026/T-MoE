@@ -393,12 +393,27 @@ def build_optimizer(model: torch.nn.Module, cfg) -> torch.optim.Optimizer:
     if lr_base is not None and base_params:
         param_groups.append({"params": base_params, "lr": lr_base})
 
+    # fused=True fuses per-param updates into a single CUDA kernel (5-15% faster on H100/A100).
+    # Requires all params on CUDA — always true during training.
+    _use_fused = torch.cuda.is_available()
+
     if opt_name == "adamw":
         return torch.optim.AdamW(
-            param_groups, lr=lr, betas=betas, eps=eps, weight_decay=wd
+            param_groups,
+            lr=lr,
+            betas=betas,
+            eps=eps,
+            weight_decay=wd,
+            fused=_use_fused,
         )
     elif opt_name == "adam":
-        return torch.optim.Adam(param_groups, lr=lr, betas=betas, eps=eps)
+        return torch.optim.Adam(
+            param_groups,
+            lr=lr,
+            betas=betas,
+            eps=eps,
+            fused=_use_fused,
+        )
     else:
         raise ValueError(f"Unknown optimizer: {cfg.training.optimizer}")
 
@@ -572,6 +587,8 @@ def main():
                 sampler=train_sampler,
                 num_workers=num_workers,
                 pin_memory=torch.cuda.is_available(),
+                persistent_workers=num_workers > 0,
+                prefetch_factor=4 if num_workers > 0 else None,
             )
         else:
             train_loader = DataLoader(
@@ -580,6 +597,8 @@ def main():
                 shuffle=True,
                 num_workers=num_workers,
                 pin_memory=torch.cuda.is_available(),
+                persistent_workers=num_workers > 0,
+                prefetch_factor=4 if num_workers > 0 else None,
             )
 
         val_loader = None
@@ -591,6 +610,8 @@ def main():
                 shuffle=False,
                 num_workers=num_workers,
                 pin_memory=torch.cuda.is_available(),
+                persistent_workers=num_workers > 0,
+                prefetch_factor=4 if num_workers > 0 else None,
             )
         except FileNotFoundError:
             print("No validation shards found. Skipping validation.")
@@ -667,6 +688,10 @@ def main():
         # (attention + frozen MLP matmuls) without fighting dynamo on the MoE path.
         if cfg.get("compile", False):
             print("Compiling model with torch.compile...")
+            # layer_idx is an integer attr on Qwen2/GPT-Neo attention layers.
+            # Without this, Dynamo recompiles once per layer (28x for Qwen2-1.5B),
+            # hits the recompile limit, and falls back to eager for later layers.
+            torch._dynamo.config.allow_unspec_int_on_nn_module = True
             base = get_model_for_attr_access(model)
             if hasattr(base, "backbone"):
                 base.backbone = torch.compile(base.backbone)
@@ -735,12 +760,17 @@ def main():
         # If training.steps is set in the YAML it overrides; otherwise Chinchilla is used.
         _global_batch = batch_size * grad_accum * world_size
         _tokens_per_step = _global_batch * cfg.dataset.max_seq_len
-        _hidden = getattr(cfg.model, "hidden_size", 768)
-        _inter = getattr(cfg.model, "intermediate_size", 3072)
+        from src.configs.model import model_lookup as _ml
+
+        _model_info_chinchilla = _ml(cfg.model.model_key)
+        _hidden = _model_info_chinchilla["hidden_dim"]
+        _inter = _model_info_chinchilla.get("intermediate_dim", 4 * _hidden)
         _rank = cfg.expert.lora.rank
         _n_exp = cfg.router.num_experts
         _n_moe = len(cfg.model.moe_layer_indices)
-        _lora_per_expert = 2 * (_rank * _hidden + _rank * _inter)
+        # GPT-Neo: 2 projections (c_fc, c_proj); Qwen2 SwiGLU: 3 (gate, up, down)
+        _n_proj = 3 if cfg.expert.type == "qwen2_lora" else 2
+        _lora_per_expert = _n_proj * (_rank * _hidden + _rank * _inter)
         trainable_params = (
             _lora_per_expert * _n_exp * _n_moe + _n_exp * _hidden * _n_moe
         )
