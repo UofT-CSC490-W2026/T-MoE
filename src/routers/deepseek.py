@@ -67,28 +67,33 @@ class DeepSeekRouter(BaseRouter):
             noise = torch.randn_like(logits) * self.noise_std
             logits = logits + noise
 
-        routed_logits = logits + self.bias
+        # DeepSeek V3 §2.1: selection uses biased logits; output weights use unbiased scores.
+        # Bias corrects load imbalance at routing time but must not contaminate the output
+        # weight gradient, which flows back through the gate weight matrix only.
+        biased_logits = logits + self.bias
 
+        # Selection: top-k by biased logits (stop-gradient on selection itself)
+        _, top_k_indices = torch.topk(
+            biased_logits, self.top_k, dim=-1
+        )  # (B, S, top_k)
+
+        # Output weights: unbiased scores gathered at selected indices, then L1-normalized
         if self.use_sigmoid:
-            probs = torch.sigmoid(routed_logits)
+            raw_scores = torch.sigmoid(logits)  # (B, S, E) — gradient flows here
         else:
-            probs = F.softmax(routed_logits, dim=-1)
+            raw_scores = F.softmax(logits, dim=-1)  # (B, S, E)
 
-        top_k_values, top_k_indices = torch.topk(probs, self.top_k, dim=-1)
+        top_k_weights = raw_scores.gather(-1, top_k_indices)  # (B, S, top_k)
+        top_k_weights = F.normalize(top_k_weights, p=1, dim=-1)  # L1 normalize
 
-        # Create a unified dense weight matrix (N, E)
-        bsz, seq, _ = probs.shape
-        probs_flat = probs.view(-1, self.num_experts)
-        top_k_indices_flat = top_k_indices.view(-1, self.top_k)
+        bsz, seq, _ = logits.shape
+        top_k_indices_flat = top_k_indices.view(-1, self.top_k)  # (N, top_k)
+        top_k_weights_flat = top_k_weights.view(-1, self.top_k)  # (N, top_k)
+        raw_scores_flat = raw_scores.view(-1, self.num_experts)  # (N, E)
 
-        if self.use_sigmoid:
-            top_k_weights = top_k_values
-        else:
-            top_k_weights = F.normalize(top_k_values, p=1, dim=-1)
-
-        expert_weights = torch.zeros_like(probs_flat)
+        expert_weights = torch.zeros_like(raw_scores_flat)
         expert_weights = expert_weights.scatter(
-            1, top_k_indices_flat, top_k_weights.view(-1, self.top_k)
+            1, top_k_indices_flat, top_k_weights_flat
         )
 
         if self.training and record_usage:
@@ -97,22 +102,41 @@ class DeepSeekRouter(BaseRouter):
         metrics = None
         if return_metrics:
             metrics = self.metrics_tracker.compute_all_metrics(
-                top_k_indices,
-                top_k_weights.view(-1, self.top_k)
-                if not self.use_sigmoid
-                else top_k_values.view(-1, self.top_k),
+                top_k_indices_flat, top_k_weights_flat
             )
+            # eff_E_hard: hard assignment effective experts — paper comparison parity
+            hard = torch.zeros(
+                self.num_experts, device=top_k_indices_flat.device, dtype=torch.float32
+            )
+            hard.scatter_add_(
+                0,
+                top_k_indices_flat.reshape(-1).clamp(min=0),
+                torch.ones(
+                    top_k_indices_flat.numel(), device=top_k_indices_flat.device
+                ),
+            )
+            hard = hard / hard.sum().clamp(min=1e-8)
+            metrics["eff_E_hard"] = (1.0 / (hard**2).sum().clamp(min=1e-8)).item()
 
         return expert_weights, None, metrics
+
+    @torch.no_grad()
+    def _sync_usage_distributed(self) -> None:
+        try:
+            import torch.distributed as dist
+        except ImportError:
+            return
+        if not dist.is_initialized() or dist.get_world_size() <= 1:
+            return
+        dist.all_reduce(self._pending_usage_sum, op=dist.ReduceOp.SUM)
+        dist.all_reduce(self._pending_tokens, op=dist.ReduceOp.SUM)
 
     def step(self) -> None:
         if not self._usage_pending:
             return
 
         with torch.no_grad():
-            # Sync usage counts across DDP ranks before computing bias update.
             self._sync_usage_distributed()
-
             usage_avg = (
                 self._pending_usage_sum.float()
                 / self._pending_tokens.float().clamp(min=1)
@@ -131,17 +155,6 @@ class DeepSeekRouter(BaseRouter):
             self._pending_usage_sum.zero_()
             self._pending_tokens.zero_()
             self._usage_pending = False
-
-    @torch.no_grad()
-    def _sync_usage_distributed(self) -> None:
-        try:
-            import torch.distributed as dist
-        except ImportError:
-            return
-        if not dist.is_initialized() or dist.get_world_size() <= 1:
-            return
-        dist.all_reduce(self._pending_usage_sum, op=dist.ReduceOp.SUM)
-        dist.all_reduce(self._pending_tokens, op=dist.ReduceOp.SUM)
 
     def compute_aux_loss(self) -> torch.Tensor:
         return torch.tensor(0.0, device=self.gate.weight.device)

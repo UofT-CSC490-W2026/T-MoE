@@ -1105,6 +1105,7 @@ def main():
                 # Diagnostic A: merge per-expert gradient norms (collected before optimizer step)
                 metrics.update(_diag_a_metrics)
 
+                # Diagnostic B: lambda trajectory logged every log_interval (dense).
                 # Captures the calibration jump at lambda_calib_step — critical for paper figures.
                 if step % log_interval == 0 and _moe_layers_ref:
                     _base_m_diag_b = get_model_for_attr_access(model)

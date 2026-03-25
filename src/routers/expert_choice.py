@@ -45,9 +45,10 @@ class ExpertChoiceRouter(BaseRouter):
                 logits_flat, nan=0.0, posinf=1.0, neginf=-1.0
             )
 
-        # Normalize across EXPERTS (dim=-1) instead of tokens (dim=0)
-        # to ensure weights/gradients have sufficient magnitude (~1/E).
-        probs = F.softmax(logits_flat, dim=-1)  # (N, E)
+        # Normalize across TOKENS (dim=0) per expert column — Expert Choice paper §3.1.
+        # Each expert's column forms a probability distribution over tokens in the batch,
+        # so the router expresses "how much does expert i want each token" (not vice versa).
+        probs = F.softmax(logits_flat, dim=0)  # (N, E)
 
         max_tokens = logits_flat.size(0)
         capacity = int(max_tokens / self.num_experts * self.top_k)
@@ -58,7 +59,7 @@ class ExpertChoiceRouter(BaseRouter):
 
         # Create a unified weight matrix of shape (N, E)
         expert_weights = torch.zeros_like(probs)  # (N, E)
-        expert_weights = expert_weights.scatter(0, top_indices, top_probs)
+        expert_weights.scatter_(0, top_indices, top_probs)
 
         metrics = None
         if return_metrics:
@@ -66,6 +67,12 @@ class ExpertChoiceRouter(BaseRouter):
             drop_rate = 1.0 - (selected_count / max_tokens)
             metrics = self.metrics_tracker.compute_all_metrics(None, expert_weights)
             metrics["token_drop_rate"] = drop_rate
+            # eff_E_hard: tokens-per-expert hard counts — uniform by construction in expert
+            # choice (each expert selects exactly `capacity` tokens), so eff_E_hard ≈ N.
+            # Computed explicitly to catch early-training skew and for paper comparison parity.
+            hard = (expert_weights > 0).float().sum(dim=0)  # (E,) tokens per expert
+            hard = hard / hard.sum().clamp(min=1e-8)
+            metrics["eff_E_hard"] = (1.0 / (hard**2).sum().clamp(min=1e-8)).item()
 
         # Return (expert_weights, None, metrics)
         return expert_weights, None, metrics

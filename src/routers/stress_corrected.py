@@ -174,11 +174,9 @@ class StressCorrectedRouter(BaseRouter):
         )
 
         # Lambda — calibrated once at lambda_calib_step, then fixed.
-        # Pre-calibration: use lambda_init (default 0.1) to avoid overwhelming
-        # the cosine signal. At D=1536 σ_cos≈0.025; the old default of 1.0 was
-        # 5x the expected calibrated λ≈0.2, suppressing all routing signal.
         self.register_buffer("lambda_val", torch.tensor(config.lambda_init))
         self.register_buffer("lambda_initialized", torch.tensor(False))
+        self.register_buffer("sigma_cos_at_calib", torch.tensor(0.0))
         self._lambda_init_done: bool = False  # compile-safe Python mirror
 
         self.register_buffer("num_steps", torch.tensor(0, dtype=torch.long))
@@ -294,6 +292,7 @@ class StressCorrectedRouter(BaseRouter):
         sigma_cos = cos_sim_flat.std().clamp(min=1e-4)
         self.lambda_val.fill_((sigma_cos * self.num_experts).clamp(max=5.0).item())
         self.lambda_initialized.fill_(True)
+        self.sigma_cos_at_calib.fill_(sigma_cos.item())
 
     @torch._dynamo.disable
     def _read_ema_load(self) -> torch.Tensor:
@@ -416,13 +415,18 @@ class StressCorrectedRouter(BaseRouter):
         # Apply one EMA step from counts accumulated across all forward passes
         # in this gradient-accumulation window. This ensures α=0.01 per optimizer
         # step regardless of how many layers × microbatches called forward().
-        n = self._pending_count_n.item()
-        if n > 0:
-            with torch.no_grad():
-                avg_counts = self._pending_counts / n
+        # DDP: all_reduce(SUM) _pending_counts and _pending_count_n across ranks BEFORE
+        # the EMA update so all ranks apply EMA from the globally-pooled load signal,
+        # not per-rank diverged counts. The collective must be called unconditionally
+        # by all ranks (no n>0 guard around it) to avoid collective rank mismatch.
+        with torch.no_grad():
+            self._sync_pending_counts_distributed()
+            n_global = self._pending_count_n.item()
+            if n_global > 0:
+                avg_counts = self._pending_counts / self._pending_count_n.float()
                 self.ema_load.mul_(1 - self.ema_alpha).add_(avg_counts * self.ema_alpha)
-                self._pending_counts.zero_()
-                self._pending_count_n.zero_()
+            self._pending_counts.zero_()
+            self._pending_count_n.zero_()
 
         if (
             self.num_steps.item() == self.lambda_calib_step
@@ -432,9 +436,9 @@ class StressCorrectedRouter(BaseRouter):
                 pending = torch.cat(self._pending_cos_sims, dim=0)
                 self._calibrate_lambda(pending)
             self._lambda_init_done = True
-            # ALL ranks must call this together — no branching.
-            # If pending was empty on this rank, lambda stays at lambda_init and participates
-            # in the AVG so other ranks' calibrated value is preserved.
+            # Broadcast rank-0's calibrated λ to all ranks.
+            # Rank 0 has the most reliable σ_cos (it ran k-means and sees representative
+            # activations). AVG would underestimate λ if any rank had empty cos_sims.
             self._sync_lambda_distributed()
 
         # Clear cosine accumulator each step — bounds memory to one grad-accum window.
@@ -447,7 +451,20 @@ class StressCorrectedRouter(BaseRouter):
         # drift that caused the NCCL deadlock.
 
     @torch.no_grad()
+    def _sync_pending_counts_distributed(self) -> None:
+        try:
+            import torch.distributed as dist
+        except ImportError:
+            return
+        if not dist.is_initialized() or dist.get_world_size() <= 1:
+            return
+        dist.all_reduce(self._pending_counts, op=dist.ReduceOp.SUM)
+        dist.all_reduce(self._pending_count_n, op=dist.ReduceOp.SUM)
+
+    @torch.no_grad()
     def _sync_ema_load_distributed(self) -> None:
+        # Called after EMA update as a convergence safety net (e.g., after resume).
+        # Primary sync happens via _sync_pending_counts_distributed before EMA update.
         try:
             import torch.distributed as dist
         except ImportError:
@@ -464,7 +481,10 @@ class StressCorrectedRouter(BaseRouter):
             return
         if not dist.is_initialized() or dist.get_world_size() <= 1:
             return
-        dist.all_reduce(self.lambda_val, op=dist.ReduceOp.AVG)
+        # Broadcast from rank 0 — rank 0 ran k-means and has the most representative
+        # σ_cos. AVG would corrupt λ if any rank had empty _pending_cos_sims.
+        dist.broadcast(self.lambda_val, src=0)
+        dist.broadcast(self.sigma_cos_at_calib, src=0)
 
     @torch.no_grad()
     def _sync_welford_distributed(self) -> None:
@@ -537,6 +557,7 @@ class StressCorrectedRouter(BaseRouter):
         metrics["ema_load_max"] = self.ema_load.max().item()
         metrics["ema_load_std"] = self.ema_load.std().item()
         metrics["lambda_val"] = self.lambda_val.item()
+        metrics["sigma_cos_at_calib"] = self.sigma_cos_at_calib.item()
         metrics["tau"] = self._current_tau()
         metrics["noise_std"] = self._noise_std
 
@@ -564,7 +585,7 @@ class StressCorrectedRouter(BaseRouter):
 
     def compute_aux_loss(self) -> torch.Tensor:
         """Always zero — one-sided load penalty IS the balancing mechanism."""
-        return torch.tensor(0.0, device=self.W.device)
+        return self.W.new_zeros(1).squeeze()
 
     def clear_aux_state(self) -> None:
         pass
