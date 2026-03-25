@@ -132,11 +132,15 @@ class DeepSeekRouter(BaseRouter):
         dist.all_reduce(self._pending_tokens, op=dist.ReduceOp.SUM)
 
     def step(self) -> None:
-        if not self._usage_pending:
-            return
-
         with torch.no_grad():
+            # Sync BEFORE the early-return guard: dist.all_reduce is a collective —
+            # all DDP ranks must call it together. Gating it behind _usage_pending
+            # (a non-collective bool) risks NCCL deadlock if ranks ever diverge.
             self._sync_usage_distributed()
+
+            if not self._usage_pending:
+                return
+
             usage_avg = (
                 self._pending_usage_sum.float()
                 / self._pending_tokens.float().clamp(min=1)
