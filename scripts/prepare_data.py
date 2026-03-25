@@ -210,7 +210,9 @@ def _iter_token_arrays(
                     print(f"  ... {docs_done:,} docs tokenized ({i} batches)")
 
 
-def tokenize_and_pack(cfg, out_dir: Path, num_proc: int = 1, cache_dir: str | None = None) -> None:
+def tokenize_and_pack(
+    cfg, out_dir: Path, num_proc: int = 1, cache_dir: str | None = None
+) -> None:
     from datasets import load_dataset
 
     dataset_key = cfg.dataset.dataset_key

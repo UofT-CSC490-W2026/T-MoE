@@ -30,7 +30,9 @@ def execute_training_workflow(
     model_key = OmegaConf.select(
         experiment_config, "model.model_key", default="gpt-neo-125m"
     )
-    shard_dir = get_shard_dir(dataset_key, model_key, base=str(Path(cache_dir) / "shards"))
+    shard_dir = get_shard_dir(
+        dataset_key, model_key, base=str(Path(cache_dir) / "shards")
+    )
 
     # Output directory alongside cache
     output_dir = Path(cache_dir) / "outputs" / config_name
