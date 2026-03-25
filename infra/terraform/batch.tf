@@ -37,7 +37,7 @@ resource "aws_batch_compute_environment" "gpu_spot" {
     instance_role       = aws_iam_instance_profile.batch_ecs.arn
 
     ec2_configuration {
-      image_type = "ECS_AL2023"
+      image_type = "ECS_AL2023_NVIDIA"
     }
 
     launch_template {
