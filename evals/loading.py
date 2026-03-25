@@ -114,6 +114,9 @@ def _build_moe_layers(model, config: Any) -> Dict[int, LoRAMoELayer]:
         alpha=int(_cfg_select(config, "expert.lora.alpha", 16)),
         dropout=float(_cfg_select(config, "expert.lora.dropout", 0.0)),
         init_scale=float(_cfg_select(config, "expert.lora.init_scale", 0.01)),
+        shared_base_rank=int(_cfg_select(config, "expert.lora.shared_base_rank", 0)),
+        shared_base_alpha=int(_cfg_select(config, "expert.lora.shared_base_alpha", 0)),
+        trainable_base=bool(_cfg_select(config, "expert.lora.trainable_base", False)),
     )
 
     router_type, num_experts, top_k, router_kwargs = _router_kwargs(config)

@@ -433,9 +433,20 @@ def evaluate_token_shards(
 
     token_arrays = []
     for path in shard_files:
+        file_size = path.stat().st_size
         with open(path, "rb") as f:
             n_tokens = struct.unpack("<Q", f.read(8))[0]
-        mm = np.memmap(path, dtype=np.uint16, mode="r", offset=8, shape=(n_tokens,))
+        # Detect legacy (8-byte) vs versioned (10-byte) header — matches ShardDataset logic.
+        # prepare_data.py writes dtype_flag=0 (uint16, GPT-Neo) or 1 (uint32, Qwen2).
+        if file_size - 8 == n_tokens * 2:
+            dtype, offset = np.uint16, 8
+        else:
+            with open(path, "rb") as f:
+                f.read(8)
+                dtype_flag = struct.unpack("<H", f.read(2))[0]
+            dtype = np.uint32 if dtype_flag == 1 else np.uint16
+            offset = 10
+        mm = np.memmap(path, dtype=dtype, mode="r", offset=offset, shape=(n_tokens,))
         token_arrays.append(mm.astype(np.int64))
 
     all_tokens = np.concatenate(token_arrays)

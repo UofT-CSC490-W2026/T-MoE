@@ -92,6 +92,9 @@ class GPTNeoBackbone(BaseModelBackbone):
         config = AutoConfig.from_pretrained(self.model_name)
         self.vocab_size = config.vocab_size
 
+    def get_mlp_at(self, idx: int) -> nn.Module:
+        return self.backbone.transformer.h[idx].mlp
+
     def inject_moe_layers(self, moe_layers: Dict[int, nn.Module]) -> None:
         if not moe_layers:
             return
