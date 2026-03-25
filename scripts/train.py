@@ -223,7 +223,7 @@ def build_model(cfg) -> torch.nn.Module:
     moe_layers = {}
     for layer_idx in cfg.model.moe_layer_indices:
         actual_idx = layer_idx if layer_idx >= 0 else model.num_layers + layer_idx
-        original_mlp = model.backbone.transformer.h[actual_idx].mlp
+        original_mlp = model.get_mlp_at(actual_idx)
 
         router = create_router(
             router_type=cfg.router.type,
@@ -236,6 +236,7 @@ def build_model(cfg) -> torch.nn.Module:
             # SPAR-specific — filtered out for non-SPAR routers by create_router
             ema_alpha=cfg.router.get("ema_alpha", 0.01),
             lambda_calib_step=cfg.router.get("lambda_calib_step", 600),
+            lambda_init=cfg.router.get("lambda_init", 0.1),
             tau_final=cfg.router.get("tau_final", cfg.router.get("temperature", 1.0)),
             tau_anneal_steps=cfg.router.get("tau_anneal_steps", 0),
             noise_anneal_steps=cfg.router.get("noise_anneal_steps", 0),
