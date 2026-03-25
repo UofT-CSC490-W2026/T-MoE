@@ -48,7 +48,7 @@ variable "raw_bucket_prefix" {
 variable "batch_instance_types" {
   description = "Instance types for Batch compute environment"
   type        = list(string)
-  default     = ["m5.xlarge"]
+  default     = ["g4dn.xlarge", "g4dn.2xlarge"]
 }
 
 variable "batch_max_vcpus" {
