@@ -32,7 +32,7 @@ from omegaconf import OmegaConf
 # CONFIGURATION — change this one line to switch experiments
 # =============================================================================
 
-CONFIG = "experiments/qwen2_1.5b_stress_v1-fineweb.yaml"
+CONFIG = "experiments/qwen2_1.5b_stress_v2-fineweb.yaml"
 
 # GPU spec is read from compute.modal.gpu in the active config.
 # Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
@@ -389,8 +389,11 @@ def stage_train(config: str = CONFIG, overrides: str = ""):  # noqa: B008
                 for rank, msg in json.load(f).get("message", {}).items():
                     print(f"\n--- Rank {rank} ---\n{msg.get('message', '')}")
         raise
+    finally:
+        # Commit even on crash so checkpoints written before the failure are
+        # persisted to Modal storage and not lost when the container exits.
+        volume.commit()
 
-    volume.commit()
     print(f"[stage_train] Done → {out_dir}")
 
 

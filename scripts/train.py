@@ -1324,7 +1324,10 @@ def main():
                 if dist.is_initialized():
                     dist.barrier()
 
-        # Final save
+        # Final save — always runs regardless of val_loader availability.
+        # Without this, runs without val shards only save at save_interval
+        # boundaries, so the last checkpoint is max_steps - (max_steps % save_interval)
+        # instead of max_steps (e.g. step 18000 instead of 19000).
         print("\nTraining complete.")
         if val_loader is not None:
             base_model = get_model_for_attr_access(model)

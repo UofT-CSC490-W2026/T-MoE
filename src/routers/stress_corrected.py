@@ -132,7 +132,11 @@ class StressCorrectedRouter(BaseRouter):
 
     Load update (EMA, after each optimizer step):
         L_i(t) = (1-α) · L_i(t-1) + α · U_i(t)
-        U_i(t) = fraction of token-expert assignments routed to expert i.
+        U_i(t) = fraction of total output weight contributed by expert i
+                 (soft: sum of softmax weights for expert i / total weight).
+                 Tracks actual model reliance, not just selection frequency.
+                 At τ=0.10 a dominant expert receives ~2× its hard-count share;
+                 soft tracking corrects for this, preventing penalty under-correction.
         Synced across DDP ranks every step via all_reduce(AVG).
 
     Welford statistics (tracked for metrics only, not used in logit):
@@ -301,6 +305,7 @@ class StressCorrectedRouter(BaseRouter):
     def _update_load_and_welford(
         self,
         topk_idx: torch.Tensor,
+        topk_weights: torch.Tensor,
         x_norm: torch.Tensor,
         W_norm: torch.Tensor,
         cos_sim: torch.Tensor,
@@ -308,13 +313,22 @@ class StressCorrectedRouter(BaseRouter):
         S: int,
     ) -> None:
         """Update EMA load, Welford stats, and cosine accumulators.
-        Disabled from Dynamo to prevent version conflicts."""
+        Disabled from Dynamo to prevent version conflicts.
+
+        EMA tracks soft output weights (not hard selection counts).  At τ=0.10
+        the dominant expert receives ~2× its selection-frequency share of output
+        weight; hard counts would under-correct by that factor.  Soft weights
+        align the penalty with the expert's actual contribution to model output,
+        which is what the gradient signal cares about.  Mean(soft_load_i) = 1/N
+        holds exactly (softmax sums to 1 per token), so the lambda calibration
+        formula λ = σ_cos · N is unchanged.
+        """
         with torch.no_grad():
             counts = torch.zeros(self.num_experts, device=topk_idx.device)
             counts.scatter_add_(
                 0,
                 topk_idx.flatten().clamp(min=0),
-                torch.ones(topk_idx.numel(), device=topk_idx.device),
+                topk_weights.flatten().to(counts.dtype),
             )
             counts.div_(counts.sum().clamp(min=1e-8))
             self._pending_counts.add_(counts)
@@ -386,6 +400,7 @@ class StressCorrectedRouter(BaseRouter):
             # no gradient is needed or used there.
             self._update_load_and_welford(
                 topk_idx.detach(),
+                topk_weights.detach(),
                 x_norm.detach(),
                 W_norm.detach(),
                 cos_sim.detach(),

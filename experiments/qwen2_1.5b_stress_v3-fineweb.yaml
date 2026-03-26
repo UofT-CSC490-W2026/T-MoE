@@ -1,0 +1,101 @@
+# ============================================================================
+# Qwen2-1.5B / SPAR v3 (StressCorrectedRouter) — fineweb-edu
+# ============================================================================
+#
+# PRIMARY PAPER EXPERIMENT: SPAR v3 — soft-weight EMA tracking
+#
+# Change from v2: EMA load tracks soft output weights (softmax fractions)
+#   instead of hard selection counts.
+#
+#   v2 (hard counts): U_i = (# tokens selecting expert i) / (B·S·k)
+#   v3 (soft weights): U_i = (sum of softmax weights for expert i) / (B·S)
+#
+#   Motivation: at τ=0.10 the dominant expert receives ~2× its selection-
+#   frequency share of output weight. Hard-count EMA under-corrects by that
+#   factor — the penalty sees load=0.23 when the expert contributes 0.37 of
+#   model output. Soft-weight tracking aligns the penalty with actual model
+#   reliance, closing the usage/load divergence observed in v2 at step 3400.
+#
+#   Mathematical property: mean(soft_load_i) = 1/N exactly (softmax sums
+#   to 1 per token), so λ = min(σ_cos · N, 5.0) calibration is unchanged.
+#
+# All other sections identical to v2 for controlled comparison.
+# ============================================================================
+
+experiment_name: qwen2_1.5b_stress_v3_fineweb
+seed: 42
+compile: true
+
+model:
+  model_key: qwen2-1.5b
+  freeze_backbone: true
+  moe_layer_indices: [2, 6, 10, 14, 18, 22]
+
+router:
+  type: stress_corrected
+  num_experts: 8
+  top_k: 2
+  temperature: 0.5          # τ_0 — initial output weight sharpness; SPAR's one free hyperparameter
+  tau_final: 0.10           # τ at end of annealing; sharpens routing confidence (v7 optimum)
+  tau_anneal_steps: 14000   # 73.7% of 19000 steps — same proportion as v7
+  noise_std: 0.0            # No exploration noise: σ_cos≈0.025 at D=1536 < noise at 0.05
+  eps: 1.0e-3               # Numerical floor; kept for config compatibility
+  ema_alpha: 0.01           # Slow EMA (~100-step window); prevents load oscillation on large corpus
+  lambda_calib_step: 1000   # warmup_steps(800) + 200; ensures EMA has stabilized before λ is frozen
+  lambda_init: 0.1          # pre-calibration λ; auto-corrected at step 1000
+  init_from_data: true      # K-means prototype init from layer activations before training begins
+
+expert:
+  type: qwen2_lora
+  count: 8
+  lora:
+    rank: 32
+    alpha: 32
+    dropout: 0.0
+    init_scale: 0.01
+    b_init_scale: 0.0
+
+training:
+  batch_size: 8
+  gradient_accumulation_steps: 4
+  steps: 19000
+  lr: 3.0e-4
+  warmup_steps: 800
+  weight_decay: 0.1
+  save_interval: 1000
+  keep_last_n_checkpoints: 10
+  eval_interval: 500
+  log_interval: 25
+  optimizer: adamw
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  clip_grad_norm: 1.0
+  num_workers: 8
+
+dataset:
+  dataset_key: fineweb-edu
+  max_seq_len: 2048
+
+logging:
+  enabled: true
+  log_gradients: false
+  log_interval: 25
+
+distributed:
+  strategy: ddp
+  find_unused_parameters: false
+
+eval:
+  stride: 512
+  max_documents: null
+  max_eval_length: 2048
+  batch_size: 64
+  lm_harness_batch_size: 8
+  limit: null
+  seq_len: 2048
+  warmup_iters: 10
+  benchmark_iters: 100
+
+compute:
+  modal:
+    gpu: "H100:8"
