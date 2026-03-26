@@ -1,72 +1,3 @@
-# =============================================================================
-# TODO: GMR (Global Mean Projection) — v8b experiment
-# =============================================================================
-#
-# Motivation:
-#   On fineweb-edu, gini stays ~0.05-0.10 at all stages (vs 0.388 on wikitext).
-#   Root cause: diverse corpus → near-uniform token distribution in hidden space
-#   → cosine similarities between x and all W_i are ~equal → SPAR enforces
-#   perfect balance (eff_E→8) with no semantic differentiation.
-#   Fix: route in corpus-residual space instead of raw hidden space.
-#
-# Formulation:
-#   x_proj = x - (x · v_global) * v_global      # project out global mean dir
-#   v_global updated via EMA of batch means (no hyperparameter, no grad)
-#   All cosine sims computed on x_proj instead of x
-#
-# Files to change:
-#   src/routers/stress_corrected.py   ← here
-#   src/configs/router.py             ← add gmr_enabled: bool = False, gmr_beta: float = 0.999
-#   experiments/gptneo_125m_stress_v8b-fineweb.yaml  ← add gmr_enabled: true
-#
-# Implementation steps:
-#
-#   1. StressCorrectedRouterConfig: add two fields
-#        gmr_enabled: bool = False
-#        gmr_beta: float = 0.999     # EMA decay for v_global (no hyperparameter exposure needed)
-#
-#   2. StressCorrectedRouter.__init__: register v_global buffer
-#        self.register_buffer('v_global', torch.zeros(config.hidden_dim, dtype=torch.float32))
-#        self.register_buffer('v_global_initialized', torch.tensor(False))
-#
-#   3. Add _update_v_global(x_flat: Tensor) -> None
-#        with torch.no_grad():
-#            batch_mean = x_flat.mean(dim=0).float()
-#            batch_mean_norm = F.normalize(batch_mean, dim=-1)
-#            if not self.v_global_initialized:
-#                self.v_global.copy_(batch_mean_norm)
-#                self.v_global_initialized.fill_(True)
-#            else:
-#                self.v_global.mul_(self.gmr_beta).add_(batch_mean_norm * (1 - self.gmr_beta))
-#                self.v_global.copy_(F.normalize(self.v_global, dim=-1))
-#
-#   4. Add _sync_v_global_distributed() — call in step() after EMA update
-#        dist.all_reduce(self.v_global, op=dist.ReduceOp.AVG)
-#        self.v_global.copy_(F.normalize(self.v_global, dim=-1))
-#
-#   5. In forward(): project x before F.normalize
-#        if self.config.gmr_enabled:
-#            self._update_v_global(x_flat)
-#            proj = (x_flat.float() @ self.v_global.unsqueeze(-1)).squeeze(-1)
-#            x_for_routing = x_flat - proj.unsqueeze(-1) * self.v_global
-#        else:
-#            x_for_routing = x_flat
-#        x_norm = F.normalize(x_for_routing.to(self.W.dtype), dim=-1)
-#        # output weights still use original x (not x_proj) so gradient flows correctly
-#
-#   6. In initialize_prototypes_from_data(): apply same projection before k-means
-#        so prototypes are initialized in the same residual space
-#
-# Key properties:
-#   - v_global is updated out-of-graph (no_grad) → zero new hyperparameters
-#   - At init, v_global=0 → projection is identity → bit-identical to v7/v8a
-#   - DDP: sync v_global via all_reduce(AVG) + renormalize in step()
-#   - Output weights w_i computed from original x (not x_proj) → gradient
-#     flows through softmax to W_i correctly
-#
-# Run after v8a completes. Config: gptneo_125m_stress_v8b-fineweb.yaml
-# =============================================================================
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -82,7 +13,7 @@ MIN_TEMPERATURE = 1e-3
 
 
 def _kmeans_init(activations: torch.Tensor, k: int, n_iter: int = 20) -> torch.Tensor:
-    """K-means on unit-normalized activations. Returns [k, D] centroids (not normalized)."""
+    """K-means++ on unit-normalized activations. Returns [k, D] centroids (unnormalized)."""
     N, D = activations.shape
     if N < k:
         raise ValueError(f"_kmeans_init: need at least k={k} tokens, got N={N}")
@@ -91,7 +22,7 @@ def _kmeans_init(activations: torch.Tensor, k: int, n_iter: int = 20) -> torch.T
     for _ in range(n_iter):
         norms_x = F.normalize(activations, dim=-1)
         norms_c = F.normalize(centroids, dim=-1)
-        assignments = (norms_x @ norms_c.T).argmax(dim=-1)  # [N]
+        assignments = (norms_x @ norms_c.T).argmax(dim=-1)
         new_centroids = torch.zeros_like(centroids)
         counts = torch.zeros(k, device=activations.device)
         new_centroids.scatter_add_(
@@ -100,7 +31,7 @@ def _kmeans_init(activations: torch.Tensor, k: int, n_iter: int = 20) -> torch.T
         counts.scatter_add_(0, assignments, torch.ones(N, device=activations.device))
         mask = counts > 0
         new_centroids[mask] /= counts[mask].unsqueeze(-1)
-        new_centroids[~mask] = centroids[~mask]  # keep old centroid for empty clusters
+        new_centroids[~mask] = centroids[~mask]
         centroids = new_centroids
     return centroids
 
@@ -108,40 +39,16 @@ def _kmeans_init(activations: torch.Tensor, k: int, n_iter: int = 20) -> torch.T
 @RouterRegistry.register(RouterType.STRESS_CORRECTED.value)
 class StressCorrectedRouter(BaseRouter):
     r"""
-    SPAR Router: symmetric adaptive load penalty, no auxiliary loss.
+    SPAR Router — symmetric load-corrected cosine routing, no auxiliary loss.
 
-    Selection logit:
-        z_i(x,t) = cos(x, W_i) - λ · (L_i(t) - 1/N)
-
-        cos(x, W_i)     — cosine similarity: directional, scale-invariant
-        L_i - 1/N       — symmetric correction: negative (bonus) for underloaded
-                          experts, positive (penalty) for overloaded ones.
-                          Restoring force toward fair share from both directions.
-        λ               — auto-calibrated once at step lambda_calib_step:
-                          λ = min(σ_cos · N, 5.0)
-                          where σ_cos is the within-token inter-expert std
-                          (averaged across tokens). A 1-sigma routing variation
-                          equals a 1× fair-share correction. No manual tuning.
-
-    Output weight:
-        w_i = softmax(cos(x, W_i) / τ_t)   over top-k selected experts only
-
-        τ_t anneals linearly: temperature → tau_final over tau_anneal_steps optimizer steps.
-        Selection and weighting are factored: selection carries the load signal;
-        weighting reflects alignment quality only. τ < 1 sharpens the distribution.
-
-    Load update (EMA, after each optimizer step):
-        L_i(t) = (1-α) · L_i(t-1) + α · U_i(t)
-        U_i(t) = fraction of total output weight contributed by expert i
-                 (soft: sum of softmax weights for expert i / total weight).
-                 Tracks actual model reliance, not just selection frequency.
-                 At τ=0.10 a dominant expert receives ~2× its hard-count share;
-                 soft tracking corrects for this, preventing penalty under-correction.
-        Synced across DDP ranks every step via all_reduce(AVG).
-
-    Welford statistics (tracked for metrics only, not used in logit):
-        Per-expert mean/variance of cosine distances — exposes alignment quality
-        in WandB without affecting routing.
+    Selection:   z_i(x) = cos(x, W_i) - λ·(L_i - 1/N)
+    Output wt:   w_i = softmax(cos(x, W_i) / τ)  over top-k selected experts
+    Lambda:      λ = min(σ_cos · N, 5.0), calibrated once post-warmup
+                 σ_cos = within-token inter-expert std (averaged across tokens)
+    Load EMA:    L_i(t) = (1-α)·L_i(t-1) + α·U_i(t)
+                 U_i = soft output weight fraction (not hard count) — at τ=0.1
+                 the dominant expert gets ~2× its selection-frequency share, so
+                 soft tracking prevents penalty under-correction.
     """
 
     def __init__(self, config: StressCorrectedRouterConfig):
@@ -152,9 +59,6 @@ class StressCorrectedRouter(BaseRouter):
                 f"top_k ({config.top_k}) cannot exceed num_experts ({config.num_experts})"
             )
 
-        # NOTE: eps was originally used for the Stress CV denominator (removed
-        # in SPAR clean — mu_stress=0).  F.normalize uses PyTorch's default
-        # eps=1e-12.  Kept for config compatibility.
         self.eps = config.eps
         self.temperature = config.temperature
         self.noise_std = config.noise_std
@@ -164,43 +68,29 @@ class StressCorrectedRouter(BaseRouter):
         self.tau_anneal_steps = config.tau_anneal_steps
         self.noise_anneal_steps = config.noise_anneal_steps
 
-        # Prototype directions — normalized in forward().
         self.W = nn.Parameter(
             F.normalize(torch.randn(config.num_experts, config.hidden_dim), dim=-1)
         )
-
-        # EMA load — fraction of assignments per expert, sums to 1.
-        # Initialized to fair share; updated each optimizer step.
         self.register_buffer(
             "ema_load", torch.ones(config.num_experts) / config.num_experts
         )
-
-        # Lambda — calibrated once at lambda_calib_step, then fixed.
         self.register_buffer("lambda_val", torch.tensor(config.lambda_init))
         self.register_buffer("lambda_initialized", torch.tensor(False))
         self.register_buffer("sigma_cos_at_calib", torch.tensor(0.0))
-        self._lambda_init_done: bool = False  # compile-safe Python mirror
-
         self.register_buffer("num_steps", torch.tensor(0, dtype=torch.long))
-        self._tau: float = (
-            config.temperature
-        )  # compile-safe Python float, updated in step()
-        self._noise_std: float = (
-            config.noise_std
-        )  # compile-safe Python float, updated in step()
 
-        # Pending count accumulator — raw assignment fractions summed across all
-        # forward passes in a gradient-accumulation window, applied as a single
-        # EMA step in step() to avoid multi-forward EMA compounding.
+        # Python mirrors of buffers — needed for torch.compile compatibility.
+        self._lambda_init_done: bool = False
+        self._tau: float = config.temperature
+        self._noise_std: float = config.noise_std
+
+        # Pending accumulators: counts and cos_sims are summed across all microbatches
+        # in a grad-accum window, then applied as a single EMA step in step().
+        # This prevents α from compounding across microbatches.
         self.register_buffer("_pending_counts", torch.zeros(config.num_experts))
         self.register_buffer("_pending_count_n", torch.tensor(0, dtype=torch.long))
-
-        # Cosine accumulator for λ calibration — collects cos_sim tensors from
-        # all forwards in the current grad-accum window so calibration uses the
-        # full optimizer step's data (not just the last microbatch).
         self._pending_cos_sims: list = []
 
-        # Welford state — metrics only, not used in routing logit.
         self.register_buffer(
             "welford_n", torch.zeros(config.num_experts, dtype=torch.float32)
         )
@@ -217,50 +107,53 @@ class StressCorrectedRouter(BaseRouter):
     def initialize_prototypes_from_data(
         self, activations: torch.Tensor, n_iter: int = 30
     ) -> None:
-        """Initialize W from k-means centroids of actual layer activations.
-        Call once before training begins, after collecting a representative batch.
-        activations: [N_tokens, hidden_dim] — raw hidden states at this MoE layer.
-        DDP: caller is responsible for broadcasting the result across ranks.
+        """Init W from k-means centroids of layer activations. Call before training.
+        activations: [N_tokens, hidden_dim]. DDP: caller broadcasts across ranks.
         """
         centroids = _kmeans_init(activations.float(), self.num_experts, n_iter)
         self.W.data.copy_(F.normalize(centroids, dim=-1).to(self.W.dtype))
 
     @torch.no_grad()
-    def _update_welford(
-        self, x_norm: torch.Tensor, topk_idx: torch.Tensor, W_norm: torch.Tensor
-    ) -> None:
-        B, S, D = x_norm.shape
-        x_flat = x_norm.reshape(-1, D)  # [BS, D]
-        alignments = x_flat @ W_norm.T  # [BS, E]
-        distances = 1.0 - alignments  # [BS, E], ∈ [0, 2]
+    def _update_welford(self, cos_sim: torch.Tensor, topk_idx: torch.Tensor) -> None:
+        """Online Welford update using only the top-k selected (token, expert) pairs.
+        Operates on cos_sim already computed in forward() — no extra matmul.
+        Uses scatter_add on [BS*k] pairs instead of a dense [BS, E] mask.
+        """
+        BS = cos_sim.shape[0] * cos_sim.shape[1]
+        flat_idx = topk_idx.reshape(-1)  # [BS*k]
+        cos_flat = cos_sim.reshape(BS, self.num_experts)
+        sel_dist = (
+            (1.0 - cos_flat.gather(1, topk_idx.reshape(BS, self.top_k)))
+            .float()
+            .reshape(-1)
+        )
 
-        # Binary mask: 1 if expert was selected for this token, 0 otherwise.
-        mask = torch.zeros(B * S, self.num_experts, device=x_flat.device)
-        mask.scatter_(1, topk_idx.reshape(-1, self.top_k), 1.0)  # [BS, E]
-
-        # Vectorized weighted Welford over all experts simultaneously.
-        # w_sum[E]: total weight routed to each expert this batch.
-        w_sum = mask.sum(dim=0)  # [E]
-        active = w_sum > 1e-8  # [E] bool
-
+        w_sum = torch.zeros(
+            self.num_experts, device=cos_sim.device, dtype=torch.float32
+        )
+        w_sum.scatter_add_(0, flat_idx.clamp(min=0), torch.ones_like(sel_dist))
+        active = w_sum > 1e-8
         if not active.any():
             return
 
-        # Work only in fp32 for numerical stability.
-        w = mask.float()  # [BS, E]
-        d = distances.float()  # [BS, E]
+        mu_sel = self.welford_mu[flat_idx.clamp(min=0)]
+        delta_pre = sel_dist - mu_sel
 
-        # Welford update:  n_new = n + w_sum
-        #   mu_new = mu + sum(w * (d - mu)) / n_new
-        #   M2_new = M2 + sum(w * delta_pre * delta_post)
-        n_new = self.welford_n + w_sum  # [E]
-        delta_pre = d - self.welford_mu  # [BS, E]  broadcast mu over tokens
-        mu_update = (w * delta_pre).sum(dim=0) / n_new.clamp(min=1e-8)  # [E]
-        new_mu = self.welford_mu + mu_update
-        delta_post = d - new_mu  # [BS, E]
-        m2_update = (w * delta_pre * delta_post).sum(dim=0)  # [E]
+        n_new = self.welford_n + w_sum
+        mu_num = torch.zeros(
+            self.num_experts, device=cos_sim.device, dtype=torch.float32
+        )
+        mu_num.scatter_add_(0, flat_idx.clamp(min=0), delta_pre)
+        new_mu = self.welford_mu + mu_num / n_new.clamp(min=1e-8)
 
-        # Apply updates only for active experts (those with tokens this batch).
+        new_mu_sel = new_mu[flat_idx.clamp(min=0)]
+        m2_update = torch.zeros(
+            self.num_experts, device=cos_sim.device, dtype=torch.float32
+        )
+        m2_update.scatter_add_(
+            0, flat_idx.clamp(min=0), delta_pre * (sel_dist - new_mu_sel)
+        )
+
         self.welford_n = torch.where(active, n_new, self.welford_n)
         self.welford_mu = torch.where(active, new_mu, self.welford_mu)
         self.welford_M2 = torch.where(
@@ -284,13 +177,7 @@ class StressCorrectedRouter(BaseRouter):
 
     @torch.no_grad()
     def _calibrate_lambda(self, cos_sim_flat: torch.Tensor) -> None:
-        """λ = min(σ_cos · N, 5.0). Calibrates once at lambda_calib_step.
-
-        Equivalent to σ_cos / mean(L) at equilibrium (when mean(L) = 1/N).
-        Floor: σ_cos is clamped to ≥ 1e-4 to prevent λ=0 in degenerate cases
-        (e.g., all cosines identical after random init in high-D). A zero λ
-        would permanently disable the load penalty with no recovery path.
-        """
+        """λ = min(σ_cos · N, 5.0). σ_cos clamped ≥ 1e-4 to prevent λ=0 at random init."""
         sigma_cos = cos_sim_flat.std(dim=-1).mean().clamp(min=1e-4)
         self.lambda_val.fill_((sigma_cos * self.num_experts).clamp(max=5.0).item())
         self.lambda_initialized.fill_(True)
@@ -298,7 +185,7 @@ class StressCorrectedRouter(BaseRouter):
 
     @torch._dynamo.disable
     def _read_ema_load(self) -> torch.Tensor:
-        """Clone ema_load outside the compiled graph to avoid AOT version-mismatch."""
+        # Clone outside compiled graph to avoid AOT version-mismatch on buffer reads.
         return self.ema_load.clone()
 
     @torch._dynamo.disable
@@ -306,23 +193,10 @@ class StressCorrectedRouter(BaseRouter):
         self,
         topk_idx: torch.Tensor,
         topk_weights: torch.Tensor,
-        x_norm: torch.Tensor,
-        W_norm: torch.Tensor,
         cos_sim: torch.Tensor,
-        B: int,
-        S: int,
     ) -> None:
-        """Update EMA load, Welford stats, and cosine accumulators.
-        Disabled from Dynamo to prevent version conflicts.
-
-        EMA tracks soft output weights (not hard selection counts).  At τ=0.10
-        the dominant expert receives ~2× its selection-frequency share of output
-        weight; hard counts would under-correct by that factor.  Soft weights
-        align the penalty with the expert's actual contribution to model output,
-        which is what the gradient signal cares about.  Mean(soft_load_i) = 1/N
-        holds exactly (softmax sums to 1 per token), so the lambda calibration
-        formula λ = σ_cos · N is unchanged.
-        """
+        # @dynamo.disable: this function mutates buffers; keeping it out of the
+        # compiled graph avoids version-counter conflicts on _pending_counts.
         with torch.no_grad():
             counts = torch.zeros(self.num_experts, device=topk_idx.device)
             counts.scatter_add_(
@@ -333,11 +207,7 @@ class StressCorrectedRouter(BaseRouter):
             counts.div_(counts.sum().clamp(min=1e-8))
             self._pending_counts.add_(counts)
             self._pending_count_n.add_(1)
-            self._update_welford(x_norm, topk_idx, W_norm)
-
-            # Accumulate cosines for λ calibration (pre-calibration only).
-            # Move to CPU immediately — calibration is a one-shot offline computation
-            # and doesn't need GPU memory for 1000 steps of accumulation.
+            self._update_welford(cos_sim, topk_idx)
             if not self._lambda_init_done:
                 self._pending_cos_sims.append(
                     cos_sim.reshape(-1, self.num_experts).cpu()
@@ -355,34 +225,25 @@ class StressCorrectedRouter(BaseRouter):
         B, S, D = x.shape
         x_norm = F.normalize(x, dim=-1)
         W_norm = F.normalize(self.W, dim=-1).to(x.dtype)
-
         cos_sim = x_norm @ W_norm.T  # [B, S, E]
 
-        # Gumbel exploration noise
         noise = 0.0
         used_noise = noise_std if noise_std is not None else self._noise_std
         if self.training and used_noise > 0:
             u = torch.empty_like(cos_sim).uniform_(1e-10, 1.0 - 1e-10)
             noise = used_noise * (-torch.log(-torch.log(u)))
 
-        # SPAR selection logit: cosine - λ·(L_i - 1/N)  [symmetric: bonus for underloaded, penalty for overloaded]
         ema_load = self._read_ema_load()
-        fair_share = 1.0 / self.num_experts
-        logits = cos_sim - self.lambda_val * (ema_load - fair_share) + noise
-
+        logits = cos_sim - self.lambda_val * (ema_load - 1.0 / self.num_experts) + noise
         topk_vals, topk_idx = logits.topk(self.top_k, dim=-1)  # [B, S, k]
 
-        # Output weights: cosine-only softmax over top-k selected experts only (not all N).
-        # Selection carries the load signal; weighting reflects alignment quality only.
         tau = max(
             temperature if temperature is not None else self._tau, MIN_TEMPERATURE
         )
         topk_cos = cos_sim.gather(-1, topk_idx)
         topk_weights = F.softmax(topk_cos / tau, dim=-1)  # [B, S, k]
 
-        # Build dense (N, E) weight matrix for unified dispatcher.
-        # Use out-of-place scatter (not scatter_) so autograd can propagate
-        # gradients through topk_weights back to cos_sim and self.W.
+        # out-of-place scatter preserves autograd graph through topk_weights → W
         topk_idx_flat = topk_idx.view(-1, self.top_k)
         topk_weights_flat = topk_weights.view(-1, self.top_k)
         expert_weights = torch.zeros(
@@ -394,18 +255,8 @@ class StressCorrectedRouter(BaseRouter):
         expert_weights = expert_weights.scatter(1, topk_idx_flat, topk_weights_flat)
 
         if self.training and record_usage:
-            # Detach all tensors at the call site so the Dynamo-resumed graph
-            # after the @disable boundary always sees requires_grad=False.
-            # All three args are metrics-only inside _update_load_and_welford;
-            # no gradient is needed or used there.
             self._update_load_and_welford(
-                topk_idx.detach(),
-                topk_weights.detach(),
-                x_norm.detach(),
-                W_norm.detach(),
-                cos_sim.detach(),
-                B,
-                S,
+                topk_idx.detach(), topk_weights.detach(), cos_sim.detach()
             )
 
         metrics = None
@@ -415,25 +266,16 @@ class StressCorrectedRouter(BaseRouter):
         return expert_weights, None, metrics
 
     def step(self) -> None:
-        # Sync Python bool from buffer (safe after checkpoint loads).
         if self.lambda_initialized.item():
             self._lambda_init_done = True
 
         self.num_steps += 1
-        # Recompute annealing state from the just-incremented num_steps buffer.
-        # This also corrects _tau/_noise_std after checkpoint resume — the Python
-        # floats are re-initialized from config in __init__ but num_steps is
-        # restored from the checkpoint buffer.
         self._tau = self._current_tau()
         self._noise_std = self._current_noise_std()
 
-        # Apply one EMA step from counts accumulated across all forward passes
-        # in this gradient-accumulation window. This ensures α=0.01 per optimizer
-        # step regardless of how many layers × microbatches called forward().
-        # DDP: all_reduce(SUM) _pending_counts and _pending_count_n across ranks BEFORE
-        # the EMA update so all ranks apply EMA from the globally-pooled load signal,
-        # not per-rank diverged counts. The collective must be called unconditionally
-        # by all ranks (no n>0 guard around it) to avoid collective rank mismatch.
+        # Sync pending counts across DDP ranks before EMA update so all ranks
+        # apply the same globally-pooled load signal. Must be called unconditionally
+        # (no n>0 guard) to avoid collective rank mismatch.
         with torch.no_grad():
             self._sync_pending_counts_distributed()
             n_global = self._pending_count_n.item()
@@ -451,23 +293,12 @@ class StressCorrectedRouter(BaseRouter):
                 pending = torch.cat(self._pending_cos_sims, dim=0).to(self.W.device)
                 self._calibrate_lambda(pending)
                 self._lambda_init_done = True
-                # Broadcast rank-0's calibrated λ to all ranks.
-                # Rank 0 has the most reliable σ_cos (it ran k-means and sees
-                # representative activations). AVG would underestimate λ if any
-                # rank had empty cos_sims (e.g., after checkpoint resume).
+                # Broadcast from rank 0 — AVG would corrupt λ if any rank had empty cos_sims.
                 self._sync_lambda_distributed()
-            # If _pending_cos_sims is empty (e.g., resumed from a checkpoint taken
-            # before lambda_calib_step), do NOT set _lambda_init_done — retry next
-            # step when forward() has populated the accumulator.
+            # If cos_sims empty (checkpoint resume before calib step), retry next step.
 
-        # Clear cosine accumulator each step — bounds memory to one grad-accum window.
         self._pending_cos_sims.clear()
-
-        # EMA load sync — critical for routing correctness across DDP ranks.
         self._sync_ema_load_distributed()
-        # Welford is metrics-only: per-rank divergence is acceptable.
-        # Removed from step() to avoid 18 all_gather ops/step and the seqnum
-        # drift that caused the NCCL deadlock.
 
     @torch.no_grad()
     def _sync_pending_counts_distributed(self) -> None:
@@ -482,8 +313,7 @@ class StressCorrectedRouter(BaseRouter):
 
     @torch.no_grad()
     def _sync_ema_load_distributed(self) -> None:
-        # Called after EMA update as a convergence safety net (e.g., after resume).
-        # Primary sync happens via _sync_pending_counts_distributed before EMA update.
+        # Safety net after resume — primary sync is via _sync_pending_counts_distributed.
         try:
             import torch.distributed as dist
         except ImportError:
@@ -500,22 +330,16 @@ class StressCorrectedRouter(BaseRouter):
             return
         if not dist.is_initialized() or dist.get_world_size() <= 1:
             return
-        # Broadcast from rank 0 — rank 0 ran k-means and has the most representative
-        # σ_cos. AVG would corrupt λ if any rank had empty _pending_cos_sims.
         dist.broadcast(self.lambda_val, src=0)
         dist.broadcast(self.sigma_cos_at_calib, src=0)
 
     @torch.no_grad()
     def _sync_welford_distributed(self) -> None:
-        """Parallel Welford all-reduce (Chan et al. 1979) for cross-rank metrics consistency.
+        """Parallel Welford combine (Chan et al. 1979) across DDP ranks.
 
-        NOT called in step() — doing so caused an NCCL sequence-number deadlock because
-        all_gather requires all ranks to call it in the same order, but MoE layers are
-        not always visited by all ranks at the same time under gradient accumulation.
-
-        Call at eval time only (all ranks participate simultaneously):
-            for moe_layer in moe_layers.values():
-                moe_layer.router._sync_welford_distributed()
+        NOT called in step() — all_gather requires all ranks to call in the same
+        order, which is not guaranteed under gradient accumulation (caused NCCL
+        deadlock). Call at eval time only when all ranks participate simultaneously.
         """
         try:
             import torch.distributed as dist
@@ -528,32 +352,27 @@ class StressCorrectedRouter(BaseRouter):
         n_list = [torch.zeros_like(self.welford_n) for _ in range(world_size)]
         mu_list = [torch.zeros_like(self.welford_mu) for _ in range(world_size)]
         M2_list = [torch.zeros_like(self.welford_M2) for _ in range(world_size)]
-
         dist.all_gather(n_list, self.welford_n)
         dist.all_gather(mu_list, self.welford_mu)
         dist.all_gather(M2_list, self.welford_M2)
 
-        # Vectorized parallel Welford combine (Chan et al. 1979).
-        # Stack to [world_size, E] so all ranks are reduced in one pass.
-        ns = torch.stack(n_list, dim=0)  # [W, E]
-        mus = torch.stack(mu_list, dim=0)  # [W, E]
-        M2s = torch.stack(M2_list, dim=0)  # [W, E]
+        ns = torch.stack(n_list, dim=0)
+        mus = torch.stack(mu_list, dim=0)
+        M2s = torch.stack(M2_list, dim=0)
+        combined_n, combined_mu, combined_M2 = (
+            ns[0].clone(),
+            mus[0].clone(),
+            M2s[0].clone(),
+        )
 
-        combined_n = ns[0].clone()
-        combined_mu = mus[0].clone()
-        combined_M2 = M2s[0].clone()
-
-        # Left-fold across ranks — sequential dependency requires iterating,
-        # but all per-expert ops are now vectorized across the E dimension.
         for i in range(1, world_size):
-            n_b = ns[i]
-            mu_b = mus[i]
-            M2_b = M2s[i]
-            n_new = combined_n + n_b
-            delta = mu_b - combined_mu
+            n_new = combined_n + ns[i]
+            delta = mus[i] - combined_mu
             safe_n = n_new.clamp(min=1.0)
-            combined_mu = (combined_n * combined_mu + n_b * mu_b) / safe_n
-            combined_M2 = combined_M2 + M2_b + delta.pow(2) * combined_n * n_b / safe_n
+            combined_mu = (combined_n * combined_mu + ns[i] * mus[i]) / safe_n
+            combined_M2 = (
+                combined_M2 + M2s[i] + delta.pow(2) * combined_n * ns[i] / safe_n
+            )
             combined_n = n_new
 
         self.welford_n.copy_(combined_n)
@@ -563,27 +382,21 @@ class StressCorrectedRouter(BaseRouter):
     def get_custom_metrics(
         self, indices: Optional[torch.Tensor], weights: torch.Tensor
     ) -> Dict[str, Any]:
-        metrics = {}
-
-        # Welford alignment quality (metrics only — not in routing logit)
         var = self._welford_variance()
-        metrics["welford_mu_mean"] = self.welford_mu.mean().item()
-        metrics["welford_var_mean"] = var.mean().item()
-        metrics["welford_n_min"] = self.welford_n.min().item()
+        metrics = {
+            "welford_mu_mean": self.welford_mu.mean().item(),
+            "welford_var_mean": var.mean().item(),
+            "welford_n_min": self.welford_n.min().item(),
+            "ema_load_mean": self.ema_load.mean().item(),
+            "ema_load_max": self.ema_load.max().item(),
+            "ema_load_std": self.ema_load.std().item(),
+            "lambda_val": self.lambda_val.item(),
+            "sigma_cos_at_calib": self.sigma_cos_at_calib.item(),
+            "tau": self._current_tau(),
+            "noise_std": self._noise_std,
+            "ema_load_per_expert": self.ema_load.cpu().float().numpy().tolist(),
+        }
 
-        # Load signal
-        metrics["ema_load_mean"] = self.ema_load.mean().item()
-        metrics["ema_load_max"] = self.ema_load.max().item()
-        metrics["ema_load_std"] = self.ema_load.std().item()
-        metrics["lambda_val"] = self.lambda_val.item()
-        metrics["sigma_cos_at_calib"] = self.sigma_cos_at_calib.item()
-        metrics["tau"] = self._current_tau()
-        metrics["noise_std"] = self._noise_std
-
-        # Per-expert
-        metrics["ema_load_per_expert"] = self.ema_load.cpu().float().numpy().tolist()
-
-        # Hard assignment counts from dense weight matrix (N, E)
         if weights is not None and weights.dim() == 2:
             hard = (weights > 0).float().sum(dim=0)
         elif indices is not None:
@@ -599,11 +412,9 @@ class StressCorrectedRouter(BaseRouter):
             hard = torch.ones(self.num_experts)
         hard = hard / hard.sum().clamp(min=1e-8)
         metrics["eff_E_hard"] = (1.0 / (hard**2).sum().clamp(min=1e-8)).item()
-
         return metrics
 
     def compute_aux_loss(self) -> torch.Tensor:
-        """Always zero — symmetric load penalty IS the balancing mechanism."""
         return self.W.new_zeros(1).squeeze()
 
     def clear_aux_state(self) -> None:
@@ -626,12 +437,8 @@ class StressCorrectedRouter(BaseRouter):
         self._pending_cos_sims = []
 
     def reset_welford(self) -> None:
-        """Reset Welford accumulators.
-
-        Call periodically (e.g., each eval interval) to prevent fp32 precision
-        degradation when welford_n grows large (~10^8 after 19k steps at
-        batch=32, seq=1024).  Safe because Welford is metrics-only and does
-        not affect routing.
+        """Reset Welford accumulators. Call periodically to prevent fp32 overflow
+        when welford_n grows large (~10^8 after 19k steps). Safe — metrics only.
         """
         with torch.no_grad():
             self.welford_n.zero_()
