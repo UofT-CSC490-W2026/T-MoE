@@ -1364,6 +1364,15 @@ def main():
             print(
                 f"Final val_loss={val_loss:.4f} | val_ppl={val_ppl:.1f} | val_bpb={_final_bpb:.3f}"
             )
+        else:
+            ckpt_manager.save_checkpoint(
+                model,
+                optimizer,
+                scheduler,
+                step=max_steps,
+                metrics={"train_loss": accum_loss},
+                is_best=False,
+            )
 
         print(f"Outputs saved to: {out_dir}")
 
