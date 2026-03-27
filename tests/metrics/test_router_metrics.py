@@ -30,6 +30,7 @@ from src.metrics.router_metrics import RouterMetricsTracker, GlobalSpecializatio
 # Fixtures and helpers
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def metabolic_router():
     cfg = MetabolicRouterConfig(hidden_dim=32, num_experts=4, top_k=2)
@@ -70,6 +71,7 @@ def _make_collapsed_routing(num_experts=4, top_k=2, batch=2, seq=8):
 # _compute_usage — dense path (indices=None)
 # ---------------------------------------------------------------------------
 
+
 class TestComputeUsageDensePath:
     # Expert-choice routers pass weights as [N, E] with no indices.
     # This path just sums columns — easy to break with a wrong dim or missing branch.
@@ -81,10 +83,14 @@ class TestComputeUsageDensePath:
 
     def test_dense_path_sums_columns(self, tracker):
         # Each expert should get exactly its column sum
-        weights = torch.tensor([[1.0, 0.0, 0.0, 0.0],
-                                 [0.0, 2.0, 0.0, 0.0],
-                                 [0.0, 0.0, 3.0, 0.0],
-                                 [0.0, 0.0, 0.0, 4.0]])
+        weights = torch.tensor(
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0, 0.0],
+                [0.0, 0.0, 3.0, 0.0],
+                [0.0, 0.0, 0.0, 4.0],
+            ]
+        )
         usage = tracker._compute_usage(None, weights)
         assert torch.allclose(usage, torch.tensor([1.0, 2.0, 3.0, 4.0]), atol=1e-6)
 
@@ -98,6 +104,7 @@ class TestComputeUsageDensePath:
 # ---------------------------------------------------------------------------
 # _compute_usage — negative indices (-1 from adaptive-k)
 # ---------------------------------------------------------------------------
+
 
 class TestComputeUsageNegativeIndices:
     # adaptive-k can produce -1 indices when fewer than top_k experts are selected.
@@ -123,6 +130,7 @@ class TestComputeUsageNegativeIndices:
 # Gini coefficient — mathematical correctness
 # ---------------------------------------------------------------------------
 
+
 class TestGiniCoefficientCorrectness:
     # The Gini formula has a specific closed form — "looks right" isn't enough.
     # An off-by-one in the (n+1)/n term gives plausible but wrong values.
@@ -146,7 +154,9 @@ class TestGiniCoefficientCorrectness:
         usage_scaled = usage_base * 100.0
         indices = torch.zeros(1, 1, 1, dtype=torch.long)
         gini_base = tracker.compute_gini_coefficient(indices, None, usage=usage_base)
-        gini_scaled = tracker.compute_gini_coefficient(indices, None, usage=usage_scaled)
+        gini_scaled = tracker.compute_gini_coefficient(
+            indices, None, usage=usage_scaled
+        )
         assert gini_base == pytest.approx(gini_scaled, abs=1e-5)
 
     def test_gini_always_in_unit_interval(self, tracker):
@@ -161,6 +171,7 @@ class TestGiniCoefficientCorrectness:
 # ---------------------------------------------------------------------------
 # Entropy — numerical stability with near-zero usage
 # ---------------------------------------------------------------------------
+
 
 class TestEntropyNumericalStability:
     # Early in training some experts get almost no tokens.
@@ -190,6 +201,7 @@ class TestEntropyNumericalStability:
 # Effective experts — must equal exp(entropy)
 # ---------------------------------------------------------------------------
 
+
 class TestEffectiveExpertsInvariant:
     # effective_experts = exp(entropy) is a mathematical identity.
     # If the wrong entropy (e.g. normalized) is used, the metric is silently wrong.
@@ -218,6 +230,7 @@ class TestEffectiveExpertsInvariant:
 # ---------------------------------------------------------------------------
 # Confidence metrics — top_k=1 degenerate case
 # ---------------------------------------------------------------------------
+
 
 class TestConfidenceMetricsTopK1:
     # With top_k=1 each token has one expert with weight 1.0.
@@ -251,6 +264,7 @@ class TestConfidenceMetricsTopK1:
 # compute_all_metrics — usage computed once and shared
 # ---------------------------------------------------------------------------
 
+
 class TestComputeAllMetricsUsageReuse:
     # compute_all_metrics passes the same usage tensor to every sub-metric.
     # If any sub-function ignores the usage= kwarg and recomputes, results
@@ -269,7 +283,9 @@ class TestComputeAllMetricsUsageReuse:
         indices, weights = _make_uniform_routing()
         all_metrics = tracker.compute_all_metrics(indices, weights)
         usage = tracker._compute_usage(indices, weights)
-        standalone_gini = tracker.compute_gini_coefficient(indices, weights, usage=usage)
+        standalone_gini = tracker.compute_gini_coefficient(
+            indices, weights, usage=usage
+        )
         assert all_metrics["routing_diversity_gini"] == pytest.approx(
             standalone_gini, rel=1e-6
         )
@@ -286,6 +302,7 @@ class TestComputeAllMetricsUsageReuse:
 # ---------------------------------------------------------------------------
 # compute_all_metrics — router-specific conditional keys
 # ---------------------------------------------------------------------------
+
 
 class TestComputeAllMetricsRouterSpecificKeys:
     # fatigue, num_steps, and custom metrics are gated on hasattr checks.
@@ -324,6 +341,7 @@ class TestComputeAllMetricsRouterSpecificKeys:
 # GlobalSpecializationTracker — padding token filtering
 # ---------------------------------------------------------------------------
 
+
 class TestGlobalSpecializationTrackerPaddingFiltering:
     # Padding tokens (id < 0 or >= vocab_size) must be silently dropped.
     # Including them corrupts H(E|T) since they're not real vocabulary items.
@@ -346,10 +364,13 @@ class TestGlobalSpecializationTrackerPaddingFiltering:
 
     def test_mixed_valid_and_padding_tokens(self):
         tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
-        token_ids = torch.cat([
-            torch.randint(0, 100, (1, 4)),
-            torch.full((1, 4), -1, dtype=torch.long),
-        ], dim=0)
+        token_ids = torch.cat(
+            [
+                torch.randint(0, 100, (1, 4)),
+                torch.full((1, 4), -1, dtype=torch.long),
+            ],
+            dim=0,
+        )
         expert_indices = torch.randint(0, 4, (2, 4, 2))
         tracker.update(token_ids, expert_indices)
         assert tracker.total_tokens == 4
@@ -358,6 +379,7 @@ class TestGlobalSpecializationTrackerPaddingFiltering:
 # ---------------------------------------------------------------------------
 # GlobalSpecializationTracker — padding expert filtering (-1 in adaptive-k)
 # ---------------------------------------------------------------------------
+
 
 class TestGlobalSpecializationTrackerPaddingExperts:
     # adaptive-k can produce -1 expert indices when fewer than top_k experts are chosen.
@@ -386,6 +408,7 @@ class TestGlobalSpecializationTrackerPaddingExperts:
 # ---------------------------------------------------------------------------
 # GlobalSpecializationTracker — accumulation across multiple updates
 # ---------------------------------------------------------------------------
+
 
 class TestGlobalSpecializationTrackerAccumulation:
     # update() is called once per batch — counts must add up, not reset.
@@ -419,6 +442,7 @@ class TestGlobalSpecializationTrackerAccumulation:
 # ---------------------------------------------------------------------------
 # GlobalSpecializationTracker.compute_metrics — specialization score
 # ---------------------------------------------------------------------------
+
 
 class TestSpecializationScoreFormula:
     # specialization_score = 1 - H(E|T) / H(E)
@@ -455,7 +479,9 @@ class TestSpecializationScoreFormula:
         token_ids = torch.randint(0, 10, (2, 8))
         expert_indices = torch.zeros(2, 8, 1, dtype=torch.long)
         tracker.update(token_ids, expert_indices)
-        with pytest.raises(AttributeError, match="'float' object has no attribute 'item'"):
+        with pytest.raises(
+            AttributeError, match="'float' object has no attribute 'item'"
+        ):
             tracker.compute_metrics()
 
     def test_specialization_and_collapse_scores_bounded(self):
@@ -472,6 +498,7 @@ class TestSpecializationScoreFormula:
 # ---------------------------------------------------------------------------
 # GlobalSpecializationTracker.sync_and_compute — must not modify local state
 # ---------------------------------------------------------------------------
+
 
 class TestSyncAndComputeNonDestructive:
     # sync_and_compute temporarily swaps in synced data, computes, then restores.
@@ -510,6 +537,7 @@ class TestSyncAndComputeNonDestructive:
 # compute_fatigue_stats — presence/absence depending on router type
 # ---------------------------------------------------------------------------
 
+
 class TestFatigueStatsAbsenceAndPresence:
     # compute_fatigue_stats uses hasattr(router, 'fatigue').
     # A wrong attribute name would raise AttributeError on non-metabolic routers.
@@ -520,8 +548,13 @@ class TestFatigueStatsAbsenceAndPresence:
 
     def test_fatigue_stats_all_keys_for_metabolic(self, tracker):
         result = tracker.compute_fatigue_stats()
-        expected = {"fatigue_mean", "fatigue_std", "fatigue_min", "fatigue_max",
-                    "fatigue_per_expert"}
+        expected = {
+            "fatigue_mean",
+            "fatigue_std",
+            "fatigue_min",
+            "fatigue_max",
+            "fatigue_per_expert",
+        }
         assert expected.issubset(result.keys())
 
     def test_fatigue_stats_values_are_finite(self, tracker):
@@ -539,6 +572,7 @@ class TestFatigueStatsAbsenceAndPresence:
 # ---------------------------------------------------------------------------
 # compute_usage_distribution — normalization and output types
 # ---------------------------------------------------------------------------
+
 
 class TestUsageDistributionNormalization:
     # usage_distribution must sum to 1 and be numpy (for WandB).
@@ -572,6 +606,7 @@ class TestUsageDistributionNormalization:
 # Single-expert router (num_experts=1) — boundary condition
 # ---------------------------------------------------------------------------
 
+
 class TestSingleExpertDegenerate:
     # num_experts=1 exercises the N=1 case in the Gini formula: (n+1)/n = 2.
     # If the numerator is also 2, Gini = 0 (correct). A bug gives negative Gini.
@@ -582,7 +617,9 @@ class TestSingleExpertDegenerate:
         single_tracker = RouterMetricsTracker(router)
         indices = torch.zeros(2, 4, 1, dtype=torch.long)
         weights = torch.ones(2, 4, 1)
-        assert single_tracker.compute_gini_coefficient(indices, weights) == pytest.approx(0.0, abs=1e-5)
+        assert single_tracker.compute_gini_coefficient(
+            indices, weights
+        ) == pytest.approx(0.0, abs=1e-5)
 
     def test_single_expert_entropy_is_zero(self):
         cfg = MetabolicRouterConfig(hidden_dim=16, num_experts=1, top_k=1)
@@ -599,12 +636,15 @@ class TestSingleExpertDegenerate:
         single_tracker = RouterMetricsTracker(router)
         indices = torch.zeros(2, 4, 1, dtype=torch.long)
         weights = torch.ones(2, 4, 1)
-        assert single_tracker.compute_effective_experts(indices, weights) == pytest.approx(1.0, abs=1e-4)
+        assert single_tracker.compute_effective_experts(
+            indices, weights
+        ) == pytest.approx(1.0, abs=1e-4)
 
 
 # ---------------------------------------------------------------------------
 # compute_metrics — empty state before any update
 # ---------------------------------------------------------------------------
+
 
 class TestComputeMetricsEmptyState:
     # Rank 0 might call compute_metrics at step 0 before any data arrives.
@@ -619,7 +659,9 @@ class TestComputeMetricsEmptyState:
         try:
             tracker.compute_metrics()
         except Exception as e:
-            pytest.fail(f"compute_metrics raised {type(e).__name__} on empty tracker: {e}")
+            pytest.fail(
+                f"compute_metrics raised {type(e).__name__} on empty tracker: {e}"
+            )
 
     def test_tracker_after_all_padding_returns_empty(self):
         # All padding → total_tokens stays 0 → same as never calling update
@@ -633,6 +675,7 @@ class TestComputeMetricsEmptyState:
 # ---------------------------------------------------------------------------
 # Gini index cache — device consistency
 # ---------------------------------------------------------------------------
+
 
 class TestGiniIndexDeviceCache:
     # The gini_index tensor is cached on first call to avoid re-allocating each time.
@@ -663,6 +706,7 @@ class TestGiniIndexDeviceCache:
 # global_tokens_seen — counts tokens, not token×top_k assignments
 # ---------------------------------------------------------------------------
 
+
 class TestGlobalTokensSeen:
     # global_tokens_seen is used to gate "have we seen enough data yet".
     # Counting top_k assignments instead of tokens would make it fire too early.
@@ -689,6 +733,7 @@ class TestGlobalTokensSeen:
 # ---------------------------------------------------------------------------
 # Stress test — large batch and GPT-2 vocab scale
 # ---------------------------------------------------------------------------
+
 
 class TestLargeBatchStability:
     # Numerical issues are more likely to surface at scale.
