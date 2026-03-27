@@ -31,6 +31,17 @@ class GlobalSpecializationTracker:
         self.total_tokens = 0
 
     def update(self, token_ids: torch.Tensor, expert_indices: Optional[torch.Tensor]):
+        """
+        Tested via:
+            TestGlobalSpecializationTrackerPaddingFiltering
+            TestGlobalSpecializationTrackerPaddingExperts
+            TestGlobalSpecializationTrackerAccumulation
+        Why these tests:
+            Padding tokens (id < 0 or >= vocab_size) and padding experts (-1 from
+            adaptive-k) both need to be silently dropped — missing either filter
+            corrupts the histogram or crashes bincount. Accumulation tests make sure
+            counts add up across batches rather than resetting each call.
+        """
         if expert_indices is None:
             return
         with torch.no_grad():
@@ -85,6 +96,13 @@ class GlobalSpecializationTracker:
 
         Returns:
             Metrics dict computed from the globally-reduced histogram.
+
+        Tested via:
+            TestSyncAndComputeNonDestructive
+        Why these tests:
+            If this method modifies usage_counts or total_tokens, the next
+            compute_metrics call sees a partial or empty histogram. The non-distributed
+            path must also return the same values as calling compute_metrics directly.
         """
         if not is_distributed:
             return self.compute_metrics()
@@ -112,6 +130,19 @@ class GlobalSpecializationTracker:
         return result
 
     def compute_metrics(self) -> Dict[str, float]:
+        """
+        Tested via:
+            TestSpecializationScoreFormula
+            TestComputeMetricsEmptyState
+            TestGlobalTokensSeen
+        Why these tests:
+            Empty state (total_tokens=0) must return {} without crashing — rank 0
+            can call this at step 0. The specialization score formula is easy to
+            get wrong (swapped H(E|T)/H(E) ratio, wrong axis). The degenerate branch
+            (marginal_entropy < 1e-5) has a known bug where .item() is called on a
+            plain Python float — pinned by test_degenerate_marginal_entropy_zero_branch.
+            global_tokens_seen must count tokens, not token×top_k assignments.
+        """
         if self.total_tokens == 0:
             return {}
 
@@ -174,7 +205,18 @@ class RouterMetricsTracker:
     def _compute_usage(
         self, indices: Optional[torch.Tensor], weights: torch.Tensor
     ) -> torch.Tensor:
-        """Aggregate routing weights into per-expert usage vector [num_experts]."""
+        """
+        Aggregate routing weights into per-expert usage vector [num_experts].
+
+        Tested via:
+            TestComputeUsageDensePath
+            TestComputeUsageNegativeIndices
+        Why these tests:
+            Two separate code paths: indices=None (dense, expert-choice routers) and
+            indices provided (sparse, top-k routers). The clamp(min=0) before
+            scatter_add_ is what stops -1 indices from silently inflating the last
+            expert's count — easy to miss in a refactor.
+        """
         if indices is None:
             # Dense case: weights is (N, E)
             return weights.sum(dim=0).to(torch.float32)
@@ -192,6 +234,16 @@ class RouterMetricsTracker:
         weights: torch.Tensor,
         usage: Optional[torch.Tensor] = None,
     ) -> Dict[str, float]:
+        """
+        Tested via:
+            TestEntropyNumericalStability
+            TestEffectiveExpertsInvariant
+            TestSingleExpertDegenerate
+        Why these tests:
+            Near-zero and all-zero usage are common early in training — the log(p + 1e-10)
+            guard must prevent NaN/inf. Normalized entropy must stay in [0, 1].
+            Single-expert case (N=1) checks the boundary where entropy = 0.
+        """
         if usage is None:
             usage = self._compute_usage(indices, weights)
         usage_prob = usage / (usage.sum() + 1e-10)
@@ -205,6 +257,14 @@ class RouterMetricsTracker:
         }
 
     def compute_fatigue_stats(self) -> Dict[str, Any]:
+        """
+        Tested via:
+            TestFatigueStatsAbsenceAndPresence
+        Why these tests:
+            The hasattr(router, 'fatigue') guard must return {} for non-metabolic
+            routers — otherwise compute_all_metrics crashes on SPAR. Also checks
+            that fatigue_per_expert is numpy (WandB histogram expects it).
+        """
         if not hasattr(self.router, "fatigue"):
             return {}
         fatigue = self.router.fatigue
@@ -223,6 +283,14 @@ class RouterMetricsTracker:
         weights: torch.Tensor,
         usage: Optional[torch.Tensor] = None,
     ) -> Dict[str, Any]:
+        """
+        Tested via:
+            TestUsageDistributionNormalization
+        Why these tests:
+            usage_distribution must sum to 1 and be numpy for WandB. The epsilon
+            in the denominator prevents NaN when all usage is zero — a real scenario
+            at the start of training.
+        """
         usage_counts = (
             usage if usage is not None else self._compute_usage(indices, weights)
         )
@@ -252,6 +320,16 @@ class RouterMetricsTracker:
 
         Returns:
             Gini coefficient in [0, 1]
+
+        Tested via:
+            TestGiniCoefficientCorrectness
+            TestGiniIndexDeviceCache
+            TestSingleExpertDegenerate
+        Why these tests:
+            The formula has a specific closed form — "looks right" isn't enough.
+            Checks exact values for known distributions (uniform → 0, monopoly → 0.75),
+            scale invariance, and the N=1 boundary. The device cache is tested because
+            a stale cache causes device mismatch errors on GPU.
         """
         usage = usage if usage is not None else self._compute_usage(indices, weights)
         sorted_usage, _ = torch.sort(usage)
@@ -274,7 +352,16 @@ class RouterMetricsTracker:
         entropy: float = None,
         usage: Optional[torch.Tensor] = None,
     ) -> float:
-        """Effective number of experts = exp(entropy). Range: [1, num_experts]."""
+        """
+        Effective number of experts = exp(entropy). Range: [1, num_experts].
+
+        Tested via:
+            TestEffectiveExpertsInvariant
+        Why these tests:
+            The identity exp(entropy) must hold exactly. If normalized entropy is
+            accidentally used instead of raw entropy, the metric is silently wrong.
+            Also checks that a precomputed entropy= argument is used as-is.
+        """
         if entropy is None:
             entropy = self.compute_expert_entropy(indices, weights, usage=usage)[
                 "expert_entropy"
@@ -297,6 +384,13 @@ class RouterMetricsTracker:
             - router_confidence_mean: mean of max weight per token
             - router_confidence_std: std of max weight per token
             - top1_dominance: mean fraction of total weight on top-1 expert
+
+        Tested via:
+            TestConfidenceMetricsTopK1
+        Why these tests:
+            top_k=1 is the degenerate case where top1_dominance must be exactly 1.0.
+            The clamp_min(1e-10) on weight_sum prevents NaN when weights are all zero.
+            Equal top-2 weights should give top1_dominance = 0.5.
         """
         # Max weight per token (how much weight goes to the most preferred expert)
         max_w = weights.max(dim=-1).values  # [B, S]
@@ -317,6 +411,18 @@ class RouterMetricsTracker:
         indices: Optional[torch.Tensor],
         weights: torch.Tensor,
     ) -> Dict[str, Any]:
+        """
+        Tested via:
+            TestComputeAllMetricsUsageReuse
+            TestComputeAllMetricsRouterSpecificKeys
+            TestLargeBatchStability
+        Why these tests:
+            Usage is computed once and passed to every sub-metric — if any sub-function
+            ignores the usage= kwarg and recomputes, results can diverge. The conditional
+            keys (fatigue, num_steps, custom metrics) are gated on hasattr checks that
+            break silently if a buffer is renamed. Large batch test catches NaN/inf
+            regressions at realistic scale.
+        """
         metrics = {}
         # Compute usage once — shared by entropy, distribution, gini, effective_experts.
         usage = self._compute_usage(indices, weights)
