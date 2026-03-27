@@ -4,11 +4,10 @@ import pytest
 
 import sys
 
-@pytest.fixture(autouse=True)
 
+@pytest.fixture(autouse=True)
 def mock_modal_module():
 
-    
     mock_modal = MagicMock()
 
     mock_modal.App = MagicMock(return_value=MagicMock())
@@ -22,24 +21,22 @@ def mock_modal_module():
     mock_modal.Volume.from_name = MagicMock(return_value=MagicMock())
 
     with patch.dict(sys.modules, {"modal": mock_modal}):
-
         yield
+
 
 def test_config_path():
 
     import run_modal_training
 
     assert (
-
         run_modal_training._config_path("experiments/test.yaml")
-
         == "/app/experiments/test.yaml"
-
     )
 
     assert run_modal_training._config_path("/abs/path.yaml") == "/abs/path.yaml"
 
     assert run_modal_training._config_path("test") == "/app/experiments/test"
+
 
 def test_override_list():
 
@@ -50,6 +47,7 @@ def test_override_list():
     assert run_modal_training._override_list("a=1,b=2") == ["a=1", "b=2"]
 
     assert run_modal_training._override_list("a=1, b=2 ,") == ["a=1", "b=2"]
+
 
 def test_experiment_output_dir():
 
@@ -62,6 +60,7 @@ def test_experiment_output_dir():
     result = run_modal_training._experiment_output_dir(cfg)
 
     assert "test_exp" in result
+
 
 def test_checkpoint_sort_key():
 
@@ -76,12 +75,11 @@ def test_checkpoint_sort_key():
     p3 = Path("best_model.pt")
 
     assert run_modal_training._checkpoint_sort_key(
-
         p1
-
     ) < run_modal_training._checkpoint_sort_key(p2)
 
     assert run_modal_training._checkpoint_sort_key(p3)[0] == 10**18
+
 
 def test_latest_checkpoint_path(tmp_path):
 
@@ -95,13 +93,14 @@ def test_latest_checkpoint_path(tmp_path):
 
     assert "200" in str(result)
 
+
 def test_latest_checkpoint_path_empty(tmp_path):
 
     import run_modal_training
 
     with pytest.raises(FileNotFoundError):
-
         run_modal_training._latest_checkpoint_path(tmp_path)
+
 
 def test_resolve_runtime_path():
 
@@ -114,42 +113,33 @@ def test_resolve_runtime_path():
     assert "outputs" in run_modal_training._resolve_runtime_path("outputs/test")
 
     assert (
-
         run_modal_training._resolve_runtime_path("relative/path")
-
         == "/app/relative/path"
-
     )
+
 
 def test_resolve_eval_tasks():
 
     import run_modal_training
 
     assert run_modal_training._resolve_eval_tasks("all") == [
-
         "perplexity",
-
         "lm_harness",
-
         "efficiency",
-
     ]
 
     assert run_modal_training._resolve_eval_tasks("perplexity") == ["perplexity"]
 
     assert run_modal_training._resolve_eval_tasks("perplexity,lm_harness") == [
-
         "perplexity",
-
         "lm_harness",
-
     ]
 
     assert run_modal_training._resolve_eval_tasks("") == []
 
     with pytest.raises(ValueError, match="Unsupported"):
-
         run_modal_training._resolve_eval_tasks("invalid_task")
+
 
 def test_resolve_eval_checkpoint_best(tmp_path):
 
@@ -168,14 +158,12 @@ def test_resolve_eval_checkpoint_best(tmp_path):
     best.touch()
 
     with patch.object(
-
         run_modal_training, "_experiment_output_dir", return_value=str(tmp_path)
-
     ):
-
         result = run_modal_training._resolve_eval_checkpoint(cfg, "best", False)
 
         assert "best_model" in result
+
 
 def test_resolve_eval_checkpoint_latest(tmp_path):
 
@@ -194,14 +182,12 @@ def test_resolve_eval_checkpoint_latest(tmp_path):
     (checkpoints_dir / "checkpoint_step_200.pt").touch()
 
     with patch.object(
-
         run_modal_training, "_experiment_output_dir", return_value=str(tmp_path)
-
     ):
-
         result = run_modal_training._resolve_eval_checkpoint(cfg, "latest", False)
 
         assert "200" in result
+
 
 def test_resolve_eval_checkpoint_explicit():
 
@@ -210,12 +196,11 @@ def test_resolve_eval_checkpoint_explicit():
     cfg = MagicMock()
 
     result = run_modal_training._resolve_eval_checkpoint(
-
         cfg, "/abs/path/ckpt.pt", False
-
     )
 
     assert result == "/abs/path/ckpt.pt"
+
 
 def test_resolve_eval_checkpoint_all(tmp_path):
 
@@ -228,14 +213,12 @@ def test_resolve_eval_checkpoint_all(tmp_path):
     checkpoints_dir.mkdir()
 
     with patch.object(
-
         run_modal_training, "_experiment_output_dir", return_value=str(tmp_path)
-
     ):
-
         result = run_modal_training._resolve_eval_checkpoint(cfg, "", True)
 
         assert "checkpoints" in result
+
 
 def test_load_cfg():
 
@@ -244,9 +227,7 @@ def test_load_cfg():
     from omegaconf import OmegaConf
 
     with patch.object(run_modal_training, "OmegaConf", OmegaConf):
-
         with patch("omegaconf.OmegaConf.load") as mock_load:
-
             mock_cfg = MagicMock()
 
             mock_load.return_value = mock_cfg
@@ -255,6 +236,7 @@ def test_load_cfg():
 
             assert result is mock_cfg
 
+
 def test_load_cfg_no_overrides():
 
     import run_modal_training
@@ -262,9 +244,7 @@ def test_load_cfg_no_overrides():
     from omegaconf import OmegaConf
 
     with patch.object(run_modal_training, "OmegaConf", OmegaConf):
-
         with patch("omegaconf.OmegaConf.load") as mock_load:
-
             mock_cfg = MagicMock()
 
             mock_load.return_value = mock_cfg

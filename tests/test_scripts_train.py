@@ -8,19 +8,16 @@ import pytest
 
 from unittest.mock import patch, MagicMock
 
+
 def test_shard_dataset(tmp_path):
 
-    
     from scripts.train import ShardDataset
-
-                                                           
 
     tokens = np.arange(100, dtype=np.uint16)
 
     shard_path = tmp_path / "train_shard_0000.bin"
 
     with open(shard_path, "wb") as f:
-
         f.write(struct.pack("<Q", len(tokens)))
 
         f.write(tokens.tobytes())
@@ -35,9 +32,9 @@ def test_shard_dataset(tmp_path):
 
     assert labels.shape == (11,)
 
+
 def test_shard_dataset_versioned(tmp_path):
 
-    
     from scripts.train import ShardDataset
 
     tokens = np.arange(100, dtype=np.uint32)
@@ -45,8 +42,7 @@ def test_shard_dataset_versioned(tmp_path):
     shard_path = tmp_path / "train_shard_0000.bin"
 
     with open(shard_path, "wb") as f:
-
-        f.write(struct.pack("<QH", len(tokens), 1))                         
+        f.write(struct.pack("<QH", len(tokens), 1))
 
         f.write(tokens.tobytes())
 
@@ -58,18 +54,17 @@ def test_shard_dataset_versioned(tmp_path):
 
     assert ids.shape == (11,)
 
+
 def test_shard_dataset_no_shards(tmp_path):
 
-    
     from scripts.train import ShardDataset
 
     with pytest.raises(FileNotFoundError):
-
         ShardDataset(tmp_path, "train", seq_len=10)
+
 
 def test_shard_dataset_unknown_dtype(tmp_path):
 
-    
     from scripts.train import ShardDataset
 
     tokens = np.arange(100, dtype=np.uint32)
@@ -77,18 +72,16 @@ def test_shard_dataset_unknown_dtype(tmp_path):
     shard_path = tmp_path / "train_shard_0000.bin"
 
     with open(shard_path, "wb") as f:
-
-        f.write(struct.pack("<QH", len(tokens), 99))                      
+        f.write(struct.pack("<QH", len(tokens), 99))
 
         f.write(tokens.tobytes())
 
     with pytest.raises(ValueError, match="Unknown dtype_flag"):
-
         ShardDataset(tmp_path, "train", seq_len=10)
+
 
 def test_shard_dataset_wraparound(tmp_path):
 
-    
     from scripts.train import ShardDataset
 
     tokens = np.arange(20, dtype=np.uint16)
@@ -96,18 +89,16 @@ def test_shard_dataset_wraparound(tmp_path):
     shard_path = tmp_path / "train_shard_0000.bin"
 
     with open(shard_path, "wb") as f:
-
         f.write(struct.pack("<Q", len(tokens)))
 
         f.write(tokens.tobytes())
 
     ds = ShardDataset(tmp_path, "train", seq_len=10)
 
-                                            
-
     ids, labels = ds[len(ds) - 1]
 
     assert ids.shape == (11,)
+
 
 def test_load_config(tmp_path):
 
@@ -121,6 +112,7 @@ def test_load_config(tmp_path):
 
     assert cfg.experiment_name == "test"
 
+
 def test_load_config_with_overrides(tmp_path):
 
     from scripts.train import load_config
@@ -133,31 +125,30 @@ def test_load_config_with_overrides(tmp_path):
 
     assert cfg.training.lr == 0.01
 
+
 def test_parse_args():
 
     from scripts.train import parse_args
 
     with patch("sys.argv", ["train.py", "--config", "test.yaml"]):
-
         args, overrides = parse_args()
 
         assert args.config == "test.yaml"
 
         assert args.resume is None
 
+
 def test_parse_args_with_resume():
 
     from scripts.train import parse_args
 
     with patch(
-
         "sys.argv", ["train.py", "--config", "test.yaml", "--resume", "ckpt.pt"]
-
     ):
-
         args, overrides = parse_args()
 
         assert args.resume == "ckpt.pt"
+
 
 def test_evaluate():
 
@@ -172,14 +163,13 @@ def test_evaluate():
     model.return_value = (None, torch.tensor(1.5), None)
 
     loader = [
-
         (torch.zeros(2, 10, dtype=torch.long), torch.zeros(2, 10, dtype=torch.long))
-
     ]
 
     loss = evaluate(model, loader, "cpu", max_batches=1)
 
     assert isinstance(loss, float)
+
 
 def test_evaluate_empty_loader():
 
@@ -195,6 +185,7 @@ def test_evaluate_empty_loader():
 
     assert loss == float("inf")
 
+
 def test_init_wandb_not_main():
 
     from scripts.train import init_wandb
@@ -202,8 +193,8 @@ def test_init_wandb_not_main():
     cfg = MagicMock()
 
     with patch("scripts.train.is_main_process", return_value=False):
-
         init_wandb(cfg)
+
 
 def test_init_wandb_disabled():
 
@@ -214,8 +205,8 @@ def test_init_wandb_disabled():
     cfg.get.return_value = {"enabled": False}
 
     with patch("scripts.train.is_main_process", return_value=True):
-
         init_wandb(cfg)
+
 
 def test_init_wandb_mode_disabled():
 
@@ -228,8 +219,8 @@ def test_init_wandb_mode_disabled():
     cfg.get.return_value = logging_cfg
 
     with patch("scripts.train.is_main_process", return_value=True):
-
         init_wandb(cfg)
+
 
 def test_init_wandb_import_error():
 
@@ -240,40 +231,34 @@ def test_init_wandb_import_error():
     logging_cfg = MagicMock()
 
     logging_cfg.get.side_effect = lambda k, d=None: {
-
         "enabled": True,
-
         "mode": "online",
-
         "project": "test",
-
     }.get(k, d)
 
     cfg.get.return_value = logging_cfg
 
     with patch("scripts.train.is_main_process", return_value=True):
-
         with patch.dict("sys.modules", {"wandb": None}):
-
             init_wandb(cfg)
+
 
 def test_log_wandb_not_main():
 
     from scripts.train import log_wandb
 
     with patch("scripts.train.is_main_process", return_value=False):
-
         log_wandb({"loss": 1.0})
+
 
 def test_log_wandb_no_wandb():
 
     from scripts.train import log_wandb
 
     with patch("scripts.train.is_main_process", return_value=True):
-
         with patch.dict("sys.modules", {"wandb": None}):
-
             log_wandb({"loss": 1.0})
+
 
 def test_broadcast_scalar_not_distributed():
 
@@ -282,6 +267,7 @@ def test_broadcast_scalar_not_distributed():
     result = _broadcast_scalar(3.14, "cpu", False)
 
     assert result == 3.14
+
 
 def test_build_optimizer_adamw():
 
@@ -296,20 +282,16 @@ def test_build_optimizer_adamw():
     cfg.training.lr = 1e-3
 
     cfg.training.get.side_effect = lambda k, d=None: {
-
         "lr_base": None,
-
         "betas": [0.9, 0.95],
-
         "eps": 1e-8,
-
         "weight_decay": 0.1,
-
     }.get(k, d)
 
     opt = build_optimizer(model, cfg)
 
     assert isinstance(opt, torch.optim.AdamW)
+
 
 def test_build_optimizer_adam():
 
@@ -324,20 +306,16 @@ def test_build_optimizer_adam():
     cfg.training.lr = 1e-3
 
     cfg.training.get.side_effect = lambda k, d=None: {
-
         "lr_base": None,
-
         "betas": [0.9, 0.95],
-
         "eps": 1e-8,
-
         "weight_decay": 0.1,
-
     }.get(k, d)
 
     opt = build_optimizer(model, cfg)
 
     assert isinstance(opt, torch.optim.Adam)
+
 
 def test_build_optimizer_unknown():
 
@@ -352,20 +330,15 @@ def test_build_optimizer_unknown():
     cfg.training.lr = 1e-3
 
     cfg.training.get.side_effect = lambda k, d=None: {
-
         "lr_base": None,
-
         "betas": [0.9, 0.95],
-
         "eps": 1e-8,
-
         "weight_decay": 0.1,
-
     }.get(k, d)
 
     with pytest.raises(ValueError, match="Unknown optimizer"):
-
         build_optimizer(model, cfg)
+
 
 def test_build_optimizer_with_base_lr():
 
@@ -388,15 +361,10 @@ def test_build_optimizer_with_base_lr():
     cfg.training.lr = 1e-3
 
     cfg.training.get.side_effect = lambda k, d=None: {
-
         "lr_base": 1e-5,
-
         "betas": [0.9, 0.95],
-
         "eps": 1e-8,
-
         "weight_decay": 0.1,
-
     }.get(k, d)
 
     opt = build_optimizer(model, cfg)

@@ -4,6 +4,7 @@ import numpy as np
 
 from unittest.mock import patch, MagicMock
 
+
 def _make_tracker(num_experts=4):
 
     from src.metrics.router_metrics import RouterMetricsTracker
@@ -16,7 +17,6 @@ def _make_tracker(num_experts=4):
 
     return RouterMetricsTracker(router)
 
-                                                                                 
 
 def test_compute_usage_dense():
 
@@ -27,6 +27,7 @@ def test_compute_usage_dense():
     usage = tracker._compute_usage(None, weights)
 
     assert usage.shape == (4,)
+
 
 def test_compute_usage_sparse():
 
@@ -39,6 +40,7 @@ def test_compute_usage_sparse():
     usage = tracker._compute_usage(indices, weights)
 
     assert usage.shape == (4,)
+
 
 def test_compute_expert_entropy():
 
@@ -54,11 +56,12 @@ def test_compute_expert_entropy():
 
     assert "expert_entropy_normalized" in result
 
+
 def test_compute_fatigue_stats_no_fatigue():
 
     from src.metrics.router_metrics import RouterMetricsTracker
 
-    router = MagicMock(spec=[])                   
+    router = MagicMock(spec=[])
 
     router.num_experts = 4
 
@@ -67,6 +70,7 @@ def test_compute_fatigue_stats_no_fatigue():
     result = tracker.compute_fatigue_stats()
 
     assert result == {}
+
 
 def test_compute_fatigue_stats_with_fatigue():
 
@@ -90,6 +94,7 @@ def test_compute_fatigue_stats_with_fatigue():
 
     assert "fatigue_max" in result
 
+
 def test_compute_usage_distribution():
 
     tracker = _make_tracker()
@@ -104,6 +109,7 @@ def test_compute_usage_distribution():
 
     assert "usage_distribution" in result
 
+
 def test_compute_gini_coefficient():
 
     tracker = _make_tracker()
@@ -116,6 +122,7 @@ def test_compute_gini_coefficient():
 
     assert 0.0 <= gini <= 1.0
 
+
 def test_compute_gini_with_precomputed_usage():
 
     tracker = _make_tracker()
@@ -124,7 +131,8 @@ def test_compute_gini_with_precomputed_usage():
 
     gini = tracker.compute_gini_coefficient(None, torch.zeros(8, 4), usage=usage)
 
-    assert gini > 0.5                     
+    assert gini > 0.5
+
 
 def test_compute_effective_experts():
 
@@ -138,6 +146,7 @@ def test_compute_effective_experts():
 
     assert eff > 0.0
 
+
 def test_compute_effective_experts_with_entropy():
 
     tracker = _make_tracker()
@@ -149,6 +158,7 @@ def test_compute_effective_experts_with_entropy():
     eff = tracker.compute_effective_experts(indices, weights, entropy=1.386)
 
     assert eff > 0.0
+
 
 def test_compute_confidence_metrics():
 
@@ -163,6 +173,7 @@ def test_compute_confidence_metrics():
     assert "router_confidence_std" in result
 
     assert "top1_dominance" in result
+
 
 def test_compute_all_metrics_with_num_steps():
 
@@ -184,6 +195,7 @@ def test_compute_all_metrics_with_num_steps():
 
     assert metrics["num_steps"] == 42
 
+
 def test_compute_all_metrics_with_custom_metrics():
 
     from src.metrics.router_metrics import RouterMetricsTracker
@@ -204,34 +216,32 @@ def test_compute_all_metrics_with_custom_metrics():
 
     assert "custom_key" in metrics
 
+
 def test_log_to_wandb_not_available():
 
     tracker = _make_tracker()
 
     with patch("src.metrics.router_metrics.WANDB_AVAILABLE", False):
+        tracker.log_to_wandb({}, step=0)
 
-        tracker.log_to_wandb({}, step=0)         
 
 def test_log_to_wandb_no_run():
 
     tracker = _make_tracker()
 
     with patch("src.metrics.router_metrics.WANDB_AVAILABLE", True):
-
         with patch("src.metrics.router_metrics.wandb") as mock_wandb:
-
             mock_wandb.run = None
 
             tracker.log_to_wandb({"loss": 1.0}, step=0)
+
 
 def test_log_to_wandb_with_run():
 
     tracker = _make_tracker()
 
     with patch("src.metrics.router_metrics.WANDB_AVAILABLE", True):
-
         with patch("src.metrics.router_metrics.wandb") as mock_wandb:
-
             mock_run = MagicMock()
 
             mock_wandb.run = mock_run
@@ -239,24 +249,17 @@ def test_log_to_wandb_with_run():
             mock_wandb.Histogram = MagicMock(return_value=MagicMock())
 
             metrics = {
-
                 "expert_entropy": 1.5,
-
                 "fatigue_per_expert": np.array([0.1, 0.2, 0.3, 0.4]),
-
                 "usage_distribution": np.array([0.25, 0.25, 0.25, 0.25]),
-
                 "stress_per_expert": np.array([0.1, 0.2, 0.3, 0.4]),
-
                 "ema_load_per_expert": np.array([0.25, 0.25, 0.25, 0.25]),
-
             }
 
             tracker.log_to_wandb(metrics, step=10, prefix="router")
 
             mock_wandb.log.assert_called()
 
-                                                                                 
 
 def test_global_spec_tracker_update():
 
@@ -272,6 +275,7 @@ def test_global_spec_tracker_update():
 
     assert tracker.total_tokens > 0
 
+
 def test_global_spec_tracker_update_none_indices():
 
     from src.metrics.router_metrics import GlobalSpecializationTracker
@@ -284,21 +288,21 @@ def test_global_spec_tracker_update_none_indices():
 
     assert tracker.total_tokens == 0
 
+
 def test_global_spec_tracker_update_empty_valid():
 
     from src.metrics.router_metrics import GlobalSpecializationTracker
 
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
 
-                             
-
-    token_ids = torch.full((2, 8), 200)                
+    token_ids = torch.full((2, 8), 200)
 
     expert_indices = torch.randint(0, 4, (2, 8, 2))
 
     tracker.update(token_ids, expert_indices)
 
     assert tracker.total_tokens == 0
+
 
 def test_global_spec_tracker_compute_metrics_empty():
 
@@ -309,6 +313,7 @@ def test_global_spec_tracker_compute_metrics_empty():
     result = tracker.compute_metrics()
 
     assert result == {}
+
 
 def test_global_spec_tracker_compute_metrics():
 
@@ -328,35 +333,24 @@ def test_global_spec_tracker_compute_metrics():
 
     assert "collapse_score" in result
 
+
 def test_global_spec_tracker_compute_metrics_uniform():
 
     from src.metrics.router_metrics import GlobalSpecializationTracker
 
     tracker = GlobalSpecializationTracker(vocab_size=4, num_experts=4)
 
-                                                                                      
-
-    token_ids = torch.arange(4).unsqueeze(1).expand(4, 4).contiguous()          
-
-                                                                                
+    token_ids = torch.arange(4).unsqueeze(1).expand(4, 4).contiguous()
 
     expert_indices = torch.stack(
-
         [
-
             torch.zeros(4, 4, dtype=torch.long),
-
             torch.ones(4, 4, dtype=torch.long),
-
             torch.full((4, 4), 2, dtype=torch.long),
-
             torch.full((4, 4), 3, dtype=torch.long),
-
         ],
-
         dim=2,
-
-    )                                          
+    )
 
     expert_indices = torch.randint(0, 4, (4, 4, 2))
 
@@ -365,6 +359,7 @@ def test_global_spec_tracker_compute_metrics_uniform():
     result = tracker.compute_metrics()
 
     assert "collapse_score" in result
+
 
 def test_global_spec_tracker_sync_not_distributed():
 
@@ -382,6 +377,7 @@ def test_global_spec_tracker_sync_not_distributed():
 
     assert isinstance(result, dict)
 
+
 def test_global_spec_tracker_update_with_negative_experts():
 
     from src.metrics.router_metrics import GlobalSpecializationTracker
@@ -390,17 +386,12 @@ def test_global_spec_tracker_update_with_negative_experts():
 
     token_ids = torch.randint(0, 100, (2, 4))
 
-                                                  
-
     expert_indices = torch.tensor(
-
         [[[-1, 0], [1, -1], [2, 3], [0, 1]], [[-1, -1], [0, 1], [2, 3], [-1, 0]]]
-
     )
 
     tracker.update(token_ids, expert_indices)
 
-                                                                                
 
 def test_global_spec_tracker_compute_metrics_zero_tokens():
 
@@ -412,13 +403,12 @@ def test_global_spec_tracker_compute_metrics_zero_tokens():
 
     assert result == {}
 
+
 def test_global_spec_tracker_compute_metrics_no_active_mask():
 
     from src.metrics.router_metrics import GlobalSpecializationTracker
 
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
-
-                                                                            
 
     tracker.total_tokens = 10
 
@@ -426,9 +416,9 @@ def test_global_spec_tracker_compute_metrics_no_active_mask():
 
     assert result == {}
 
+
 def test_global_spec_tracker_update_all_padding_experts():
 
-    
     from src.metrics.router_metrics import GlobalSpecializationTracker
 
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
@@ -440,6 +430,7 @@ def test_global_spec_tracker_update_all_padding_experts():
     tracker.update(token_ids, expert_indices)
 
     assert tracker.total_tokens == 0
+
 
 def test_global_spec_tracker_sync_non_distributed():
 

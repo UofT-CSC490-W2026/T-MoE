@@ -1,5 +1,6 @@
 import torch
 
+
 def test_frozen_mlp_forward():
 
     from scripts.check_routing_signal import frozen_mlp_forward
@@ -18,6 +19,7 @@ def test_frozen_mlp_forward():
 
     assert out.shape == (4, 768)
 
+
 def test_routing_spread():
 
     from scripts.check_routing_signal import routing_spread
@@ -33,6 +35,7 @@ def test_routing_spread():
     assert isinstance(spread, float)
 
     assert spread >= 0.0
+
 
 def test_run_diagnostic():
 

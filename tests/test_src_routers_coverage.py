@@ -4,14 +4,12 @@ import torch
 
 from unittest.mock import MagicMock
 
-                                                                                 
 
 def test_base_router_step_noop():
 
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
-
         def forward(self, x, **kw):
 
             pass
@@ -30,14 +28,14 @@ def test_base_router_step_noop():
 
     r = ConcreteRouter(cfg)
 
-    r.step()                           
+    r.step()
+
 
 def test_base_router_reset_state():
 
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
-
         def forward(self, x, **kw):
 
             pass
@@ -56,14 +54,14 @@ def test_base_router_reset_state():
 
     r = ConcreteRouter(cfg)
 
-    r.reset_state()         
+    r.reset_state()
+
 
 def test_base_router_clear_aux_state():
 
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
-
         def forward(self, x, **kw):
 
             pass
@@ -82,14 +80,14 @@ def test_base_router_clear_aux_state():
 
     r = ConcreteRouter(cfg)
 
-    r.clear_aux_state()         
+    r.clear_aux_state()
+
 
 def test_base_router_get_state():
 
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
-
         def forward(self, x, **kw):
 
             pass
@@ -112,7 +110,6 @@ def test_base_router_get_state():
 
     assert state == {}
 
-                                                                                 
 
 def _make_standard_router(hidden=64, num_experts=4, top_k=2, use_aux=False):
 
@@ -121,12 +118,11 @@ def _make_standard_router(hidden=64, num_experts=4, top_k=2, use_aux=False):
     from src.configs.router import StandardRouterConfig
 
     cfg = StandardRouterConfig(
-
         hidden_dim=hidden, num_experts=num_experts, top_k=top_k, use_aux_loss=use_aux
-
     )
 
     return StandardRouter(cfg)
+
 
 def test_standard_router_forward_eval():
 
@@ -142,6 +138,7 @@ def test_standard_router_forward_eval():
 
     assert metrics is None
 
+
 def test_standard_router_forward_with_metrics():
 
     r = _make_standard_router()
@@ -154,6 +151,7 @@ def test_standard_router_forward_with_metrics():
 
     assert "eff_E_hard" in metrics
 
+
 def test_standard_router_aux_loss_not_training():
 
     r = _make_standard_router(use_aux=True)
@@ -163,6 +161,7 @@ def test_standard_router_aux_loss_not_training():
     loss = r.compute_aux_loss()
 
     assert loss.item() == 0.0
+
 
 def test_standard_router_aux_loss_no_cache():
 
@@ -174,6 +173,7 @@ def test_standard_router_aux_loss_no_cache():
 
     assert loss.item() == 0.0
 
+
 def test_standard_router_aux_loss_with_cache():
 
     r = _make_standard_router(use_aux=True)
@@ -182,11 +182,12 @@ def test_standard_router_aux_loss_with_cache():
 
     x = torch.randn(2, 4, 64)
 
-    r(x)                   
+    r(x)
 
     loss = r.compute_aux_loss()
 
     assert isinstance(loss.item(), float)
+
 
 def test_standard_router_clear_aux_state():
 
@@ -202,11 +203,13 @@ def test_standard_router_clear_aux_state():
 
     assert r._last_probs is None
 
+
 def test_standard_router_get_state():
 
     r = _make_standard_router()
 
     assert r.get_state() == {}
+
 
 def test_standard_router_compute_aux_loss_full():
 
@@ -222,7 +225,6 @@ def test_standard_router_compute_aux_loss_full():
 
     assert loss.item() >= 0.0
 
-                                                                                 
 
 def _make_deepseek_router(hidden=64, num_experts=4, top_k=2, use_sigmoid=False):
 
@@ -231,12 +233,11 @@ def _make_deepseek_router(hidden=64, num_experts=4, top_k=2, use_sigmoid=False):
     from src.configs.router import DeepSeekRouterConfig
 
     cfg = DeepSeekRouterConfig(
-
         hidden_dim=hidden, num_experts=num_experts, top_k=top_k, use_sigmoid=use_sigmoid
-
     )
 
     return DeepSeekRouter(cfg)
+
 
 def test_deepseek_router_forward():
 
@@ -248,6 +249,7 @@ def test_deepseek_router_forward():
 
     assert weights.shape == (8, 4)
 
+
 def test_deepseek_router_forward_sigmoid():
 
     r = _make_deepseek_router(use_sigmoid=True)
@@ -257,6 +259,7 @@ def test_deepseek_router_forward_sigmoid():
     weights, _, metrics = r(x)
 
     assert weights.shape == (8, 4)
+
 
 def test_deepseek_router_forward_with_metrics():
 
@@ -269,6 +272,7 @@ def test_deepseek_router_forward_with_metrics():
     assert metrics is not None
 
     assert "eff_E_hard" in metrics
+
 
 def test_deepseek_router_forward_with_noise():
 
@@ -284,6 +288,7 @@ def test_deepseek_router_forward_with_noise():
 
     assert weights.shape == (8, 4)
 
+
 def test_deepseek_router_step():
 
     r = _make_deepseek_router()
@@ -292,17 +297,19 @@ def test_deepseek_router_step():
 
     x = torch.randn(2, 4, 64)
 
-    r(x)                
+    r(x)
 
     r.step()
 
     assert not r._usage_pending
 
+
 def test_deepseek_router_step_no_pending():
 
     r = _make_deepseek_router()
 
-    r.step()                              
+    r.step()
+
 
 def test_deepseek_router_reset_state():
 
@@ -320,6 +327,7 @@ def test_deepseek_router_reset_state():
 
     assert r.bias.abs().sum().item() == 0.0
 
+
 def test_deepseek_router_get_state():
 
     r = _make_deepseek_router()
@@ -330,6 +338,7 @@ def test_deepseek_router_get_state():
 
     assert "mean_bias" in state
 
+
 def test_deepseek_router_compute_aux_loss():
 
     r = _make_deepseek_router()
@@ -337,6 +346,7 @@ def test_deepseek_router_compute_aux_loss():
     loss = r.compute_aux_loss()
 
     assert loss.item() == 0.0
+
 
 def test_deepseek_router_record_usage_false():
 
@@ -350,13 +360,13 @@ def test_deepseek_router_record_usage_false():
 
     assert not r._usage_pending
 
+
 def test_deepseek_router_sync_usage_not_distributed():
 
     r = _make_deepseek_router()
 
-    r._sync_usage_distributed()                              
+    r._sync_usage_distributed()
 
-                                                                                 
 
 def _make_metabolic_router(hidden=64, num_experts=4, top_k=2):
 
@@ -368,6 +378,7 @@ def _make_metabolic_router(hidden=64, num_experts=4, top_k=2):
 
     return MetabolicRouter(cfg)
 
+
 def test_metabolic_router_top_k_exceeds_experts():
 
     from src.routers.metabolic import MetabolicRouter
@@ -375,8 +386,8 @@ def test_metabolic_router_top_k_exceeds_experts():
     from src.configs.router import MetabolicRouterConfig
 
     with pytest.raises(ValueError, match="top_k"):
-
         MetabolicRouter(MetabolicRouterConfig(hidden_dim=64, num_experts=4, top_k=5))
+
 
 def test_metabolic_router_compute_alignment():
 
@@ -387,6 +398,7 @@ def test_metabolic_router_compute_alignment():
     alignment = r.compute_alignment(x)
 
     assert alignment.shape == (2, 4, 4)
+
 
 def test_metabolic_router_compute_routing_potential_no_lambda():
 
@@ -400,6 +412,7 @@ def test_metabolic_router_compute_routing_potential_no_lambda():
 
     assert torch.allclose(potential, alignment)
 
+
 def test_metabolic_router_compute_routing_potential_with_noise():
 
     r = _make_metabolic_router()
@@ -409,6 +422,7 @@ def test_metabolic_router_compute_routing_potential_with_noise():
     potential = r.compute_routing_potential(alignment, noise_std=0.1)
 
     assert potential.shape == alignment.shape
+
 
 def test_metabolic_router_forward_eval():
 
@@ -424,6 +438,7 @@ def test_metabolic_router_forward_eval():
 
     assert indices is None
 
+
 def test_metabolic_router_forward_with_temperature():
 
     r = _make_metabolic_router()
@@ -434,6 +449,7 @@ def test_metabolic_router_forward_with_temperature():
 
     assert weights.shape == (8, 4)
 
+
 def test_metabolic_router_forward_with_noise():
 
     r = _make_metabolic_router()
@@ -443,6 +459,7 @@ def test_metabolic_router_forward_with_noise():
     weights, _, _ = r(x, noise_std=0.1)
 
     assert weights.shape == (8, 4)
+
 
 def test_metabolic_router_forward_warmup():
 
@@ -458,6 +475,7 @@ def test_metabolic_router_forward_warmup():
 
     assert weights.shape == (8, 4)
 
+
 def test_metabolic_router_update_fatigue():
 
     r = _make_metabolic_router()
@@ -467,6 +485,7 @@ def test_metabolic_router_update_fatigue():
     r.update_fatigue(usage)
 
     assert r.fatigue.sum().item() >= 0.0
+
 
 def test_metabolic_router_state_dict_load():
 
@@ -490,6 +509,7 @@ def test_metabolic_router_state_dict_load():
 
     assert r2.num_steps.item() == r.num_steps.item()
 
+
 def test_metabolic_router_load_state_dict_mismatch_warns():
 
     r = _make_metabolic_router()
@@ -499,8 +519,8 @@ def test_metabolic_router_load_state_dict_mismatch_warns():
     sd["_metabolic_metadata"] = {"num_steps": 5, "lambda_metabolic": 999.0}
 
     with pytest.warns(UserWarning, match="mismatch"):
-
         r.load_state_dict(sd)
+
 
 def test_metabolic_router_load_state_dict_no_metadata():
 
@@ -508,19 +528,19 @@ def test_metabolic_router_load_state_dict_no_metadata():
 
     sd = r.state_dict()
 
-                     
-
     sd_clean = {k: v for k, v in sd.items() if k != "_metabolic_metadata"}
 
     r2 = _make_metabolic_router()
 
     r2.load_state_dict(sd_clean)
 
+
 def test_metabolic_router_sync_usage_not_distributed():
 
     r = _make_metabolic_router()
 
-    r._sync_usage_distributed()         
+    r._sync_usage_distributed()
+
 
 def test_metabolic_router_get_state():
 
@@ -532,6 +552,7 @@ def test_metabolic_router_get_state():
 
     assert "lambda_eff" in state
 
+
 def test_metabolic_router_compute_aux_loss():
 
     r = _make_metabolic_router()
@@ -540,7 +561,6 @@ def test_metabolic_router_compute_aux_loss():
 
     assert loss.item() == 0.0
 
-                                                                                 
 
 def _make_stress_router(hidden=64, num_experts=4, top_k=2):
 
@@ -549,12 +569,11 @@ def _make_stress_router(hidden=64, num_experts=4, top_k=2):
     from src.configs.router import StressCorrectedRouterConfig
 
     cfg = StressCorrectedRouterConfig(
-
         hidden_dim=hidden, num_experts=num_experts, top_k=top_k
-
     )
 
     return StressCorrectedRouter(cfg)
+
 
 def test_stress_router_top_k_exceeds_experts():
 
@@ -563,12 +582,10 @@ def test_stress_router_top_k_exceeds_experts():
     from src.configs.router import StressCorrectedRouterConfig
 
     with pytest.raises(ValueError, match="top_k"):
-
         StressCorrectedRouter(
-
             StressCorrectedRouterConfig(hidden_dim=64, num_experts=4, top_k=5)
-
         )
+
 
 def test_stress_router_forward_eval():
 
@@ -581,6 +598,7 @@ def test_stress_router_forward_eval():
     weights, _, metrics = r(x)
 
     assert weights.shape == (8, 4)
+
 
 def test_stress_router_forward_train_with_noise():
 
@@ -596,6 +614,7 @@ def test_stress_router_forward_train_with_noise():
 
     assert weights.shape == (8, 4)
 
+
 def test_stress_router_forward_with_metrics():
 
     r = _make_stress_router()
@@ -605,6 +624,7 @@ def test_stress_router_forward_with_metrics():
     weights, _, metrics = r(x, return_metrics=True)
 
     assert metrics is not None
+
 
 def test_stress_router_forward_record_usage_false():
 
@@ -617,6 +637,7 @@ def test_stress_router_forward_record_usage_false():
     r(x, record_usage=False)
 
     assert r._pending_count_n.item() == 0
+
 
 def test_stress_router_step():
 
@@ -632,6 +653,7 @@ def test_stress_router_step():
 
     assert r.num_steps.item() == 1
 
+
 def test_stress_router_step_lambda_calibration():
 
     r = _make_stress_router()
@@ -644,17 +666,19 @@ def test_stress_router_step_lambda_calibration():
 
     r(x)
 
-    r.step()                                  
+    r.step()
 
     assert r._lambda_init_done
+
 
 def test_stress_router_step_no_pending():
 
     r = _make_stress_router()
 
-    r.step()                              
+    r.step()
 
     assert r.num_steps.item() == 1
+
 
 def test_stress_router_reset_state():
 
@@ -674,6 +698,7 @@ def test_stress_router_reset_state():
 
     assert not r._lambda_init_done
 
+
 def test_stress_router_reset_welford():
 
     r = _make_stress_router()
@@ -683,6 +708,7 @@ def test_stress_router_reset_welford():
     r.reset_welford()
 
     assert r.welford_n.sum().item() == 0.0
+
 
 def test_stress_router_get_state():
 
@@ -694,6 +720,7 @@ def test_stress_router_get_state():
 
     assert "ema_load" in state
 
+
 def test_stress_router_compute_aux_loss():
 
     r = _make_stress_router()
@@ -702,11 +729,13 @@ def test_stress_router_compute_aux_loss():
 
     assert loss.item() == 0.0
 
+
 def test_stress_router_clear_aux_state():
 
     r = _make_stress_router()
 
-    r.clear_aux_state()         
+    r.clear_aux_state()
+
 
 def test_stress_router_current_tau_no_anneal():
 
@@ -717,6 +746,7 @@ def test_stress_router_current_tau_no_anneal():
     tau = r._current_tau()
 
     assert tau == r.temperature
+
 
 def test_stress_router_current_tau_with_anneal():
 
@@ -732,6 +762,7 @@ def test_stress_router_current_tau_with_anneal():
 
     assert r.tau_final < tau < r.temperature
 
+
 def test_stress_router_current_noise_std_no_anneal():
 
     r = _make_stress_router()
@@ -741,6 +772,7 @@ def test_stress_router_current_noise_std_no_anneal():
     std = r._current_noise_std()
 
     assert std == r.noise_std
+
 
 def test_stress_router_current_noise_std_with_anneal():
 
@@ -756,6 +788,7 @@ def test_stress_router_current_noise_std_with_anneal():
 
     assert 0.0 < std < 0.1
 
+
 def test_stress_router_calibrate_lambda():
 
     r = _make_stress_router()
@@ -768,6 +801,7 @@ def test_stress_router_calibrate_lambda():
 
     assert r.lambda_val.item() > 0.0
 
+
 def test_stress_router_initialize_prototypes():
 
     r = _make_stress_router()
@@ -776,11 +810,10 @@ def test_stress_router_initialize_prototypes():
 
     r.initialize_prototypes_from_data(activations, n_iter=5)
 
-                            
-
     norms = torch.nn.functional.normalize(r.W, dim=-1).norm(dim=-1)
 
     assert torch.allclose(norms, torch.ones_like(norms), atol=1e-5)
+
 
 def test_stress_router_welford_variance():
 
@@ -793,6 +826,7 @@ def test_stress_router_welford_variance():
     var = r._welford_variance()
 
     assert var.shape == (4,)
+
 
 def test_stress_router_get_custom_metrics():
 
@@ -808,6 +842,7 @@ def test_stress_router_get_custom_metrics():
 
     assert "ema_load_mean" in metrics
 
+
 def test_stress_router_get_custom_metrics_with_indices():
 
     r = _make_stress_router()
@@ -820,6 +855,7 @@ def test_stress_router_get_custom_metrics_with_indices():
 
     assert "eff_E_hard" in metrics
 
+
 def test_stress_router_sync_not_distributed():
 
     r = _make_stress_router()
@@ -829,6 +865,7 @@ def test_stress_router_sync_not_distributed():
     r._sync_ema_load_distributed()
 
     r._sync_lambda_distributed()
+
 
 def test_stress_router_step_with_lambda_already_done():
 
@@ -848,6 +885,7 @@ def test_stress_router_step_with_lambda_already_done():
 
     assert r.num_steps.item() == 1
 
+
 def test_stress_router_step_lambda_calib_no_pending_cos():
 
     r = _make_stress_router()
@@ -856,7 +894,7 @@ def test_stress_router_step_lambda_calib_no_pending_cos():
 
     r._lambda_init_done = False
 
-    r._pending_cos_sims = []         
+    r._pending_cos_sims = []
 
     r.train()
 
@@ -864,11 +902,12 @@ def test_stress_router_step_lambda_calib_no_pending_cos():
 
     r(x, record_usage=False)
 
-    r._pending_cos_sims = []                  
+    r._pending_cos_sims = []
 
     r.num_steps.fill_(0)
 
     r.step()
+
 
 def test_kmeans_init():
 
@@ -880,6 +919,7 @@ def test_kmeans_init():
 
     assert centroids.shape == (4, 64)
 
+
 def test_kmeans_init_too_few_tokens():
 
     from src.routers.stress_corrected import _kmeans_init
@@ -887,10 +927,8 @@ def test_kmeans_init_too_few_tokens():
     activations = torch.randn(3, 64)
 
     with pytest.raises(ValueError, match="need at least"):
-
         _kmeans_init(activations, k=4)
 
-                                                                                 
 
 def test_stress_router_update_welford():
 
@@ -900,13 +938,13 @@ def test_stress_router_update_welford():
 
     x = torch.randn(2, 4, 64)
 
-    r(x)                                       
+    r(x)
 
     assert r.welford_n.sum().item() > 0
 
+
 def test_stress_router_welford_no_active():
 
-    
     r = _make_stress_router()
 
     import torch.nn.functional as F
@@ -919,11 +957,13 @@ def test_stress_router_welford_no_active():
 
     r._update_welford(x_norm, topk_idx, W_norm)
 
+
 def test_stress_router_sync_welford_not_distributed():
 
     r = _make_stress_router()
 
-    r._sync_welford_distributed()         
+    r._sync_welford_distributed()
+
 
 def test_stress_router_read_ema_load():
 
@@ -932,6 +972,7 @@ def test_stress_router_read_ema_load():
     load = r._read_ema_load()
 
     assert load.shape == (4,)
+
 
 def test_stress_router_forward_with_temperature_override():
 
@@ -942,6 +983,7 @@ def test_stress_router_forward_with_temperature_override():
     weights, _, _ = r(x, temperature=0.1)
 
     assert weights.shape == (8, 4)
+
 
 def test_stress_router_forward_with_noise_override():
 
@@ -955,32 +997,32 @@ def test_stress_router_forward_with_noise_override():
 
     assert weights.shape == (8, 4)
 
-                                                                                
 
 def test_metabolic_router_record_usage_accumulate():
 
-    
     r = _make_metabolic_router()
 
     r.train()
 
     x = torch.randn(2, 4, 64)
 
-    r(x)                                  
+    r(x)
 
-    r(x)                           
+    r(x)
 
     assert r._usage_pending
 
     assert r._pending_tokens.item() > 0
 
+
 def test_metabolic_router_step_no_pending():
 
     r = _make_metabolic_router()
 
-    r.step()                                                  
+    r.step()
 
     assert r.num_steps.item() == 0
+
 
 def test_metabolic_router_forward_no_warmup():
 
@@ -996,16 +1038,12 @@ def test_metabolic_router_forward_no_warmup():
 
     assert weights.shape == (8, 4)
 
-                                                                                
 
 def test_deepseek_router_step_overloaded_underloaded():
 
-    
     r = _make_deepseek_router()
 
     r.train()
-
-                                                                
 
     r._pending_usage_sum = torch.tensor([8.0, 0.0, 0.0, 0.0])
 
@@ -1015,34 +1053,28 @@ def test_deepseek_router_step_overloaded_underloaded():
 
     r.step()
 
-                                                    
-
     assert r.bias[0].item() < 0.0
-
-                                                          
 
     assert r.bias[1].item() > 0.0
 
+
 def test_deepseek_router_record_usage_accumulate():
 
-    
     r = _make_deepseek_router()
 
     r.train()
 
     x = torch.randn(2, 4, 64)
 
-    r(x)                              
+    r(x)
 
-    r(x)                                  
+    r(x)
 
     assert r._pending_tokens.item() > 0
 
-                                                                                
 
 def test_expert_choice_router_nan_guard():
 
-    
     from src.routers.expert_choice import ExpertChoiceRouter
 
     from src.configs.router import ExpertChoiceRouterConfig
@@ -1051,10 +1083,7 @@ def test_expert_choice_router_nan_guard():
 
     router = ExpertChoiceRouter(cfg)
 
-                                                       
-
     with torch.no_grad():
-
         router.gate.weight.fill_(float("nan"))
 
     x = torch.randn(2, 4, 4)
@@ -1062,6 +1091,7 @@ def test_expert_choice_router_nan_guard():
     weights, _, _ = router(x)
 
     assert torch.isfinite(weights).all()
+
 
 def test_expert_choice_router_compute_aux_loss():
 
@@ -1077,7 +1107,6 @@ def test_expert_choice_router_compute_aux_loss():
 
     assert loss.item() == 0.0
 
-                                                                                
 
 def test_standard_router_clear_aux_state_explicit():
 
@@ -1105,11 +1134,9 @@ def test_standard_router_clear_aux_state_explicit():
 
     assert router._last_weights is None
 
-                                                                                 
 
 def test_stress_router_get_custom_metrics_none_both():
 
-    
     from src.routers.stress_corrected import StressCorrectedRouter
 
     from src.configs.router import StressCorrectedRouterConfig
@@ -1122,11 +1149,9 @@ def test_stress_router_get_custom_metrics_none_both():
 
     assert "eff_E_hard" in metrics
 
-                                                                                 
 
 def test_stress_router_update_welford_no_active():
 
-    
     from src.routers.stress_corrected import StressCorrectedRouter
 
     from src.configs.router import StressCorrectedRouterConfig
@@ -1135,20 +1160,12 @@ def test_stress_router_update_welford_no_active():
 
     router = StressCorrectedRouter(cfg)
 
-                                                                    
-
     x_norm = torch.randn(1, 1, 4)
 
     topk_idx = torch.zeros(1, 1, 1, dtype=torch.long)
 
     W_norm = torch.randn(2, 4)
 
-                                                                                          
-
-                                                                                          
-
     router._update_welford(x_norm, topk_idx, W_norm)
-
-                                                  
 
     assert router.welford_n[0].item() >= 0.0

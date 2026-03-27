@@ -16,19 +16,13 @@ from src.routers.base import BaseRouter
 
 from src.project_types import ExpertType
 
-               
 
 class MockRouter(BaseRouter):
-
-    
-
     def forward(self, x, return_metrics=False, record_usage=True):
 
         B, S, _ = x.shape
 
         N = B * S
-
-                                                                  
 
         weights = torch.zeros(N, 2)
 
@@ -42,16 +36,16 @@ class MockRouter(BaseRouter):
 
         return torch.tensor(0.0)
 
-class _RouterCfg:
 
+class _RouterCfg:
     hidden_dim = 32
 
     num_experts = 2
 
     top_k = 2
 
-class MockMLP(nn.Module):
 
+class MockMLP(nn.Module):
     def __init__(self):
 
         super().__init__()
@@ -66,13 +60,12 @@ class MockMLP(nn.Module):
 
         return self.c_proj(self.act(self.c_fc(x)))
 
-@pytest.fixture
 
+@pytest.fixture
 def lora_config():
 
     return LoRAConfig(hidden_dim=32, intermediate_dim=128, rank=4, alpha=8)
 
-                 
 
 def test_lora_layer_init():
 
@@ -85,12 +78,11 @@ def test_lora_layer_init():
     assert torch.all(layer.lora_B.weight == 0), "B should be zero-init"
 
     assert not torch.all(layer.lora_A.weight == 0), (
-
         "A should be Kaiming-init (non-zero)"
-
     )
 
     assert layer.base_weight is None
+
 
 def test_lora_layer_forward_zero_at_init():
 
@@ -100,9 +92,8 @@ def test_lora_layer_forward_zero_at_init():
 
     out = layer(x)
 
-                                                         
-
     assert torch.allclose(out, torch.zeros_like(out))
+
 
 def test_lora_layer_forward_nonzero_after_perturb():
 
@@ -116,7 +107,6 @@ def test_lora_layer_forward_nonzero_after_perturb():
 
     assert out.shape == (2, 10, 32)
 
-                       
 
 def test_shared_lora_layer_memory_sharing():
 
@@ -124,19 +114,14 @@ def test_shared_lora_layer_memory_sharing():
 
     layers = [SharedLoRALayer(w, None, rank=4, alpha=16) for _ in range(4)]
 
-                                                              
-
     assert all(
-
         layer.shared_weight.data_ptr() == layers[0].shared_weight.data_ptr()
-
         for layer in layers
-
     )
+
 
 def test_shared_lora_layer_not_in_state_dict():
 
-    
     w = torch.randn(64, 32)
 
     layer = SharedLoRALayer(w, None, rank=4, alpha=16)
@@ -149,6 +134,7 @@ def test_shared_lora_layer_not_in_state_dict():
 
     assert "lora_B.weight" in sd
 
+
 def test_shared_lora_layer_forward():
 
     w = torch.randn(64, 32)
@@ -159,13 +145,10 @@ def test_shared_lora_layer_forward():
 
     out = layer(x)
 
-                                                       
-
     expected = nn.functional.linear(x, w)
 
     assert torch.allclose(out, expected, atol=1e-6)
 
-                     
 
 def test_gpt_neo_lora_mlp_structure():
 
@@ -178,6 +161,7 @@ def test_gpt_neo_lora_mlp_structure():
     assert isinstance(mlp.c_fc, SharedLoRALayer)
 
     assert isinstance(mlp.c_proj, SharedLoRALayer)
+
 
 def test_gpt_neo_lora_mlp_zero_at_init():
 
@@ -195,18 +179,16 @@ def test_gpt_neo_lora_mlp_zero_at_init():
 
     assert torch.allclose(out, expected, atol=1e-6)
 
+
 def test_gpt_neo_lora_load_from_mlp_raises_on_missing():
 
-    
     mlp = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
 
-    dummy = nn.Module()                         
+    dummy = nn.Module()
 
     with pytest.raises(ValueError, match="missing c_fc/c_proj"):
-
         mlp.load_from_mlp(dummy)
 
-                  
 
 def test_expert_pool(lora_config):
 
@@ -218,7 +200,6 @@ def test_expert_pool(lora_config):
 
     assert isinstance(pool[2], GPTNeoLoRAMLP)
 
-                    
 
 def test_lora_moe_layer_matches_base_at_init(lora_config):
 
@@ -227,14 +208,10 @@ def test_lora_moe_layer_matches_base_at_init(lora_config):
     router = MockRouter(_RouterCfg())
 
     layer = LoRAMoELayer.from_pretrained_mlp(
-
         base_mlp, router, lora_config, num_experts=2
-
     )
 
     x = torch.randn(2, 5, 32)
-
-                                                    
 
     out = layer(x)
 
@@ -244,6 +221,7 @@ def test_lora_moe_layer_matches_base_at_init(lora_config):
 
     assert torch.allclose(out, expected, atol=1e-6)
 
+
 def test_lora_moe_layer_returns_tuple_with_metrics(lora_config):
 
     base_mlp = MockMLP()
@@ -251,9 +229,7 @@ def test_lora_moe_layer_returns_tuple_with_metrics(lora_config):
     router = MockRouter(_RouterCfg())
 
     layer = LoRAMoELayer.from_pretrained_mlp(
-
         base_mlp, router, lora_config, num_experts=2
-
     )
 
     x = torch.randn(2, 5, 32)
@@ -266,6 +242,7 @@ def test_lora_moe_layer_returns_tuple_with_metrics(lora_config):
 
     assert isinstance(out, torch.Tensor)
 
+
 def test_lora_moe_layer_changes_after_perturb(lora_config):
 
     base_mlp = MockMLP()
@@ -273,9 +250,7 @@ def test_lora_moe_layer_changes_after_perturb(lora_config):
     router = MockRouter(_RouterCfg())
 
     layer = LoRAMoELayer.from_pretrained_mlp(
-
         base_mlp, router, lora_config, num_experts=2
-
     )
 
     x = torch.randn(2, 5, 32)
@@ -296,9 +271,9 @@ def test_lora_moe_layer_changes_after_perturb(lora_config):
 
     assert not torch.allclose(out, expected)
 
+
 def test_consolidate_shared_weights_aliases_buffers(lora_config):
 
-    
     base_mlp = MockMLP()
 
     pool = ExpertPool(lora_config, num_experts=4)
@@ -310,18 +285,14 @@ def test_consolidate_shared_weights_aliases_buffers(lora_config):
     e0 = pool.experts[0]
 
     for expert in pool.experts[1:]:
-
         assert (
-
             expert.c_fc._buffers["shared_weight"].data_ptr()
-
             == e0.c_fc._buffers["shared_weight"].data_ptr()
-
         ), "Experts should share the same weight buffer after consolidation"
+
 
 def test_gptneo_lora_forward_raises_before_load():
 
-    
     from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
 
     from src.experts.lora import LoRAConfig
@@ -329,12 +300,11 @@ def test_gptneo_lora_forward_raises_before_load():
     expert = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
 
     with pytest.raises(RuntimeError, match="load_from_mlp"):
-
         expert(torch.randn(2, 4, 32))
+
 
 def test_b_init_scale_breaks_expert_symmetry():
 
-    
     config = LoRAConfig(hidden_dim=32, rank=4, alpha=8, b_init_scale=0.01)
 
     base_mlp = MockMLP()
@@ -342,7 +312,6 @@ def test_b_init_scale_breaks_expert_symmetry():
     experts = []
 
     for _ in range(4):
-
         e = GPTNeoLoRAMLP(config)
 
         e.load_from_mlp(base_mlp)
@@ -353,29 +322,22 @@ def test_b_init_scale_breaks_expert_symmetry():
 
     outputs = [e(x) for e in experts]
 
-                                                                            
-
     any_different = False
 
     for i in range(len(outputs)):
-
         for j in range(i + 1, len(outputs)):
-
             if not torch.allclose(outputs[i], outputs[j], atol=1e-7):
-
                 any_different = True
 
                 break
 
     assert any_different, (
-
         "With b_init_scale > 0, at least two experts should produce different outputs at init"
-
     )
+
 
 def test_b_init_scale_zero_preserves_base_output():
 
-    
     config = LoRAConfig(hidden_dim=32, rank=4, alpha=8, b_init_scale=0.0)
 
     base_mlp = MockMLP()

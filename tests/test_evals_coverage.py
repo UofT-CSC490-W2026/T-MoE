@@ -8,7 +8,6 @@ from unittest.mock import patch, MagicMock
 
 from pathlib import Path
 
-                                                                                 
 
 def test_cfg_select_dict():
 
@@ -20,6 +19,7 @@ def test_cfg_select_dict():
 
     assert _cfg_select(config, "model.missing", "default") == "default"
 
+
 def test_cfg_select_missing_key():
 
     from evals.loading import _cfg_select
@@ -27,6 +27,7 @@ def test_cfg_select_missing_key():
     config = {"a": {"b": 1}}
 
     assert _cfg_select(config, "a.c", "fallback") == "fallback"
+
 
 def test_require_present():
 
@@ -36,6 +37,7 @@ def test_require_present():
 
     assert _require(config, "model.model_key") == "gpt-neo-125m"
 
+
 def test_require_missing():
 
     from evals.loading import _require
@@ -43,8 +45,8 @@ def test_require_missing():
     config = {}
 
     with pytest.raises(ValueError, match="Missing required"):
-
         _require(config, "model.model_key")
+
 
 def test_as_list_none():
 
@@ -52,11 +54,13 @@ def test_as_list_none():
 
     assert _as_list(None) == []
 
+
 def test_as_list_int():
 
     from evals.loading import _as_list
 
     assert _as_list(5) == [5]
+
 
 def test_as_list_list():
 
@@ -64,30 +68,25 @@ def test_as_list_list():
 
     assert _as_list([1, 2, 3]) == [1, 2, 3]
 
+
 def test_as_list_tuple():
 
     from evals.loading import _as_list
 
     assert _as_list((1, 2)) == [1, 2]
 
+
 def test_router_kwargs():
 
     from evals.loading import _router_kwargs
 
     config = {
-
         "router": {
-
             "type": "standard",
-
             "num_experts": 4,
-
             "top_k": 2,
-
             "temperature": 1.0,
-
         }
-
     }
 
     router_type, num_experts, top_k, kwargs = _router_kwargs(config)
@@ -98,34 +97,23 @@ def test_router_kwargs():
 
     assert top_k == 2
 
+
 def test_build_model_from_config():
 
     from evals.loading import build_model_from_config
 
     config = {
-
         "model": {
-
             "model_key": "gpt-neo-125m",
-
             "freeze_backbone": True,
-
             "moe_layer_indices": [-1],
-
         },
-
         "router": {"type": "standard", "num_experts": 4, "top_k": 2},
-
         "expert": {
-
             "type": "gpt_neo_lora",
-
             "count": 4,
-
             "lora": {"rank": 4, "alpha": 8, "dropout": 0.0, "init_scale": 0.01},
-
         },
-
     }
 
     mock_model = MagicMock()
@@ -145,28 +133,19 @@ def test_build_model_from_config():
     mock_model.inject_moe_layers = MagicMock()
 
     with patch("evals.loading.ModelRegistry") as MockReg:
-
         MockReg.get.return_value = MagicMock(return_value=mock_model)
 
         with patch(
-
             "evals.loading.model_lookup",
-
             return_value={
-
                 "model_type": "gpt_neo",
-
                 "variant": "125m",
-
                 "hidden_dim": 768,
-
                 "intermediate_dim": 3072,
-
             },
-
         ):
-
             build_model_from_config(config, device="cpu")
+
 
 def test_load_model_for_eval_not_found(tmp_path):
 
@@ -175,10 +154,8 @@ def test_load_model_for_eval_not_found(tmp_path):
     config = {"model": {"model_key": "gpt-neo-125m"}}
 
     with pytest.raises(FileNotFoundError):
-
         load_model_for_eval(config, tmp_path / "nonexistent.pt")
 
-                                                                                 
 
 def test_cfg_select_perplexity():
 
@@ -190,6 +167,7 @@ def test_cfg_select_perplexity():
 
     assert _cfg_select(config, "missing.key", "default") == "default"
 
+
 def test_dtype_name():
 
     from evals.perplexity import _dtype_name
@@ -198,6 +176,7 @@ def test_dtype_name():
 
     assert _dtype_name(torch.float32) == "float32"
 
+
 def test_autocast_context_cpu():
 
     from evals.perplexity import _autocast_context
@@ -205,8 +184,8 @@ def test_autocast_context_cpu():
     ctx = _autocast_context("cpu", torch.float32)
 
     with ctx:
+        pass
 
-        pass                    
 
 def test_infer_eval_context_length():
 
@@ -221,6 +200,7 @@ def test_infer_eval_context_length():
     length = infer_eval_context_length(model, config)
 
     assert length == 2048
+
 
 def test_infer_eval_context_length_tokenizer_limit():
 
@@ -240,6 +220,7 @@ def test_infer_eval_context_length_tokenizer_limit():
 
     assert length == 512
 
+
 def test_infer_eval_context_length_fallback():
 
     from evals.perplexity import infer_eval_context_length
@@ -254,6 +235,7 @@ def test_infer_eval_context_length_fallback():
 
     assert length >= 2
 
+
 def test_summarize_language_model_metrics():
 
     from evals.perplexity import summarize_language_model_metrics
@@ -264,47 +246,46 @@ def test_summarize_language_model_metrics():
 
     assert result["ppl"] == pytest.approx(2.718, rel=0.01)
 
+
 def test_summarize_language_model_metrics_with_bpb():
 
     from evals.perplexity import summarize_language_model_metrics
 
     result = summarize_language_model_metrics(
-
         total_nll=100.0, total_tokens=100, total_bytes=800
-
     )
 
     assert "bpb" in result
+
 
 def test_summarize_language_model_metrics_zero_tokens():
 
     from evals.perplexity import summarize_language_model_metrics
 
     with pytest.raises(ValueError, match="total_tokens"):
-
         summarize_language_model_metrics(total_nll=100.0, total_tokens=0)
+
 
 def test_summarize_language_model_metrics_zero_bytes():
 
     from evals.perplexity import summarize_language_model_metrics
 
     with pytest.raises(ValueError, match="total_bytes"):
-
         summarize_language_model_metrics(
-
             total_nll=100.0, total_tokens=100, total_bytes=0
-
         )
+
 
 def test_document_windows_short():
 
     from evals.perplexity import _document_windows
 
-    input_ids = torch.randint(0, 100, (1, 1))             
+    input_ids = torch.randint(0, 100, (1, 1))
 
     windows = list(_document_windows(0, input_ids, stride=512, max_length=1024))
 
     assert len(windows) == 0
+
 
 def test_document_windows_normal():
 
@@ -316,6 +297,7 @@ def test_document_windows_normal():
 
     assert len(windows) > 0
 
+
 def test_compute_document_nll_invalid_shape():
 
     from evals.perplexity import compute_document_nll
@@ -323,12 +305,10 @@ def test_compute_document_nll_invalid_shape():
     model = MagicMock()
 
     with pytest.raises(ValueError, match="shape"):
-
         compute_document_nll(
-
             model, torch.randn(2, 10), stride=5, max_length=10, device="cpu"
-
         )
+
 
 def test_compute_document_nll_invalid_stride():
 
@@ -337,12 +317,10 @@ def test_compute_document_nll_invalid_stride():
     model = MagicMock()
 
     with pytest.raises(ValueError, match="stride"):
-
         compute_document_nll(
-
             model, torch.randint(0, 100, (1, 10)), stride=0, max_length=10, device="cpu"
-
         )
+
 
 def test_compute_document_nll_invalid_max_length():
 
@@ -351,12 +329,10 @@ def test_compute_document_nll_invalid_max_length():
     model = MagicMock()
 
     with pytest.raises(ValueError, match="max_length"):
-
         compute_document_nll(
-
             model, torch.randint(0, 100, (1, 10)), stride=5, max_length=1, device="cpu"
-
         )
+
 
 def test_compute_document_nll_short_seq():
 
@@ -367,14 +343,13 @@ def test_compute_document_nll_short_seq():
     input_ids = torch.randint(0, 100, (1, 1))
 
     nll, tokens = compute_document_nll(
-
         model, input_ids, stride=5, max_length=10, device="cpu"
-
     )
 
     assert nll == 0.0
 
     assert tokens == 0
+
 
 def test_compute_document_nll_normal():
 
@@ -389,12 +364,11 @@ def test_compute_document_nll_normal():
     input_ids = torch.randint(0, 100, (1, 20))
 
     nll, tokens = compute_document_nll(
-
         fake_model, input_ids, stride=10, max_length=20, device="cpu"
-
     )
 
     assert tokens > 0
+
 
 def test_run_batched_forward_same_length():
 
@@ -407,16 +381,14 @@ def test_run_batched_forward_same_length():
     mock_model.return_value = (logits,)
 
     windows = [
-
         _Window(0, torch.randint(0, 100, (1, 10)), torch.ones(9, dtype=torch.bool)),
-
         _Window(1, torch.randint(0, 100, (1, 10)), torch.ones(9, dtype=torch.bool)),
-
     ]
 
     results = _run_batched_forward(mock_model, windows, "cpu", torch.float32)
 
     assert len(results) == 2
+
 
 def test_run_batched_forward_different_lengths():
 
@@ -429,24 +401,21 @@ def test_run_batched_forward_different_lengths():
     mock_model.return_value = MagicMock(logits=logits)
 
     windows = [
-
         _Window(0, torch.randint(0, 100, (1, 10)), torch.ones(9, dtype=torch.bool)),
-
         _Window(1, torch.randint(0, 100, (1, 15)), torch.ones(14, dtype=torch.bool)),
-
     ]
 
     results = _run_batched_forward(mock_model, windows, "cpu", torch.float32)
 
     assert len(results) == 2
 
-                                                                                 
 
 def test_dtype_name_efficiency():
 
     from evals.efficiency import _dtype_name
 
     assert _dtype_name(torch.float32) == "float32"
+
 
 def test_autocast_context_efficiency_cpu():
 
@@ -455,14 +424,15 @@ def test_autocast_context_efficiency_cpu():
     ctx = _autocast_context("cpu", torch.float32)
 
     with ctx:
-
         pass
+
 
 def test_device_synchronize_cpu():
 
     from evals.efficiency import _device_synchronize
 
-    _device_synchronize("cpu")                 
+    _device_synchronize("cpu")
+
 
 def test_summarize_timing_measurements():
 
@@ -478,6 +448,7 @@ def test_summarize_timing_measurements():
 
     assert "latency_ms_per_token_p95" in result
 
+
 def test_summarize_timing_measurements_single():
 
     from evals.efficiency import summarize_timing_measurements
@@ -486,13 +457,14 @@ def test_summarize_timing_measurements_single():
 
     assert result["throughput_tokens_per_sec_std"] == 0.0
 
+
 def test_summarize_timing_measurements_empty():
 
     from evals.efficiency import summarize_timing_measurements
 
     with pytest.raises(ValueError, match="empty"):
-
         summarize_timing_measurements([], batch_size=1, seq_len=100)
+
 
 def test_compute_overhead_ratios():
 
@@ -506,6 +478,7 @@ def test_compute_overhead_ratios():
 
     assert ratios["router_overhead_ratio_batch_1"] == pytest.approx(2.0)
 
+
 def test_compute_overhead_ratios_zero_reference():
 
     from evals.efficiency import _compute_overhead_ratios
@@ -518,6 +491,7 @@ def test_compute_overhead_ratios_zero_reference():
 
     assert "router_overhead_ratio_batch_1" not in ratios
 
+
 def test_profile_loaded_model():
 
     from evals.efficiency import _profile_loaded_model
@@ -529,26 +503,19 @@ def test_profile_loaded_model():
     mock_model.return_value = (torch.randn(1, 10, 100),)
 
     result = _profile_loaded_model(
-
         mock_model,
-
         device="cpu",
-
         seq_len=10,
-
         batch_sizes=[1],
-
         warmup_iters=1,
-
         benchmark_iters=2,
-
         autocast_dtype=torch.float32,
-
     )
 
     assert "batch_1" in result
 
-    assert result["peak_memory_bytes"] is None       
+    assert result["peak_memory_bytes"] is None
+
 
 def test_run_efficiency_eval():
 
@@ -563,32 +530,21 @@ def test_run_efficiency_eval():
     mock_payload = {"task": "efficiency", "results": {}}
 
     with patch("evals.efficiency.build_results_payload", return_value=mock_payload):
-
         result = run_efficiency_eval(
-
             config={},
-
             checkpoint_path="ckpt.pt",
-
             model=mock_model,
-
             checkpoint_info={},
-
             device="cpu",
-
             batch_sizes=[1],
-
             seq_len=10,
-
             warmup_iters=1,
-
             benchmark_iters=2,
-
             autocast_dtype=torch.float32,
-
         )
 
     assert result == mock_payload
+
 
 def test_run_efficiency_eval_with_output(tmp_path):
 
@@ -603,38 +559,23 @@ def test_run_efficiency_eval_with_output(tmp_path):
     mock_payload = {"task": "efficiency", "results": {}}
 
     with patch("evals.efficiency.build_results_payload", return_value=mock_payload):
-
         with patch("evals.efficiency.write_results_json") as mock_write:
-
             run_efficiency_eval(
-
                 config={},
-
                 checkpoint_path="ckpt.pt",
-
                 model=mock_model,
-
                 checkpoint_info={},
-
                 output_path=str(tmp_path / "out.json"),
-
                 device="cpu",
-
                 batch_sizes=[1],
-
                 seq_len=10,
-
                 warmup_iters=1,
-
                 benchmark_iters=2,
-
                 autocast_dtype=torch.float32,
-
             )
 
             mock_write.assert_called_once()
 
-                                                                                 
 
 def test_extract_primary_metric():
 
@@ -646,6 +587,7 @@ def test_extract_primary_metric():
 
     assert result == pytest.approx(0.75)
 
+
 def test_extract_primary_metric_fallback_key():
 
     from evals.lm_harness_runner import _extract_primary_metric
@@ -656,6 +598,7 @@ def test_extract_primary_metric_fallback_key():
 
     assert result == pytest.approx(0.80)
 
+
 def test_extract_primary_metric_missing():
 
     from evals.lm_harness_runner import _extract_primary_metric
@@ -663,27 +606,20 @@ def test_extract_primary_metric_missing():
     raw = {"results": {"hellaswag": {"unknown_metric": 0.5}}}
 
     with pytest.raises(KeyError):
-
         _extract_primary_metric(raw, "hellaswag")
+
 
 def test_collect_mmlu_breakdown():
 
     from evals.lm_harness_runner import _collect_mmlu_breakdown
 
     raw = {
-
         "results": {
-
             "mmlu_math": {"acc,none": 0.6},
-
             "mmlu_history": {"acc": 0.7},
-
-            "mmlu": {"acc,none": 0.65},                      
-
-            "hellaswag": {"acc_norm,none": 0.8},                      
-
+            "mmlu": {"acc,none": 0.65},
+            "hellaswag": {"acc_norm,none": 0.8},
         }
-
     }
 
     breakdown = _collect_mmlu_breakdown(raw)
@@ -696,6 +632,7 @@ def test_collect_mmlu_breakdown():
 
     assert "hellaswag" not in breakdown
 
+
 def test_resolve_batch_sizes_scalar():
 
     from evals.lm_harness_runner import _resolve_batch_sizes
@@ -705,6 +642,7 @@ def test_resolve_batch_sizes_scalar():
     assert zs == 4
 
     assert fs == 4
+
 
 def test_resolve_batch_sizes_mapping():
 
@@ -716,6 +654,7 @@ def test_resolve_batch_sizes_mapping():
 
     assert fs == 2
 
+
 def test_resolve_batch_sizes_mapping_default():
 
     from evals.lm_harness_runner import _resolve_batch_sizes
@@ -725,6 +664,7 @@ def test_resolve_batch_sizes_mapping_default():
     assert zs == 4
 
     assert fs == 4
+
 
 def test_run_lm_harness_eval():
 
@@ -741,70 +681,41 @@ def test_run_lm_harness_eval():
     mock_harness_model = MagicMock()
 
     mock_eval_result = {
-
         "results": {
-
             "hellaswag": {"acc_norm,none": 0.75},
-
             "piqa": {"acc,none": 0.80},
-
             "winogrande": {"acc,none": 0.70},
-
             "arc_easy": {"acc_norm,none": 0.65},
-
             "arc_challenge": {"acc_norm,none": 0.55},
-
             "mmlu": {"acc,none": 0.60},
-
         }
-
     }
 
     with patch(
-
         "evals.lm_harness_runner._load_tokenizer_for_model", return_value=mock_tokenizer
-
     ):
-
         with patch(
-
             "evals.lm_harness_runner._build_harness_model",
-
             return_value=mock_harness_model,
-
         ):
-
             with patch(
-
                 "evals.lm_harness_runner._simple_evaluate",
-
                 return_value=mock_eval_result,
-
             ):
-
                 with patch(
-
                     "evals.lm_harness_runner.build_results_payload",
-
                     return_value={"task": "lm_harness"},
-
                 ):
-
                     result = run_lm_harness_eval(
-
                         config={},
-
                         checkpoint_path="ckpt.pt",
-
                         model=mock_model,
-
                         checkpoint_info={},
-
                         device="cpu",
-
                     )
 
     assert result["task"] == "lm_harness"
+
 
 def test_run_lm_harness_eval_different_batch_sizes():
 
@@ -821,70 +732,40 @@ def test_run_lm_harness_eval_different_batch_sizes():
     mock_harness_model = MagicMock()
 
     mock_eval_result = {
-
         "results": {
-
             "hellaswag": {"acc_norm,none": 0.75},
-
             "piqa": {"acc,none": 0.80},
-
             "winogrande": {"acc,none": 0.70},
-
             "arc_easy": {"acc_norm,none": 0.65},
-
             "arc_challenge": {"acc_norm,none": 0.55},
-
             "mmlu": {"acc,none": 0.60},
-
         }
-
     }
 
     with patch(
-
         "evals.lm_harness_runner._load_tokenizer_for_model", return_value=mock_tokenizer
-
     ):
-
         with patch(
-
             "evals.lm_harness_runner._build_harness_model",
-
             return_value=mock_harness_model,
-
         ):
-
             with patch(
-
                 "evals.lm_harness_runner._simple_evaluate",
-
                 return_value=mock_eval_result,
-
             ):
-
                 with patch(
-
                     "evals.lm_harness_runner.build_results_payload",
-
                     return_value={"task": "lm_harness"},
-
                 ):
-
                     run_lm_harness_eval(
-
                         config={},
-
                         checkpoint_path="ckpt.pt",
-
                         model=mock_model,
-
                         checkpoint_info={},
-
                         device="cpu",
-
                         batch_size={"zero_shot": 8, "five_shot": 2},
-
                     )
+
 
 def test_run_lm_harness_eval_no_tasks():
 
@@ -897,36 +778,22 @@ def test_run_lm_harness_eval_no_tasks():
     mock_tokenizer = MagicMock()
 
     with patch(
-
         "evals.lm_harness_runner._load_tokenizer_for_model", return_value=mock_tokenizer
-
     ):
-
         with patch(
-
             "evals.lm_harness_runner.build_results_payload",
-
             return_value={"task": "lm_harness"},
-
         ):
-
             run_lm_harness_eval(
-
                 config={},
-
                 checkpoint_path="ckpt.pt",
-
                 model=mock_model,
-
                 checkpoint_info={},
-
                 device="cpu",
-
                 zero_shot_tasks=[],
-
                 five_shot_tasks=[],
-
             )
+
 
 def test_run_lm_harness_eval_with_output(tmp_path):
 
@@ -939,44 +806,26 @@ def test_run_lm_harness_eval_with_output(tmp_path):
     mock_tokenizer = MagicMock()
 
     with patch(
-
         "evals.lm_harness_runner._load_tokenizer_for_model", return_value=mock_tokenizer
-
     ):
-
         with patch(
-
             "evals.lm_harness_runner.build_results_payload",
-
             return_value={"task": "lm_harness"},
-
         ):
-
             with patch("evals.lm_harness_runner.write_results_json") as mock_write:
-
                 run_lm_harness_eval(
-
                     config={},
-
                     checkpoint_path="ckpt.pt",
-
                     model=mock_model,
-
                     checkpoint_info={},
-
                     output_path=str(tmp_path / "out.json"),
-
                     device="cpu",
-
                     zero_shot_tasks=[],
-
                     five_shot_tasks=[],
-
                 )
 
                 mock_write.assert_called_once()
 
-                                                                                
 
 def test_to_plain_python_various_types():
 
@@ -1002,6 +851,7 @@ def test_to_plain_python_various_types():
 
     assert _to_plain_python(Path("/tmp/test")) == "/tmp/test"
 
+
 def test_get_git_commit():
 
     from evals.results_schema import get_git_commit
@@ -1010,15 +860,16 @@ def test_get_git_commit():
 
     assert isinstance(result, str)
 
+
 def test_get_git_commit_failure():
 
     from evals.results_schema import get_git_commit
 
     with patch("subprocess.run", side_effect=FileNotFoundError):
-
         result = get_git_commit()
 
     assert result == "unknown"
+
 
 def test_infer_checkpoint_step_from_info():
 
@@ -1028,6 +879,7 @@ def test_infer_checkpoint_step_from_info():
 
     assert result == 42
 
+
 def test_infer_checkpoint_step_from_name():
 
     from evals.results_schema import infer_checkpoint_step
@@ -1036,6 +888,7 @@ def test_infer_checkpoint_step_from_name():
 
     assert result == 100
 
+
 def test_infer_checkpoint_step_unknown():
 
     from evals.results_schema import infer_checkpoint_step
@@ -1043,6 +896,7 @@ def test_infer_checkpoint_step_unknown():
     result = infer_checkpoint_step("best_model.pt")
 
     assert result is None
+
 
 def test_flatten_scalars():
 
@@ -1058,7 +912,8 @@ def test_flatten_scalars():
 
     assert result["b/d"] == "text"
 
-    assert "e" not in result                         
+    assert "e" not in result
+
 
 def test_eval_wandb_project_from_config():
 
@@ -1068,6 +923,7 @@ def test_eval_wandb_project_from_config():
 
     assert _eval_wandb_project(config) == "my_project"
 
+
 def test_eval_wandb_project_from_env(monkeypatch):
 
     from evals.results_schema import _eval_wandb_project
@@ -1076,15 +932,16 @@ def test_eval_wandb_project_from_env(monkeypatch):
 
     assert _eval_wandb_project({}) == "env_project"
 
+
 def test_eval_wandb_project_default():
 
     from evals.results_schema import _eval_wandb_project
 
     with patch.dict("os.environ", {}, clear=True):
-
         result = _eval_wandb_project({})
 
     assert result == "tmoe"
+
 
 def test_eval_wandb_entity_from_config():
 
@@ -1094,15 +951,16 @@ def test_eval_wandb_entity_from_config():
 
     assert _eval_wandb_entity(config) == "my_entity"
 
+
 def test_eval_wandb_entity_none():
 
     from evals.results_schema import _eval_wandb_entity
 
     with patch.dict("os.environ", {}, clear=True):
-
         result = _eval_wandb_entity({})
 
     assert result is None
+
 
 def test_eval_wandb_mode_from_config():
 
@@ -1112,6 +970,7 @@ def test_eval_wandb_mode_from_config():
 
     assert _eval_wandb_mode(config) == "offline"
 
+
 def test_eval_wandb_mode_from_env(monkeypatch):
 
     from evals.results_schema import _eval_wandb_mode
@@ -1120,15 +979,16 @@ def test_eval_wandb_mode_from_env(monkeypatch):
 
     assert _eval_wandb_mode({}) == "offline"
 
+
 def test_eval_wandb_mode_default():
 
     from evals.results_schema import _eval_wandb_mode
 
     with patch.dict("os.environ", {}, clear=True):
-
         result = _eval_wandb_mode({})
 
     assert result == "online"
+
 
 def test_eval_run_name():
 
@@ -1142,6 +1002,7 @@ def test_eval_run_name():
 
     assert "perplexity" in result
 
+
 def test_eval_run_id():
 
     from evals.results_schema import _eval_run_id
@@ -1152,6 +1013,7 @@ def test_eval_run_id():
 
     assert result.startswith("eval-v")
 
+
 def test_slugify():
 
     from evals.results_schema import _slugify
@@ -1159,6 +1021,7 @@ def test_slugify():
     assert _slugify("hello world!") == "hello-world"
 
     assert _slugify("") == "experiment"
+
 
 def test_wandb_history_payload():
 
@@ -1170,20 +1033,16 @@ def test_wandb_history_payload():
 
     assert "eval/perplexity/ppl" in result
 
+
 def test_wandb_summary_payload():
 
     from evals.results_schema import _wandb_summary_payload
 
     payload = {
-
         "task": "perplexity",
-
         "checkpoint_step": 100,
-
         "git_commit": "abc123",
-
         "metadata": {"stride": 512},
-
     }
 
     result = _wandb_summary_payload(payload)
@@ -1191,6 +1050,7 @@ def test_wandb_summary_payload():
     assert result["eval/latest_checkpoint_step"] == 100
 
     assert result["eval/git_commit"] == "abc123"
+
 
 def test_build_mmlu_table_empty():
 
@@ -1202,14 +1062,13 @@ def test_build_mmlu_table_empty():
 
     assert result is None
 
+
 def test_build_mmlu_table_with_data():
 
     from evals.results_schema import _build_mmlu_table
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         with patch("evals.results_schema.wandb") as mock_wandb:
-
             mock_table = MagicMock()
 
             mock_wandb.Table.return_value = mock_table
@@ -1220,46 +1079,44 @@ def test_build_mmlu_table_with_data():
 
             assert result is mock_table
 
+
 def test_log_results_to_wandb_not_available():
 
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", False):
-
         result = log_results_to_wandb({})
 
     assert result is False
+
 
 def test_log_results_to_wandb_disabled_config():
 
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         result = log_results_to_wandb({}, config={"logging": {"enabled": False}})
 
     assert result is False
+
 
 def test_log_results_to_wandb_disabled_mode():
 
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         with patch("evals.results_schema._eval_wandb_mode", return_value="disabled"):
-
             result = log_results_to_wandb({})
 
     assert result is False
+
 
 def test_log_results_to_wandb_init_fails():
 
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         with patch("evals.results_schema.wandb") as mock_wandb:
-
             mock_wandb.run = None
 
             mock_wandb.init.side_effect = Exception("wandb error")
@@ -1268,14 +1125,13 @@ def test_log_results_to_wandb_init_fails():
 
     assert result is False
 
+
 def test_log_results_to_wandb_success():
 
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         with patch("evals.results_schema.wandb") as mock_wandb:
-
             mock_run = MagicMock()
 
             mock_wandb.init.return_value = mock_run
@@ -1285,22 +1141,17 @@ def test_log_results_to_wandb_success():
             mock_wandb.Settings = None
 
             payload = {
-
                 "task": "perplexity",
-
                 "results": {"ppl": 15.2},
-
                 "experiment_name": "test",
-
                 "checkpoint_step": 100,
-
                 "metadata": {},
-
             }
 
             result = log_results_to_wandb(payload)
 
     assert result is True
+
 
 def test_write_results_json(tmp_path):
 
@@ -1320,7 +1171,6 @@ def test_write_results_json(tmp_path):
 
     assert data["task"] == "perplexity"
 
-                                                                                
 
 def test_run_efficiency_eval_with_reference(tmp_path):
 
@@ -1335,50 +1185,30 @@ def test_run_efficiency_eval_with_reference(tmp_path):
     mock_payload = {"task": "efficiency", "results": {}}
 
     with patch("evals.efficiency.build_results_payload", return_value=mock_payload):
-
         with patch("evals.loading.load_model_for_eval", return_value=(mock_model, {})):
-
             with patch(
-
                 "evals.efficiency.load_model_for_eval", return_value=(mock_model, {})
-
             ):
-
                 result = run_efficiency_eval(
-
                     config={},
-
                     checkpoint_path="ckpt.pt",
-
                     model=mock_model,
-
                     checkpoint_info={},
-
                     device="cpu",
-
                     batch_sizes=[1],
-
                     seq_len=10,
-
                     warmup_iters=1,
-
                     benchmark_iters=2,
-
                     autocast_dtype=torch.float32,
-
                     reference_checkpoint_path="ref_ckpt.pt",
-
                     reference_config={},
-
                 )
 
     assert result == mock_payload
 
-                                                                                
 
 def test_simple_evaluate_wrapper():
 
-    
     from evals.lm_harness_runner import _simple_evaluate
 
     mock_lm_eval = MagicMock()
@@ -1386,42 +1216,26 @@ def test_simple_evaluate_wrapper():
     mock_lm_eval.evaluator.simple_evaluate.return_value = {"results": {}}
 
     with patch.dict(
-
         "sys.modules",
-
         {"lm_eval": mock_lm_eval, "lm_eval.evaluator": mock_lm_eval.evaluator},
-
     ):
-
         with patch("datasets.disable_progress_bars"):
-
             with patch("datasets.enable_progress_bars"):
-
                 result = _simple_evaluate(
-
                     model=MagicMock(),
-
                     tasks=[],
-
                     num_fewshot=0,
-
                     batch_size=1,
-
                     device="cpu",
-
                     limit=None,
-
                     log_samples=False,
-
                 )
 
     assert result == {"results": {}}
 
-                                                                                
 
 def test_cfg_select_omegaconf_path():
 
-    
     from evals.loading import _cfg_select
 
     from omegaconf import OmegaConf
@@ -1432,9 +1246,9 @@ def test_cfg_select_omegaconf_path():
 
     assert result == "gpt-neo-125m"
 
+
 def test_as_list_omegaconf():
 
-    
     from evals.loading import _as_list
 
     from omegaconf import OmegaConf
@@ -1445,19 +1259,15 @@ def test_as_list_omegaconf():
 
     assert result == [1, 2, 3]
 
+
 def test_build_moe_layers_expert_count_mismatch():
 
-    
     from evals.loading import _build_moe_layers
 
     config = {
-
         "model": {"model_key": "gpt-neo-125m", "moe_layer_indices": [-1]},
-
         "router": {"type": "standard", "num_experts": 4, "top_k": 2},
-
-        "expert": {"type": "gpt_neo_lora", "count": 8},                    
-
+        "expert": {"type": "gpt_neo_lora", "count": 8},
     }
 
     mock_model = MagicMock()
@@ -1465,40 +1275,26 @@ def test_build_moe_layers_expert_count_mismatch():
     mock_model.num_layers = 12
 
     with patch(
-
         "evals.loading.model_lookup",
-
         return_value={
-
             "model_type": "gpt_neo",
-
             "variant": "125m",
-
             "hidden_dim": 768,
-
             "intermediate_dim": 3072,
-
         },
-
     ):
-
         with pytest.raises(ValueError, match="expert.count"):
-
             _build_moe_layers(mock_model, config)
+
 
 def test_build_moe_layers_invalid_layer_index():
 
-    
     from evals.loading import _build_moe_layers
 
     config = {
-
         "model": {"model_key": "gpt-neo-125m", "moe_layer_indices": [99]},
-
         "router": {"type": "standard", "num_experts": 4, "top_k": 2},
-
         "expert": {"type": "gpt_neo_lora", "count": 4},
-
     }
 
     mock_model = MagicMock()
@@ -1506,32 +1302,20 @@ def test_build_moe_layers_invalid_layer_index():
     mock_model.num_layers = 12
 
     with patch(
-
         "evals.loading.model_lookup",
-
         return_value={
-
             "model_type": "gpt_neo",
-
             "variant": "125m",
-
             "hidden_dim": 768,
-
             "intermediate_dim": 3072,
-
         },
-
     ):
-
         with pytest.raises(ValueError, match="Invalid model.moe_layer_indices"):
-
             _build_moe_layers(mock_model, config)
 
-                                                                                
 
 def test_to_plain_python_omegaconf():
 
-    
     from evals.results_schema import _to_plain_python
 
     from omegaconf import OmegaConf
@@ -1541,6 +1325,7 @@ def test_to_plain_python_omegaconf():
     result = _to_plain_python(config)
 
     assert result == {"key": "value", "num": 42}
+
 
 def test_to_plain_python_path():
 
@@ -1552,9 +1337,9 @@ def test_to_plain_python_path():
 
     assert result == "/some/path"
 
+
 def test_to_plain_python_tensor_tolist():
 
-    
     import torch
 
     from evals.results_schema import _to_plain_python
@@ -1565,9 +1350,9 @@ def test_to_plain_python_tensor_tolist():
 
     assert result == [1.0, 2.0, 3.0]
 
+
 def test_to_plain_python_scalar_item():
 
-    
     import torch
 
     from evals.results_schema import _to_plain_python
@@ -1578,13 +1363,12 @@ def test_to_plain_python_scalar_item():
 
     assert result == pytest.approx(42.0)
 
+
 def test_to_plain_python_fallback_str():
 
-    
     from evals.results_schema import _to_plain_python
 
     class Weird:
-
         def __str__(self):
 
             return "weird_value"
@@ -1592,6 +1376,7 @@ def test_to_plain_python_fallback_str():
     result = _to_plain_python(Weird())
 
     assert result == "weird_value"
+
 
 def test_infer_checkpoint_step_from_info_v2():
 
@@ -1601,6 +1386,7 @@ def test_infer_checkpoint_step_from_info_v2():
 
     assert result == 200
 
+
 def test_infer_checkpoint_step_from_name_v2():
 
     from evals.results_schema import infer_checkpoint_step
@@ -1608,6 +1394,7 @@ def test_infer_checkpoint_step_from_name_v2():
     result = infer_checkpoint_step("checkpoint_step_100.pt", None)
 
     assert result == 100
+
 
 def test_infer_checkpoint_step_best_model():
 
@@ -1617,9 +1404,9 @@ def test_infer_checkpoint_step_best_model():
 
     assert result is None
 
+
 def test_cfg_select_results_schema_omegaconf():
 
-    
     from evals.results_schema import _cfg_select
 
     from omegaconf import OmegaConf
@@ -1630,62 +1417,55 @@ def test_cfg_select_results_schema_omegaconf():
 
     assert result == "my_project"
 
+
 def test_cfg_select_results_schema_missing_key():
 
-    
     from evals.results_schema import _cfg_select
 
     result = _cfg_select({"a": 1}, "b.c", "fallback")
 
     assert result == "fallback"
 
+
 def test_log_results_to_wandb_not_available_v2():
 
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", False):
-
         result = log_results_to_wandb({"task": "perplexity"})
 
     assert result is False
+
 
 def test_log_results_to_wandb_logging_disabled():
 
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         result = log_results_to_wandb(
-
             {"task": "perplexity"}, config={"logging": {"enabled": False}}
-
         )
 
     assert result is False
+
 
 def test_log_results_to_wandb_mode_disabled():
 
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         result = log_results_to_wandb(
-
             {"task": "perplexity"}, config={"logging": {"mode": "disabled"}}
-
         )
 
     assert result is False
 
-                                                                                
 
 def test_to_plain_python_tolist_raises():
 
-    
     from evals.results_schema import _to_plain_python
 
     class BadToList:
-
         def tolist(self):
 
             raise TypeError("bad")
@@ -1698,13 +1478,12 @@ def test_to_plain_python_tolist_raises():
 
     assert result == pytest.approx(99.0)
 
+
 def test_to_plain_python_item_raises():
 
-    
     from evals.results_schema import _to_plain_python
 
     class BadBoth:
-
         def tolist(self):
 
             raise TypeError("bad")
@@ -1721,39 +1500,34 @@ def test_to_plain_python_item_raises():
 
     assert result == "fallback_str"
 
+
 def test_infer_checkpoint_step_value_error():
 
-    
     from evals.results_schema import infer_checkpoint_step
 
     result = infer_checkpoint_step("checkpoint_step_abc.pt", None)
 
     assert result is None
 
+
 def test_log_results_to_wandb_logging_enabled_false_v2():
 
-    
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         result = log_results_to_wandb(
-
             {"task": "perplexity"}, config={"logging": {"enabled": False}}
-
         )
 
     assert result is False
 
+
 def test_log_results_to_wandb_with_checkpoint_step():
 
-    
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         with patch("evals.results_schema.wandb") as mock_wandb:
-
             mock_run = MagicMock()
 
             mock_wandb.init.return_value = mock_run
@@ -1763,32 +1537,24 @@ def test_log_results_to_wandb_with_checkpoint_step():
             mock_wandb.Settings = None
 
             payload = {
-
                 "task": "perplexity",
-
                 "checkpoint_step": 100,
-
                 "results": {"ppl": 15.0},
-
                 "metadata": {},
-
                 "experiment_name": "test_exp",
-
             }
 
             result = log_results_to_wandb(payload, config={})
 
     assert result is True
 
+
 def test_log_results_to_wandb_wandb_init_fails():
 
-    
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         with patch("evals.results_schema.wandb") as mock_wandb:
-
             mock_wandb.init.side_effect = Exception("wandb error")
 
             mock_wandb.Settings = None
@@ -1797,15 +1563,13 @@ def test_log_results_to_wandb_wandb_init_fails():
 
     assert result is False
 
+
 def test_log_results_to_wandb_run_none():
 
-    
     from evals.results_schema import log_results_to_wandb
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
-
         with patch("evals.results_schema.wandb") as mock_wandb:
-
             mock_wandb.init.return_value = None
 
             mock_wandb.Settings = None
@@ -1814,33 +1578,22 @@ def test_log_results_to_wandb_run_none():
 
     assert result is False
 
-                                                                               
 
 def test_router_kwargs_omegaconf():
 
-    
     from evals.loading import _router_kwargs
 
     from omegaconf import OmegaConf
 
     config = OmegaConf.create(
-
         {
-
             "router": {
-
                 "type": "standard",
-
                 "num_experts": 4,
-
                 "top_k": 2,
-
                 "temperature": 1.0,
-
             }
-
         }
-
     )
 
     router_type, num_experts, top_k, kwargs = _router_kwargs(config)

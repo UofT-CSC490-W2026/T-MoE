@@ -4,6 +4,7 @@ from src.configs.router import SwitchRouterConfig
 
 from src.routers.standard import SwitchRouter
 
+
 def test_switch_router_top1(device):
 
     config = SwitchRouterConfig(hidden_dim=32, num_experts=5)
@@ -15,8 +16,6 @@ def test_switch_router_top1(device):
     weights, indices, _ = router(x, return_metrics=False)
 
     N = 2 * 3
-
-                                                                          
 
     assert weights.shape == (N, config.num_experts)
 

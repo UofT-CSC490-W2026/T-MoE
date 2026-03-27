@@ -4,6 +4,7 @@ from src.configs.router import ExpertChoiceRouterConfig
 
 from src.routers.expert_choice import ExpertChoiceRouter
 
+
 def test_expert_choice_router_forward(device):
 
     config = ExpertChoiceRouterConfig(hidden_dim=32, num_experts=4, top_k=2)
@@ -15,8 +16,6 @@ def test_expert_choice_router_forward(device):
     weights, indices, metrics = router(x, return_metrics=True)
 
     N = 2 * 4
-
-                                
 
     assert weights.shape == (N, config.num_experts)
 

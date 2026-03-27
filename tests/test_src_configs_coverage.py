@@ -1,6 +1,5 @@
 import pytest
 
-                                                                                 
 
 def test_get_dataset_info_valid():
 
@@ -10,13 +9,14 @@ def test_get_dataset_info_valid():
 
     assert info["hf_path"] == "wikitext"
 
+
 def test_get_dataset_info_invalid():
 
     from src.configs.dataset import get_dataset_info
 
     with pytest.raises(ValueError, match="Unknown dataset key"):
-
         get_dataset_info("nonexistent-dataset")
+
 
 def test_get_shard_dir():
 
@@ -28,14 +28,13 @@ def test_get_shard_dir():
 
     assert "vocab50257" in str(path)
 
+
 def test_dataset_config_get_dataset_info_custom():
 
     from src.configs.dataset import DatasetConfig
 
     cfg = DatasetConfig(
-
         custom_dataset_name="my/dataset", custom_dataset_config="config1"
-
     )
 
     info = cfg.get_dataset_info()
@@ -43,6 +42,7 @@ def test_dataset_config_get_dataset_info_custom():
     assert info["hf_path"] == "my/dataset"
 
     assert info["hf_name"] == "config1"
+
 
 def test_dataset_config_get_dataset_info_registry():
 
@@ -53,6 +53,7 @@ def test_dataset_config_get_dataset_info_registry():
     info = cfg.get_dataset_info()
 
     assert "hf_path" in info
+
 
 def test_dataset_config_get_description_custom():
 
@@ -66,6 +67,7 @@ def test_dataset_config_get_description_custom():
 
     assert "512" in desc
 
+
 def test_dataset_config_get_description_registry():
 
     from src.configs.dataset import DatasetConfig
@@ -75,6 +77,7 @@ def test_dataset_config_get_description_registry():
     desc = cfg.get_description()
 
     assert "wikitext" in desc
+
 
 def test_dataset_config_get_description_with_hf_name():
 
@@ -86,7 +89,6 @@ def test_dataset_config_get_description_with_hf_name():
 
     assert "fineweb" in desc.lower()
 
-                                                                                 
 
 def test_model_lookup_valid():
 
@@ -98,23 +100,23 @@ def test_model_lookup_valid():
 
     assert info["model_type"] == "gpt_neo"
 
+
 def test_model_lookup_invalid():
 
     from src.configs.model import model_lookup
 
     with pytest.raises(ValueError, match="Unknown model_key"):
-
         model_lookup("nonexistent-model-xyz")
+
 
 def test_model_lookup_by_variant_key():
 
     from src.configs.model import model_lookup
 
-                                                                    
-
     info = model_lookup("125m")
 
     assert info["hidden_dim"] == 768
+
 
 def test_model_config_get_model_info():
 
@@ -126,6 +128,7 @@ def test_model_config_get_model_info():
 
     assert info["hidden_dim"] == 768
 
+
 def test_model_config_get_description():
 
     from src.configs.model import ModelConfig
@@ -135,6 +138,7 @@ def test_model_config_get_description():
     desc = cfg.get_description()
 
     assert "768" in desc
+
 
 def test_model_config_defaults():
 

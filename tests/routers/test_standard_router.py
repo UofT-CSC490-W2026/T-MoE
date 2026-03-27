@@ -4,6 +4,7 @@ from src.configs.router import StandardRouterConfig
 
 from src.routers.standard import StandardRouter
 
+
 def test_standard_router_forward_shapes(device):
 
     config = StandardRouterConfig(hidden_dim=128, num_experts=6, top_k=2)
@@ -20,20 +21,17 @@ def test_standard_router_forward_shapes(device):
 
     assert indices is None
 
-                                                    
-
     row_sums = weights.sum(dim=-1)
 
     assert (row_sums - 1.0).abs().max().item() < 1e-5
 
     assert metrics is not None
 
+
 def test_standard_router_aux_loss_nonzero_when_enabled(device):
 
     config = StandardRouterConfig(
-
         hidden_dim=64, num_experts=4, top_k=2, use_aux_loss=True, aux_loss_coef=0.01
-
     )
 
     router = StandardRouter(config).to(device)
@@ -52,6 +50,7 @@ def test_standard_router_aux_loss_nonzero_when_enabled(device):
 
     assert torch.isfinite(aux_loss).all()
 
+
 def test_standard_router_indices_in_range(device):
 
     config = StandardRouterConfig(hidden_dim=32, num_experts=5, top_k=3)
@@ -62,15 +61,12 @@ def test_standard_router_indices_in_range(device):
 
     weights, indices, _ = router(x, return_metrics=False)
 
-                                                                               
-
     assert indices is None
 
     assert weights.shape == (4 * 2, config.num_experts)
 
-                                                 
-
     assert (weights > 0).sum(dim=-1).eq(config.top_k).all()
+
 
 def test_standard_router_deterministic_in_eval(device):
 
@@ -90,6 +86,7 @@ def test_standard_router_deterministic_in_eval(device):
 
     assert i1 is None and i2 is None
 
+
 def test_standard_router_topk_matches_known_logits(device):
 
     config = StandardRouterConfig(hidden_dim=4, num_experts=4, top_k=2)
@@ -98,21 +95,14 @@ def test_standard_router_topk_matches_known_logits(device):
 
     router.eval()
 
-                                              
-
     with torch.no_grad():
-
         router.gate.weight.zero_()
 
         router.gate.weight.copy_(torch.eye(4, device=device))
 
-                                                                      
-
     x = torch.tensor([[[0.1, 2.0, -1.0, 3.0]]], device=device)
 
     weights, indices, _ = router(x, return_metrics=False)
-
-                                                                   
 
     assert indices is None
 
@@ -122,27 +112,21 @@ def test_standard_router_topk_matches_known_logits(device):
 
     assert 1 in selected
 
+
 def test_standard_router_aux_loss_reflects_imbalance(device):
 
     config = StandardRouterConfig(
-
         hidden_dim=4, num_experts=4, top_k=1, use_aux_loss=True, aux_loss_coef=0.01
-
     )
 
     router = StandardRouter(config).to(device)
 
     router.train()
 
-                                                                       
-
     with torch.no_grad():
-
         router.gate.weight.zero_()
 
-        router.gate.weight[0, 0] = 5.0                            
-
-                                           
+        router.gate.weight[0, 0] = 5.0
 
     x = torch.zeros(2, 3, config.hidden_dim, device=device)
 
@@ -152,10 +136,7 @@ def test_standard_router_aux_loss_reflects_imbalance(device):
 
     aux_imbalanced = router.compute_aux_loss()
 
-                                                                           
-
     with torch.no_grad():
-
         router.gate.weight.zero_()
 
     router(x, return_metrics=False)
@@ -166,10 +147,10 @@ def test_standard_router_aux_loss_reflects_imbalance(device):
 
     assert aux_imbalanced.item() >= aux_uniform.item()
 
+
 def test_standard_router_accepts_bfloat16_inputs(device):
 
     if device == "cpu":
-
         return
 
     config = StandardRouterConfig(hidden_dim=32, num_experts=4, top_k=2)

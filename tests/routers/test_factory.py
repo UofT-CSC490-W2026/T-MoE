@@ -1,21 +1,13 @@
 import pytest
 
 from src.configs.router import (
-
     MetabolicRouterConfig,
-
     StandardRouterConfig,
-
     SwitchRouterConfig,
-
     TopKRouterConfig,
-
     DeepSeekRouterConfig,
-
     ExpertChoiceRouterConfig,
-
     StressCorrectedRouterConfig,
-
 )
 
 from src.routers.factory import create_router, create_router_from_config
@@ -32,8 +24,8 @@ from src.routers.stress_corrected import StressCorrectedRouter
 
 COMMON = dict(hidden_dim=32, num_experts=4, top_k=2)
 
-class TestCreateRouter:
 
+class TestCreateRouter:
     def test_standard(self):
 
         router = create_router("standard", **COMMON)
@@ -79,11 +71,10 @@ class TestCreateRouter:
     def test_unknown_type_raises(self):
 
         with pytest.raises(ValueError, match="Unknown router type"):
-
             create_router("dynmoe", **COMMON)
 
-class TestCreateRouterFromConfig:
 
+class TestCreateRouterFromConfig:
     def test_standard_config(self):
 
         config = StandardRouterConfig(**COMMON)
@@ -94,16 +85,12 @@ class TestCreateRouterFromConfig:
 
     def test_switch_config_creates_switch_router(self):
 
-                                                                                          
-
         config = SwitchRouterConfig(hidden_dim=32, num_experts=4, top_k=1)
 
         router = create_router_from_config(config)
 
         assert isinstance(router, SwitchRouter), (
-
             f"Expected SwitchRouter, got {type(router).__name__}"
-
         )
 
     def test_topk_config(self):
