@@ -30,8 +30,10 @@ def test_final_checkpoint_saved_when_val_loader_is_none(tmp_path):
 
     # Simulate the "Final save" else branch from train.py:
     #   val_loader is None → save with train_loss only, is_best=False
-    with patch("src.training.checkpoint.is_main_process", return_value=True), \
-         patch("torch.distributed.is_initialized", return_value=False):
+    with (
+        patch("src.training.checkpoint.is_main_process", return_value=True),
+        patch("torch.distributed.is_initialized", return_value=False),
+    ):
         saved_path = ckpt_manager.save_checkpoint(
             model,
             optimizer,
@@ -76,8 +78,10 @@ def test_final_checkpoint_not_marked_best_without_validation(tmp_path):
         trainable_only=False,
     )
 
-    with patch("src.training.checkpoint.is_main_process", return_value=True), \
-         patch("torch.distributed.is_initialized", return_value=False):
+    with (
+        patch("src.training.checkpoint.is_main_process", return_value=True),
+        patch("torch.distributed.is_initialized", return_value=False),
+    ):
         ckpt_manager.save_checkpoint(
             model,
             optimizer,
