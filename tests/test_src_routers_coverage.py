@@ -6,16 +6,13 @@ from unittest.mock import MagicMock
 
 
 def test_base_router_step_noop():
-
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
         def forward(self, x, **kw):
-
             pass
 
         def compute_aux_loss(self):
-
             return torch.tensor(0.0)
 
     cfg = MagicMock()
@@ -32,16 +29,13 @@ def test_base_router_step_noop():
 
 
 def test_base_router_reset_state():
-
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
         def forward(self, x, **kw):
-
             pass
 
         def compute_aux_loss(self):
-
             return torch.tensor(0.0)
 
     cfg = MagicMock()
@@ -58,16 +52,13 @@ def test_base_router_reset_state():
 
 
 def test_base_router_clear_aux_state():
-
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
         def forward(self, x, **kw):
-
             pass
 
         def compute_aux_loss(self):
-
             return torch.tensor(0.0)
 
     cfg = MagicMock()
@@ -84,16 +75,13 @@ def test_base_router_clear_aux_state():
 
 
 def test_base_router_get_state():
-
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
         def forward(self, x, **kw):
-
             pass
 
         def compute_aux_loss(self):
-
             return torch.tensor(0.0)
 
     cfg = MagicMock()
@@ -112,7 +100,6 @@ def test_base_router_get_state():
 
 
 def _make_standard_router(hidden=64, num_experts=4, top_k=2, use_aux=False):
-
     from src.routers.standard import StandardRouter
 
     from src.configs.router import StandardRouterConfig
@@ -125,7 +112,6 @@ def _make_standard_router(hidden=64, num_experts=4, top_k=2, use_aux=False):
 
 
 def test_standard_router_forward_eval():
-
     r = _make_standard_router()
 
     r.eval()
@@ -140,7 +126,6 @@ def test_standard_router_forward_eval():
 
 
 def test_standard_router_forward_with_metrics():
-
     r = _make_standard_router()
 
     x = torch.randn(2, 4, 64)
@@ -153,7 +138,6 @@ def test_standard_router_forward_with_metrics():
 
 
 def test_standard_router_aux_loss_not_training():
-
     r = _make_standard_router(use_aux=True)
 
     r.eval()
@@ -164,7 +148,6 @@ def test_standard_router_aux_loss_not_training():
 
 
 def test_standard_router_aux_loss_no_cache():
-
     r = _make_standard_router(use_aux=True)
 
     r.train()
@@ -175,7 +158,6 @@ def test_standard_router_aux_loss_no_cache():
 
 
 def test_standard_router_aux_loss_with_cache():
-
     r = _make_standard_router(use_aux=True)
 
     r.train()
@@ -190,7 +172,6 @@ def test_standard_router_aux_loss_with_cache():
 
 
 def test_standard_router_clear_aux_state():
-
     r = _make_standard_router(use_aux=True)
 
     r.train()
@@ -205,14 +186,12 @@ def test_standard_router_clear_aux_state():
 
 
 def test_standard_router_get_state():
-
     r = _make_standard_router()
 
     assert r.get_state() == {}
 
 
 def test_standard_router_compute_aux_loss_full():
-
     r = _make_standard_router(use_aux=True)
 
     r.train()
@@ -227,7 +206,6 @@ def test_standard_router_compute_aux_loss_full():
 
 
 def _make_deepseek_router(hidden=64, num_experts=4, top_k=2, use_sigmoid=False):
-
     from src.routers.deepseek import DeepSeekRouter
 
     from src.configs.router import DeepSeekRouterConfig
@@ -240,7 +218,6 @@ def _make_deepseek_router(hidden=64, num_experts=4, top_k=2, use_sigmoid=False):
 
 
 def test_deepseek_router_forward():
-
     r = _make_deepseek_router()
 
     x = torch.randn(2, 4, 64)
@@ -251,7 +228,6 @@ def test_deepseek_router_forward():
 
 
 def test_deepseek_router_forward_sigmoid():
-
     r = _make_deepseek_router(use_sigmoid=True)
 
     x = torch.randn(2, 4, 64)
@@ -262,7 +238,6 @@ def test_deepseek_router_forward_sigmoid():
 
 
 def test_deepseek_router_forward_with_metrics():
-
     r = _make_deepseek_router()
 
     x = torch.randn(2, 4, 64)
@@ -275,7 +250,6 @@ def test_deepseek_router_forward_with_metrics():
 
 
 def test_deepseek_router_forward_with_noise():
-
     r = _make_deepseek_router()
 
     r.train()
@@ -290,7 +264,6 @@ def test_deepseek_router_forward_with_noise():
 
 
 def test_deepseek_router_step():
-
     r = _make_deepseek_router()
 
     r.train()
@@ -305,14 +278,12 @@ def test_deepseek_router_step():
 
 
 def test_deepseek_router_step_no_pending():
-
     r = _make_deepseek_router()
 
     r.step()
 
 
 def test_deepseek_router_reset_state():
-
     r = _make_deepseek_router()
 
     r.train()
@@ -329,7 +300,6 @@ def test_deepseek_router_reset_state():
 
 
 def test_deepseek_router_get_state():
-
     r = _make_deepseek_router()
 
     state = r.get_state()
@@ -340,7 +310,6 @@ def test_deepseek_router_get_state():
 
 
 def test_deepseek_router_compute_aux_loss():
-
     r = _make_deepseek_router()
 
     loss = r.compute_aux_loss()
@@ -349,7 +318,6 @@ def test_deepseek_router_compute_aux_loss():
 
 
 def test_deepseek_router_record_usage_false():
-
     r = _make_deepseek_router()
 
     r.train()
@@ -362,14 +330,12 @@ def test_deepseek_router_record_usage_false():
 
 
 def test_deepseek_router_sync_usage_not_distributed():
-
     r = _make_deepseek_router()
 
     r._sync_usage_distributed()
 
 
 def _make_metabolic_router(hidden=64, num_experts=4, top_k=2):
-
     from src.routers.metabolic import MetabolicRouter
 
     from src.configs.router import MetabolicRouterConfig
@@ -380,7 +346,6 @@ def _make_metabolic_router(hidden=64, num_experts=4, top_k=2):
 
 
 def test_metabolic_router_top_k_exceeds_experts():
-
     from src.routers.metabolic import MetabolicRouter
 
     from src.configs.router import MetabolicRouterConfig
@@ -390,7 +355,6 @@ def test_metabolic_router_top_k_exceeds_experts():
 
 
 def test_metabolic_router_compute_alignment():
-
     r = _make_metabolic_router()
 
     x = torch.randn(2, 4, 64)
@@ -401,7 +365,6 @@ def test_metabolic_router_compute_alignment():
 
 
 def test_metabolic_router_compute_routing_potential_no_lambda():
-
     r = _make_metabolic_router()
 
     r.lambda_metabolic = 0.0
@@ -414,7 +377,6 @@ def test_metabolic_router_compute_routing_potential_no_lambda():
 
 
 def test_metabolic_router_compute_routing_potential_with_noise():
-
     r = _make_metabolic_router()
 
     alignment = torch.randn(2, 4, 4)
@@ -425,7 +387,6 @@ def test_metabolic_router_compute_routing_potential_with_noise():
 
 
 def test_metabolic_router_forward_eval():
-
     r = _make_metabolic_router()
 
     r.eval()
@@ -440,7 +401,6 @@ def test_metabolic_router_forward_eval():
 
 
 def test_metabolic_router_forward_with_temperature():
-
     r = _make_metabolic_router()
 
     x = torch.randn(2, 4, 64)
@@ -451,7 +411,6 @@ def test_metabolic_router_forward_with_temperature():
 
 
 def test_metabolic_router_forward_with_noise():
-
     r = _make_metabolic_router()
 
     x = torch.randn(2, 4, 64)
@@ -462,7 +421,6 @@ def test_metabolic_router_forward_with_noise():
 
 
 def test_metabolic_router_forward_warmup():
-
     r = _make_metabolic_router()
 
     r.warmup_steps = 100
@@ -477,7 +435,6 @@ def test_metabolic_router_forward_warmup():
 
 
 def test_metabolic_router_update_fatigue():
-
     r = _make_metabolic_router()
 
     usage = torch.ones(4) * 0.5
@@ -488,7 +445,6 @@ def test_metabolic_router_update_fatigue():
 
 
 def test_metabolic_router_state_dict_load():
-
     r = _make_metabolic_router()
 
     r.train()
@@ -511,7 +467,6 @@ def test_metabolic_router_state_dict_load():
 
 
 def test_metabolic_router_load_state_dict_mismatch_warns():
-
     r = _make_metabolic_router()
 
     sd = r.state_dict()
@@ -523,7 +478,6 @@ def test_metabolic_router_load_state_dict_mismatch_warns():
 
 
 def test_metabolic_router_load_state_dict_no_metadata():
-
     r = _make_metabolic_router()
 
     sd = r.state_dict()
@@ -536,14 +490,12 @@ def test_metabolic_router_load_state_dict_no_metadata():
 
 
 def test_metabolic_router_sync_usage_not_distributed():
-
     r = _make_metabolic_router()
 
     r._sync_usage_distributed()
 
 
 def test_metabolic_router_get_state():
-
     r = _make_metabolic_router()
 
     state = r.get_state()
@@ -554,7 +506,6 @@ def test_metabolic_router_get_state():
 
 
 def test_metabolic_router_compute_aux_loss():
-
     r = _make_metabolic_router()
 
     loss = r.compute_aux_loss()
@@ -563,7 +514,6 @@ def test_metabolic_router_compute_aux_loss():
 
 
 def _make_stress_router(hidden=64, num_experts=4, top_k=2):
-
     from src.routers.stress_corrected import StressCorrectedRouter
 
     from src.configs.router import StressCorrectedRouterConfig
@@ -576,7 +526,6 @@ def _make_stress_router(hidden=64, num_experts=4, top_k=2):
 
 
 def test_stress_router_top_k_exceeds_experts():
-
     from src.routers.stress_corrected import StressCorrectedRouter
 
     from src.configs.router import StressCorrectedRouterConfig
@@ -588,7 +537,6 @@ def test_stress_router_top_k_exceeds_experts():
 
 
 def test_stress_router_forward_eval():
-
     r = _make_stress_router()
 
     r.eval()
@@ -601,7 +549,6 @@ def test_stress_router_forward_eval():
 
 
 def test_stress_router_forward_train_with_noise():
-
     r = _make_stress_router()
 
     r.train()
@@ -616,7 +563,6 @@ def test_stress_router_forward_train_with_noise():
 
 
 def test_stress_router_forward_with_metrics():
-
     r = _make_stress_router()
 
     x = torch.randn(2, 4, 64)
@@ -627,7 +573,6 @@ def test_stress_router_forward_with_metrics():
 
 
 def test_stress_router_forward_record_usage_false():
-
     r = _make_stress_router()
 
     r.train()
@@ -640,7 +585,6 @@ def test_stress_router_forward_record_usage_false():
 
 
 def test_stress_router_step():
-
     r = _make_stress_router()
 
     r.train()
@@ -655,7 +599,6 @@ def test_stress_router_step():
 
 
 def test_stress_router_step_lambda_calibration():
-
     r = _make_stress_router()
 
     r.lambda_calib_step = 1
@@ -672,7 +615,6 @@ def test_stress_router_step_lambda_calibration():
 
 
 def test_stress_router_step_no_pending():
-
     r = _make_stress_router()
 
     r.step()
@@ -681,7 +623,6 @@ def test_stress_router_step_no_pending():
 
 
 def test_stress_router_reset_state():
-
     r = _make_stress_router()
 
     r.train()
@@ -700,7 +641,6 @@ def test_stress_router_reset_state():
 
 
 def test_stress_router_reset_welford():
-
     r = _make_stress_router()
 
     r.welford_n.fill_(100.0)
@@ -711,7 +651,6 @@ def test_stress_router_reset_welford():
 
 
 def test_stress_router_get_state():
-
     r = _make_stress_router()
 
     state = r.get_state()
@@ -722,7 +661,6 @@ def test_stress_router_get_state():
 
 
 def test_stress_router_compute_aux_loss():
-
     r = _make_stress_router()
 
     loss = r.compute_aux_loss()
@@ -731,14 +669,12 @@ def test_stress_router_compute_aux_loss():
 
 
 def test_stress_router_clear_aux_state():
-
     r = _make_stress_router()
 
     r.clear_aux_state()
 
 
 def test_stress_router_current_tau_no_anneal():
-
     r = _make_stress_router()
 
     r.tau_anneal_steps = 0
@@ -749,7 +685,6 @@ def test_stress_router_current_tau_no_anneal():
 
 
 def test_stress_router_current_tau_with_anneal():
-
     r = _make_stress_router()
 
     r.tau_anneal_steps = 1000
@@ -764,7 +699,6 @@ def test_stress_router_current_tau_with_anneal():
 
 
 def test_stress_router_current_noise_std_no_anneal():
-
     r = _make_stress_router()
 
     r.noise_anneal_steps = 0
@@ -775,7 +709,6 @@ def test_stress_router_current_noise_std_no_anneal():
 
 
 def test_stress_router_current_noise_std_with_anneal():
-
     r = _make_stress_router()
 
     r.noise_anneal_steps = 1000
@@ -790,7 +723,6 @@ def test_stress_router_current_noise_std_with_anneal():
 
 
 def test_stress_router_calibrate_lambda():
-
     r = _make_stress_router()
 
     cos_sims = torch.randn(100, 4)
@@ -803,7 +735,6 @@ def test_stress_router_calibrate_lambda():
 
 
 def test_stress_router_initialize_prototypes():
-
     r = _make_stress_router()
 
     activations = torch.randn(100, 64)
@@ -816,7 +747,6 @@ def test_stress_router_initialize_prototypes():
 
 
 def test_stress_router_welford_variance():
-
     r = _make_stress_router()
 
     r.welford_n.fill_(10.0)
@@ -829,7 +759,6 @@ def test_stress_router_welford_variance():
 
 
 def test_stress_router_get_custom_metrics():
-
     r = _make_stress_router()
 
     x = torch.randn(2, 4, 64)
@@ -844,7 +773,6 @@ def test_stress_router_get_custom_metrics():
 
 
 def test_stress_router_get_custom_metrics_with_indices():
-
     r = _make_stress_router()
 
     indices = torch.randint(0, 4, (2, 4, 2))
@@ -857,7 +785,6 @@ def test_stress_router_get_custom_metrics_with_indices():
 
 
 def test_stress_router_sync_not_distributed():
-
     r = _make_stress_router()
 
     r._sync_pending_counts_distributed()
@@ -868,7 +795,6 @@ def test_stress_router_sync_not_distributed():
 
 
 def test_stress_router_step_with_lambda_already_done():
-
     r = _make_stress_router()
 
     r._lambda_init_done = True
@@ -887,7 +813,6 @@ def test_stress_router_step_with_lambda_already_done():
 
 
 def test_stress_router_step_lambda_calib_no_pending_cos():
-
     r = _make_stress_router()
 
     r.lambda_calib_step = 1
@@ -910,7 +835,6 @@ def test_stress_router_step_lambda_calib_no_pending_cos():
 
 
 def test_kmeans_init():
-
     from src.routers.stress_corrected import _kmeans_init
 
     activations = torch.randn(50, 64)
@@ -921,7 +845,6 @@ def test_kmeans_init():
 
 
 def test_kmeans_init_too_few_tokens():
-
     from src.routers.stress_corrected import _kmeans_init
 
     activations = torch.randn(3, 64)
@@ -931,7 +854,6 @@ def test_kmeans_init_too_few_tokens():
 
 
 def test_stress_router_update_welford():
-
     r = _make_stress_router()
 
     r.train()
@@ -944,7 +866,6 @@ def test_stress_router_update_welford():
 
 
 def test_stress_router_welford_no_active():
-
     r = _make_stress_router()
 
     import torch.nn.functional as F
@@ -959,14 +880,12 @@ def test_stress_router_welford_no_active():
 
 
 def test_stress_router_sync_welford_not_distributed():
-
     r = _make_stress_router()
 
     r._sync_welford_distributed()
 
 
 def test_stress_router_read_ema_load():
-
     r = _make_stress_router()
 
     load = r._read_ema_load()
@@ -975,7 +894,6 @@ def test_stress_router_read_ema_load():
 
 
 def test_stress_router_forward_with_temperature_override():
-
     r = _make_stress_router()
 
     x = torch.randn(2, 4, 64)
@@ -986,7 +904,6 @@ def test_stress_router_forward_with_temperature_override():
 
 
 def test_stress_router_forward_with_noise_override():
-
     r = _make_stress_router()
 
     r.train()
@@ -999,7 +916,6 @@ def test_stress_router_forward_with_noise_override():
 
 
 def test_metabolic_router_record_usage_accumulate():
-
     r = _make_metabolic_router()
 
     r.train()
@@ -1016,7 +932,6 @@ def test_metabolic_router_record_usage_accumulate():
 
 
 def test_metabolic_router_step_no_pending():
-
     r = _make_metabolic_router()
 
     r.step()
@@ -1025,7 +940,6 @@ def test_metabolic_router_step_no_pending():
 
 
 def test_metabolic_router_forward_no_warmup():
-
     r = _make_metabolic_router()
 
     r.warmup_steps = 0
@@ -1040,7 +954,6 @@ def test_metabolic_router_forward_no_warmup():
 
 
 def test_deepseek_router_step_overloaded_underloaded():
-
     r = _make_deepseek_router()
 
     r.train()
@@ -1059,7 +972,6 @@ def test_deepseek_router_step_overloaded_underloaded():
 
 
 def test_deepseek_router_record_usage_accumulate():
-
     r = _make_deepseek_router()
 
     r.train()
@@ -1074,7 +986,6 @@ def test_deepseek_router_record_usage_accumulate():
 
 
 def test_expert_choice_router_nan_guard():
-
     from src.routers.expert_choice import ExpertChoiceRouter
 
     from src.configs.router import ExpertChoiceRouterConfig
@@ -1094,7 +1005,6 @@ def test_expert_choice_router_nan_guard():
 
 
 def test_expert_choice_router_compute_aux_loss():
-
     from src.routers.expert_choice import ExpertChoiceRouter
 
     from src.configs.router import ExpertChoiceRouterConfig
@@ -1109,7 +1019,6 @@ def test_expert_choice_router_compute_aux_loss():
 
 
 def test_standard_router_clear_aux_state_explicit():
-
     from src.routers.standard import StandardRouter
 
     from src.configs.router import StandardRouterConfig
@@ -1136,7 +1045,6 @@ def test_standard_router_clear_aux_state_explicit():
 
 
 def test_stress_router_get_custom_metrics_none_both():
-
     from src.routers.stress_corrected import StressCorrectedRouter
 
     from src.configs.router import StressCorrectedRouterConfig
@@ -1151,7 +1059,6 @@ def test_stress_router_get_custom_metrics_none_both():
 
 
 def test_stress_router_update_welford_no_active():
-
     from src.routers.stress_corrected import StressCorrectedRouter
 
     from src.configs.router import StressCorrectedRouterConfig

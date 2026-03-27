@@ -11,7 +11,6 @@ from src.routers.metabolic import MetabolicRouter
 
 class TestMetabolicRouterConfig:
     def test_default_config_initialization(self):
-
         config = MetabolicRouterConfig(hidden_dim=512)
 
         assert config.router_type == "metabolic"
@@ -31,7 +30,6 @@ class TestMetabolicRouterConfig:
         assert config.F_scale > 0.0
 
     def test_v6_params_present(self):
-
         config = MetabolicRouterConfig(hidden_dim=64)
 
         assert hasattr(config, "tau_specialization")
@@ -41,7 +39,6 @@ class TestMetabolicRouterConfig:
 
 class TestAlignment:
     def test_alignment_is_bounded_cosine_similarity(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.eval()
@@ -55,7 +52,6 @@ class TestAlignment:
         assert alignment.max() <= 1.0 + 1e-5
 
     def test_no_learnable_magnitude(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         param_names = [name for name, _ in router.named_parameters()]
@@ -65,7 +61,6 @@ class TestAlignment:
 
 class TestTanhPenalty:
     def test_penalty_bounded_by_lambda(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.lambda_metabolic = 1.0
@@ -85,7 +80,6 @@ class TestTanhPenalty:
         assert potential.min().item() >= -2.0 - 1e-4
 
     def test_penalty_grows_with_fatigue_until_saturation(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.lambda_metabolic = 1.0
@@ -115,7 +109,6 @@ class TestTanhPenalty:
         assert potentials[0] - potentials[-1] <= 2.0 + 1e-4
 
     def test_overloaded_expert_is_suppressed(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.lambda_metabolic = 1.0
@@ -142,7 +135,6 @@ class TestTanhPenalty:
         assert with_penalty[0, 0, 0] < no_penalty[0, 0, 0]
 
     def test_warmup_gives_zero_penalty(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.fatigue.data = torch.randn(standard_config.num_experts, device=device)
@@ -158,7 +150,6 @@ class TestTanhPenalty:
         assert torch.allclose(potential_warmup, alignment, atol=1e-5)
 
     def test_zero_fatigue_no_penalty(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.fatigue.data = torch.zeros(standard_config.num_experts, device=device)
@@ -174,7 +165,6 @@ class TestTanhPenalty:
         assert torch.allclose(potential, alignment, atol=1e-5)
 
     def test_tanh_correct_value(self, device):
-
         config = MetabolicRouterConfig(
             hidden_dim=4,
             num_experts=2,
@@ -207,7 +197,6 @@ class TestFatigueDynamics:
     def test_one_sided_update_underused_experts_dont_accumulate(
         self, standard_config, device
     ):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.gamma_recovery = 0.0
@@ -229,7 +218,6 @@ class TestFatigueDynamics:
     def test_one_sided_update_overloaded_expert_accumulates(
         self, standard_config, device
     ):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.gamma_recovery = 0.0
@@ -253,7 +241,6 @@ class TestFatigueDynamics:
         assert router.fatigue[1:].sum().item() == 0.0
 
     def test_tau_free_zone_exact_threshold(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.gamma_recovery = 0.0
@@ -279,7 +266,6 @@ class TestFatigueDynamics:
         assert router.fatigue[0].item() == 0.0
 
     def test_fatigue_non_negative(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.gamma_recovery = 0.5
@@ -298,7 +284,6 @@ class TestFatigueDynamics:
         assert (router.fatigue >= 0.0).all()
 
     def test_fatigue_accumulates_over_steps(self, zero_fatigue_router, test_input):
-
         router = zero_fatigue_router
 
         router.train()
@@ -319,7 +304,6 @@ class TestFatigueDynamics:
         assert router.num_steps.item() == 5
 
     def test_fatigue_recovers_when_idle(self, router, device):
-
         router.fatigue.data = torch.ones(router.num_experts, device=device) * 2.0
 
         initial = router.fatigue.clone()
@@ -333,7 +317,6 @@ class TestFatigueDynamics:
         assert (router.fatigue < initial).all()
 
     def test_fraction_penalised_metric(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.tau_specialization = 2.0
@@ -357,7 +340,6 @@ class TestFatigueDynamics:
 
 class TestForwardPass:
     def test_forward_output_shapes(self, router, test_input):
-
         batch, seq, hidden = test_input.shape
 
         weights, indices, metrics = router(test_input, return_metrics=True)
@@ -375,7 +357,6 @@ class TestForwardPass:
         assert (weights > 0).sum(dim=-1).eq(router.top_k).all()
 
     def test_step_increments_counter(self, zero_fatigue_router, test_input):
-
         router = zero_fatigue_router
 
         router(test_input)
@@ -389,13 +370,11 @@ class TestForwardPass:
         assert router._usage_pending is False
 
     def test_no_aux_loss(self, router):
-
         assert router.compute_aux_loss().item() == 0.0
 
 
 class TestConfidenceMetrics:
     def test_confidence_metrics_present(self, router, test_input):
-
         router.train()
 
         _, _, metrics = router(test_input, return_metrics=True)
@@ -405,7 +384,6 @@ class TestConfidenceMetrics:
         assert "top1_dominance" in metrics
 
     def test_confidence_in_valid_range(self, router, test_input):
-
         router.eval()
 
         _, _, metrics = router(test_input, return_metrics=True)
@@ -413,7 +391,6 @@ class TestConfidenceMetrics:
         assert 0 < metrics["router_confidence_mean"] <= 1.0
 
     def test_top1_dominance_equals_one_for_topk1(self, device):
-
         config = MetabolicRouterConfig(
             hidden_dim=64,
             num_experts=4,
@@ -435,7 +412,6 @@ class TestConfidenceMetrics:
 
 class TestGetState:
     def test_get_state_keys(self, router):
-
         state = router.get_state()
 
         for key in (
@@ -452,7 +428,6 @@ class TestGetState:
             assert key in state, f"Missing key: {key}"
 
     def test_fairshare_value(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         state = router.get_state()
@@ -462,7 +437,6 @@ class TestGetState:
         assert abs(state["fairshare"] - expected) < 1e-6
 
     def test_lambda_eff_zero_at_start(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.train()
@@ -474,7 +448,6 @@ class TestGetState:
         assert state["lambda_eff"] == 0.0
 
     def test_lambda_eff_full_after_warmup(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router._step_count = standard_config.warmup_steps
@@ -484,7 +457,6 @@ class TestGetState:
         assert abs(state["lambda_eff"] - standard_config.lambda_metabolic) < 1e-6
 
     def test_fatigue_tanh_mean_bounded(self, standard_config, device):
-
         router = MetabolicRouter(standard_config).to(device)
 
         router.fatigue.data = (

@@ -2,7 +2,6 @@ import pytest
 
 
 def test_get_dataset_info_valid():
-
     from src.configs.dataset import get_dataset_info
 
     info = get_dataset_info("wikitext-2")
@@ -11,7 +10,6 @@ def test_get_dataset_info_valid():
 
 
 def test_get_dataset_info_invalid():
-
     from src.configs.dataset import get_dataset_info
 
     with pytest.raises(ValueError, match="Unknown dataset key"):
@@ -19,7 +17,6 @@ def test_get_dataset_info_invalid():
 
 
 def test_get_shard_dir():
-
     from src.configs.dataset import get_shard_dir
 
     path = get_shard_dir("wikitext-2", "gpt-neo-125m", base="/tmp/shards")
@@ -30,7 +27,6 @@ def test_get_shard_dir():
 
 
 def test_dataset_config_get_dataset_info_custom():
-
     from src.configs.dataset import DatasetConfig
 
     cfg = DatasetConfig(
@@ -45,7 +41,6 @@ def test_dataset_config_get_dataset_info_custom():
 
 
 def test_dataset_config_get_dataset_info_registry():
-
     from src.configs.dataset import DatasetConfig
 
     cfg = DatasetConfig(dataset_key="wikitext-2")
@@ -56,7 +51,6 @@ def test_dataset_config_get_dataset_info_registry():
 
 
 def test_dataset_config_get_description_custom():
-
     from src.configs.dataset import DatasetConfig
 
     cfg = DatasetConfig(custom_dataset_name="my/dataset", max_seq_len=512)
@@ -69,7 +63,6 @@ def test_dataset_config_get_description_custom():
 
 
 def test_dataset_config_get_description_registry():
-
     from src.configs.dataset import DatasetConfig
 
     cfg = DatasetConfig(dataset_key="wikitext-2", max_seq_len=1024)
@@ -80,7 +73,6 @@ def test_dataset_config_get_description_registry():
 
 
 def test_dataset_config_get_description_with_hf_name():
-
     from src.configs.dataset import DatasetConfig
 
     cfg = DatasetConfig(dataset_key="fineweb-edu", max_seq_len=512)
@@ -91,7 +83,6 @@ def test_dataset_config_get_description_with_hf_name():
 
 
 def test_model_lookup_valid():
-
     from src.configs.model import model_lookup
 
     info = model_lookup("gpt-neo-125m")
@@ -102,7 +93,6 @@ def test_model_lookup_valid():
 
 
 def test_model_lookup_invalid():
-
     from src.configs.model import model_lookup
 
     with pytest.raises(ValueError, match="Unknown model_key"):
@@ -110,7 +100,6 @@ def test_model_lookup_invalid():
 
 
 def test_model_lookup_by_variant_key():
-
     from src.configs.model import model_lookup
 
     info = model_lookup("125m")
@@ -119,7 +108,6 @@ def test_model_lookup_by_variant_key():
 
 
 def test_model_config_get_model_info():
-
     from src.configs.model import ModelConfig
 
     cfg = ModelConfig(model_key="gpt-neo-125m")
@@ -130,7 +118,6 @@ def test_model_config_get_model_info():
 
 
 def test_model_config_get_description():
-
     from src.configs.model import ModelConfig
 
     cfg = ModelConfig(model_key="gpt-neo-125m")
@@ -141,7 +128,6 @@ def test_model_config_get_description():
 
 
 def test_model_config_defaults():
-
     from src.configs.model import ModelConfig
 
     cfg = ModelConfig()

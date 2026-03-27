@@ -2,7 +2,6 @@ from unittest.mock import MagicMock
 
 
 def test_log_results_to_wandb_no_checkpoint_step_with_mmlu():
-
     from evals import results_schema
 
     mock_wandb = MagicMock()
@@ -44,7 +43,6 @@ def test_log_results_to_wandb_no_checkpoint_step_with_mmlu():
 
 
 def test_log_results_to_wandb_with_checkpoint_step_and_mmlu():
-
     from evals import results_schema
 
     mock_wandb = MagicMock()
@@ -94,7 +92,6 @@ def test_log_results_to_wandb_with_checkpoint_step_and_mmlu():
 
 
 def test_log_results_to_wandb_run_finish_not_callable():
-
     from evals import results_schema
 
     mock_wandb = MagicMock()

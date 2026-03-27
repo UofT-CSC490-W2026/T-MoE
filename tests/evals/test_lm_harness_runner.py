@@ -5,22 +5,18 @@ from evals.lm_harness_runner import run_lm_harness_eval
 
 class _DummyBackbone:
     def __init__(self):
-
         self.device = "cpu"
 
 
 class _DummyModel:
     def __init__(self):
-
         self.backbone = _DummyBackbone()
 
     def parameters(self):
-
         yield type("Param", (), {"dtype": "torch.float32"})()
 
 
 def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_path):
-
     calls = []
 
     build_calls = []
@@ -36,7 +32,6 @@ def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_
     )
 
     def fake_build_harness_model(model, tokenizer, device, batch_size):
-
         build_calls.append(batch_size)
 
         return f"wrapped_model_{batch_size}"
@@ -47,7 +42,6 @@ def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_
     )
 
     def fake_simple_evaluate(**kwargs):
-
         calls.append(kwargs)
 
         task = kwargs["tasks"][0]
@@ -120,7 +114,6 @@ def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_
 
 
 def test_run_lm_harness_eval_allows_empty_five_shot_tasks(monkeypatch, tmp_path):
-
     calls = []
 
     monkeypatch.setattr(
@@ -139,7 +132,6 @@ def test_run_lm_harness_eval_allows_empty_five_shot_tasks(monkeypatch, tmp_path)
     )
 
     def fake_simple_evaluate(**kwargs):
-
         calls.append(kwargs)
 
         return {"results": {"piqa": {"acc,none": 0.62}}}

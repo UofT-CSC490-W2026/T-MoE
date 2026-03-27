@@ -9,7 +9,6 @@ from unittest.mock import patch, MagicMock
 
 @pytest.fixture(autouse=True)
 def mock_modal():
-
     mock_modal = MagicMock()
 
     mock_modal.App = MagicMock(return_value=MagicMock())
@@ -27,7 +26,6 @@ def mock_modal():
 
 
 def test_load_cfg_with_overrides():
-
     import run_modal_training
 
     from omegaconf import OmegaConf
@@ -46,7 +44,6 @@ def test_load_cfg_with_overrides():
 
 
 def test_resolve_runtime_path_outputs():
-
     import run_modal_training
 
     result = run_modal_training._resolve_runtime_path("outputs/my_experiment")
@@ -57,7 +54,6 @@ def test_resolve_runtime_path_outputs():
 
 
 def test_resolve_eval_checkpoint_no_best_fallback_to_latest(tmp_path):
-
     import run_modal_training
 
     cfg = MagicMock()
@@ -79,7 +75,6 @@ def test_resolve_eval_checkpoint_no_best_fallback_to_latest(tmp_path):
 
 
 def test_checkpoint_sort_key_invalid_step():
-
     import run_modal_training
 
     p = Path("checkpoint_step_notanumber.pt")

@@ -2,7 +2,6 @@ from unittest.mock import patch, MagicMock
 
 
 def test_parse_args():
-
     from scripts.prepare_data import parse_args
 
     with patch("sys.argv", ["prepare_data.py", "--config", "test.yaml"]):
@@ -16,7 +15,6 @@ def test_parse_args():
 
 
 def test_parse_args_with_overrides():
-
     from scripts.prepare_data import parse_args
 
     with patch(
@@ -43,7 +41,6 @@ def test_parse_args_with_overrides():
 
 
 def test_load_config(tmp_path):
-
     from scripts.prepare_data import load_config
 
     cfg_path = tmp_path / "test.yaml"
@@ -58,7 +55,6 @@ def test_load_config(tmp_path):
 
 
 def test_load_config_with_dataset_override(tmp_path):
-
     from scripts.prepare_data import load_config
 
     cfg_path = tmp_path / "test.yaml"
@@ -73,7 +69,6 @@ def test_load_config_with_dataset_override(tmp_path):
 
 
 def test_get_tokenizer():
-
     from scripts.prepare_data import get_tokenizer
 
     mock_tok = MagicMock()
@@ -99,7 +94,6 @@ def test_get_tokenizer():
 
 
 def test_tokenize_batch():
-
     from scripts.prepare_data import _tokenize_batch
 
     import scripts.prepare_data as pd_mod
@@ -121,7 +115,6 @@ def test_tokenize_batch():
 
 
 def test_main_prepare_data(tmp_path):
-
     from scripts.prepare_data import main
 
     cfg_content = (
@@ -143,7 +136,6 @@ def test_main_prepare_data(tmp_path):
 
 
 def test_main_prepare_data_with_dataset_override(tmp_path):
-
     from scripts.prepare_data import main
 
     cfg_content = (

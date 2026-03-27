@@ -2,7 +2,6 @@ from src.training.checkpoint import _remap_legacy_moe_state_dict
 
 
 def test_remap_legacy_moe_state_dict_maps_router_and_lora_keys():
-
     legacy_state_dict = {
         "moe_layers.1.router.gate.weight": "router_weight",
         "moe_layers.1.experts.0.fc1.lora_A.weight": "fc1_a",

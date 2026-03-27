@@ -6,7 +6,6 @@ from src.routers.standard import StandardRouter
 
 
 def test_create_router_ignores_unknown_kwargs_for_standard_router():
-
     router = create_router(
         router_type="standard",
         hidden_dim=32,
@@ -29,7 +28,6 @@ def test_create_router_ignores_unknown_kwargs_for_standard_router():
 
 
 def test_create_router_keeps_metabolic_specific_kwargs():
-
     router = create_router(
         router_type="metabolic",
         hidden_dim=32,

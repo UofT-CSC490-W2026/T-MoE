@@ -8,12 +8,10 @@ from unittest.mock import MagicMock
 
 
 def test_base_moe_layer_invalid_hidden_dim():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     with pytest.raises(ValueError, match="hidden_dim"):
@@ -21,12 +19,10 @@ def test_base_moe_layer_invalid_hidden_dim():
 
 
 def test_base_moe_layer_invalid_num_experts():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     with pytest.raises(ValueError, match="num_experts"):
@@ -34,12 +30,10 @@ def test_base_moe_layer_invalid_num_experts():
 
 
 def test_base_moe_layer_invalid_top_k():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     with pytest.raises(ValueError, match="top_k"):
@@ -50,12 +44,10 @@ def test_base_moe_layer_invalid_top_k():
 
 
 def test_base_moe_layer_get_router_not_initialized():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
@@ -65,12 +57,10 @@ def test_base_moe_layer_get_router_not_initialized():
 
 
 def test_base_moe_layer_get_experts_not_initialized():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
@@ -80,12 +70,10 @@ def test_base_moe_layer_get_experts_not_initialized():
 
 
 def test_base_moe_layer_get_cached_metrics_none():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
@@ -94,12 +82,10 @@ def test_base_moe_layer_get_cached_metrics_none():
 
 
 def test_base_moe_layer_get_cached_metrics_no_router():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
@@ -112,12 +98,10 @@ def test_base_moe_layer_get_cached_metrics_no_router():
 
 
 def test_base_moe_layer_get_cached_metrics_no_tracker():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
@@ -132,12 +116,10 @@ def test_base_moe_layer_get_cached_metrics_no_tracker():
 
 
 def test_base_moe_layer_get_cached_metrics_with_tracker():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
@@ -160,12 +142,10 @@ def test_base_moe_layer_get_cached_metrics_with_tracker():
 
 
 def test_base_moe_layer_clear_cached_metrics():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
@@ -182,12 +162,10 @@ def test_base_moe_layer_clear_cached_metrics():
 
 
 def test_base_moe_layer_extra_repr():
-
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
         def forward(self, x, **kw):
-
             pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
@@ -198,7 +176,6 @@ def test_base_moe_layer_extra_repr():
 
 
 def _make_gptneo_moe(hidden=64, num_experts=4, top_k=2):
-
     from src.experts.lora import LoRAConfig
 
     from src.layers.lora_moe import LoRAMoELayer
@@ -227,7 +204,6 @@ def _make_gptneo_moe(hidden=64, num_experts=4, top_k=2):
 
 
 def test_lora_moe_layer_forward_basic():
-
     moe = _make_gptneo_moe()
 
     x = torch.randn(2, 4, 64)
@@ -238,7 +214,6 @@ def test_lora_moe_layer_forward_basic():
 
 
 def test_lora_moe_layer_forward_return_metrics():
-
     moe = _make_gptneo_moe()
 
     x = torch.randn(2, 4, 64)
@@ -251,7 +226,6 @@ def test_lora_moe_layer_forward_return_metrics():
 
 
 def test_lora_moe_layer_forward_record_usage_false():
-
     moe = _make_gptneo_moe()
 
     moe.train()
@@ -264,7 +238,6 @@ def test_lora_moe_layer_forward_record_usage_false():
 
 
 def test_lora_moe_layer_step():
-
     moe = _make_gptneo_moe()
 
     moe.train()
@@ -277,7 +250,6 @@ def test_lora_moe_layer_step():
 
 
 def test_lora_moe_layer_get_cached_metrics():
-
     moe = _make_gptneo_moe()
 
     x = torch.randn(2, 4, 64)
@@ -290,7 +262,6 @@ def test_lora_moe_layer_get_cached_metrics():
 
 
 def test_lora_moe_layer_get_cached_metrics_none():
-
     moe = _make_gptneo_moe()
 
     moe._last_routing_weights = None
@@ -301,7 +272,6 @@ def test_lora_moe_layer_get_cached_metrics_none():
 
 
 def test_lora_moe_layer_forced_record_usage():
-
     moe = _make_gptneo_moe()
 
     moe._forced_record_usage = False
@@ -314,7 +284,6 @@ def test_lora_moe_layer_forced_record_usage():
 
 
 def test_lora_moe_layer_with_shared_base_lora():
-
     from src.experts.lora import LoRAConfig
 
     from src.layers.lora_moe import LoRAMoELayer
@@ -351,7 +320,6 @@ def test_lora_moe_layer_with_shared_base_lora():
 
 
 def test_lora_moe_layer_router_no_record_usage_param():
-
     from src.experts.lora import LoRAConfig
 
     from src.layers.lora_moe import LoRAMoELayer
@@ -386,7 +354,6 @@ def test_lora_moe_layer_router_no_record_usage_param():
 
 
 def test_lora_moe_layer_with_qwen2_shared_base():
-
     from src.experts.lora import LoRAConfig
 
     from src.layers.lora_moe import LoRAMoELayer
@@ -438,7 +405,6 @@ def test_lora_moe_layer_with_qwen2_shared_base():
 
 
 def test_lora_moe_layer_get_cached_metrics_with_lora_norms():
-
     moe = _make_gptneo_moe()
 
     x = torch.randn(2, 4, 64)
@@ -453,7 +419,6 @@ def test_lora_moe_layer_get_cached_metrics_with_lora_norms():
 
 
 def test_lora_moe_layer_init_shared_base_lora_out_proj_none():
-
     from src.experts.lora import LoRAConfig
 
     from src.layers.lora_moe import LoRAMoELayer
@@ -466,15 +431,12 @@ def test_lora_moe_layer_init_shared_base_lora_out_proj_none():
 
     class NoOutProjExpert(LoRAMLPExpert):
         def __init__(self, config):
-
             super().__init__(config)
 
         def load_from_mlp(self, mlp):
-
             pass
 
         def forward(self, x):
-
             return x
 
     mlp = nn.Module()
@@ -501,7 +463,6 @@ def test_lora_moe_layer_init_shared_base_lora_out_proj_none():
 
 
 def test_lora_moe_layer_get_cached_metrics_no_weights():
-
     moe = _make_gptneo_moe()
 
     moe._last_routing_weights = None
@@ -510,7 +471,6 @@ def test_lora_moe_layer_get_cached_metrics_no_weights():
 
 
 def test_lora_moe_layer_get_cached_metrics_indices_none():
-
     moe = _make_gptneo_moe()
 
     x = torch.randn(2, 4, 64)
@@ -527,7 +487,6 @@ def test_lora_moe_layer_get_cached_metrics_indices_none():
 
 
 def test_lora_moe_layer_forward_metrics_none_indices():
-
     moe = _make_gptneo_moe()
 
     x = torch.randn(2, 4, 64)
@@ -540,7 +499,6 @@ def test_lora_moe_layer_forward_metrics_none_indices():
 
 
 def test_lora_moe_layer_forward_all_experts_zero_weight():
-
     from src.experts.lora import LoRAConfig
 
     from src.layers.lora_moe import LoRAMoELayer
@@ -549,7 +507,6 @@ def test_lora_moe_layer_forward_all_experts_zero_weight():
 
     class ZeroWeightRouter(BaseRouter):
         def forward(self, x, return_metrics=False, **kw):
-
             B, S, _ = x.shape
 
             N = B * S
@@ -561,7 +518,6 @@ def test_lora_moe_layer_forward_all_experts_zero_weight():
             return weights, None, {} if return_metrics else None
 
         def compute_aux_loss(self):
-
             return torch.tensor(0.0)
 
     class _Cfg:
@@ -593,7 +549,6 @@ def test_lora_moe_layer_forward_all_experts_zero_weight():
 
 
 def test_lora_moe_layer_shared_proj_lora_gptneo():
-
     from src.experts.lora import LoRAConfig
 
     from src.layers.lora_moe import LoRAMoELayer
@@ -630,7 +585,6 @@ def test_lora_moe_layer_shared_proj_lora_gptneo():
 
 
 def test_lora_moe_layer_forward_return_metrics_with_indices():
-
     from src.experts.lora import LoRAConfig
 
     from src.layers.lora_moe import LoRAMoELayer
@@ -639,7 +593,6 @@ def test_lora_moe_layer_forward_return_metrics_with_indices():
 
     class IndexRouter(BaseRouter):
         def forward(self, x, return_metrics=False, **kw):
-
             B, S, _ = x.shape
 
             N = B * S
@@ -653,7 +606,6 @@ def test_lora_moe_layer_forward_return_metrics_with_indices():
             return weights, indices, {} if return_metrics else None
 
         def compute_aux_loss(self):
-
             return torch.tensor(0.0)
 
     class _Cfg:
@@ -687,7 +639,6 @@ def test_lora_moe_layer_forward_return_metrics_with_indices():
 
 
 def test_lora_moe_layer_get_cached_metrics_with_indices():
-
     moe = _make_gptneo_moe()
 
     x = torch.randn(2, 4, 64)

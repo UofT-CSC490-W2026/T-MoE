@@ -11,7 +11,6 @@ from src.models.gpt_neo import GPTNeoBackbone
 
 class MockGPTNeo(nn.Module):
     def __init__(self, config):
-
         super().__init__()
 
         self.config = config
@@ -30,7 +29,6 @@ class MockGPTNeo(nn.Module):
         output_hidden_states=False,
         **kwargs,
     ):
-
         batch, seq = input_ids.shape
 
         hidden_states = [
@@ -58,7 +56,6 @@ class MockGPTNeo(nn.Module):
 
 @pytest.fixture
 def mock_gpt_neo_components():
-
     with (
         patch("src.models.gpt_neo.AutoConfig") as mock_config_cls,
         patch("src.models.gpt_neo.AutoModelForCausalLM") as mock_model_cls,
@@ -82,7 +79,6 @@ def mock_gpt_neo_components():
 
 @pytest.fixture
 def gpt_neo_backbone(mock_gpt_neo_components):
-
     with patch.dict(
         GPTNeoBackbone.VARIANTS,
         {
@@ -106,7 +102,6 @@ def gpt_neo_backbone(mock_gpt_neo_components):
 
 
 def test_initialization(mock_gpt_neo_components):
-
     mock_config, _ = mock_gpt_neo_components
 
     with patch.dict(
@@ -140,7 +135,6 @@ def test_initialization(mock_gpt_neo_components):
 
 
 def test_forward_pass_basic(gpt_neo_backbone):
-
     input_ids = torch.randint(0, 1000, (2, 8))
 
     logits, loss, metrics = gpt_neo_backbone(input_ids=input_ids, return_metrics=False)
@@ -153,7 +147,6 @@ def test_forward_pass_basic(gpt_neo_backbone):
 
 
 def test_forward_pass_with_labels(gpt_neo_backbone):
-
     input_ids = torch.randint(0, 1000, (2, 8))
 
     labels = torch.randint(0, 1000, (2, 8))
@@ -170,7 +163,6 @@ def test_forward_pass_with_labels(gpt_neo_backbone):
 
 
 def test_freeze_parameters(mock_gpt_neo_components):
-
     _, mock_model = mock_gpt_neo_components
 
     backbone = GPTNeoBackbone(variant="125m", freeze_backbone=True, device="cpu")

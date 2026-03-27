@@ -8,7 +8,6 @@ from unittest.mock import patch, MagicMock
 
 
 def test_detect_dtype_env_bf16(monkeypatch):
-
     monkeypatch.setenv("TMOE_DTYPE", "bfloat16")
 
     import importlib
@@ -25,7 +24,6 @@ def test_detect_dtype_env_bf16(monkeypatch):
 
 
 def test_detect_dtype_env_fp32(monkeypatch):
-
     monkeypatch.setenv("TMOE_DTYPE", "fp32")
 
     import importlib
@@ -42,7 +40,6 @@ def test_detect_dtype_env_fp32(monkeypatch):
 
 
 def test_detect_dtype_env_fp16(monkeypatch):
-
     monkeypatch.setenv("TMOE_DTYPE", "fp16")
 
     import importlib
@@ -59,7 +56,6 @@ def test_detect_dtype_env_fp16(monkeypatch):
 
 
 def test_detect_dtype_env_bf16_alias(monkeypatch):
-
     monkeypatch.setenv("TMOE_DTYPE", "bf16")
 
     import importlib
@@ -76,7 +72,6 @@ def test_detect_dtype_env_bf16_alias(monkeypatch):
 
 
 def test_detect_dtype_invalid_env(monkeypatch):
-
     monkeypatch.setenv("TMOE_DTYPE", "invalid_dtype")
 
     import importlib
@@ -92,7 +87,6 @@ def test_detect_dtype_invalid_env(monkeypatch):
 
 
 def test_is_mixed_precision():
-
     from src.training.precision import is_mixed_precision, COMPUTE_DTYPE
 
     result = is_mixed_precision()
@@ -107,7 +101,6 @@ def test_is_mixed_precision():
 
 
 def test_needs_grad_scaler():
-
     from src.training.precision import needs_grad_scaler, COMPUTE_DTYPE
 
     result = needs_grad_scaler()
@@ -122,14 +115,12 @@ def test_needs_grad_scaler():
 
 
 def test_cleanup_distributed_not_initialized():
-
     from src.training.fsdp_utils import cleanup_distributed
 
     cleanup_distributed()
 
 
 def test_get_model_for_attr_access_ddp():
-
     from src.training.fsdp_utils import get_model_for_attr_access
 
     from torch.nn.parallel import DistributedDataParallel as DDP
@@ -146,7 +137,6 @@ def test_get_model_for_attr_access_ddp():
 
 
 def test_wrap_model_for_distributed_ddp_strategy():
-
     from src.training.fsdp_utils import wrap_model_for_distributed
 
     model = nn.Linear(10, 10)
@@ -168,7 +158,6 @@ def test_wrap_model_for_distributed_ddp_strategy():
 
 
 def test_wrap_model_for_distributed_fsdp_strategy():
-
     from src.training.fsdp_utils import wrap_model_for_distributed
 
     model = nn.Linear(10, 10)
@@ -190,7 +179,6 @@ def test_wrap_model_for_distributed_fsdp_strategy():
 
 
 def test_wrap_model_for_distributed_no_strategy():
-
     from src.training.fsdp_utils import wrap_model_for_distributed
 
     model = nn.Linear(10, 10)
@@ -208,7 +196,6 @@ def test_wrap_model_for_distributed_no_strategy():
 
 
 def test_init_distributed_no_cuda(monkeypatch):
-
     monkeypatch.setenv("RANK", "0")
 
     monkeypatch.setenv("LOCAL_RANK", "0")
@@ -229,7 +216,6 @@ def test_init_distributed_no_cuda(monkeypatch):
 
 
 def test_init_distributed_local_rank_too_high(monkeypatch):
-
     monkeypatch.setenv("RANK", "0")
 
     monkeypatch.setenv("LOCAL_RANK", "99")
@@ -251,7 +237,6 @@ def test_init_distributed_local_rank_too_high(monkeypatch):
 
 
 def test_serialize_metrics():
-
     from src.training.checkpoint import _serialize_metrics
 
     result = _serialize_metrics({"loss": 0.5, "step": 100, "name": "test"})
@@ -262,7 +247,6 @@ def test_serialize_metrics():
 
 
 def test_remap_legacy_moe_key_router():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "moe_layers.11.router.gate.weight"
@@ -273,7 +257,6 @@ def test_remap_legacy_moe_key_router():
 
 
 def test_remap_legacy_moe_key_experts_fc1():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "moe_layers.11.experts.0.fc1.lora_A.weight"
@@ -284,7 +267,6 @@ def test_remap_legacy_moe_key_experts_fc1():
 
 
 def test_remap_legacy_moe_key_experts_fc2():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "moe_layers.11.experts.0.fc2.lora_B.weight"
@@ -295,7 +277,6 @@ def test_remap_legacy_moe_key_experts_fc2():
 
 
 def test_remap_legacy_moe_key_base_weight_dropped():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "moe_layers.11.experts.0.fc1.base_weight"
@@ -306,7 +287,6 @@ def test_remap_legacy_moe_key_base_weight_dropped():
 
 
 def test_remap_legacy_moe_key_mlp_experts():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "backbone.transformer.h.11.mlp.experts.0.fc1.lora_A.weight"
@@ -317,7 +297,6 @@ def test_remap_legacy_moe_key_mlp_experts():
 
 
 def test_remap_legacy_moe_key_passthrough():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "backbone.transformer.h.0.attn.weight"
@@ -328,7 +307,6 @@ def test_remap_legacy_moe_key_passthrough():
 
 
 def test_remap_legacy_moe_key_short():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "moe_layers.11"
@@ -339,7 +317,6 @@ def test_remap_legacy_moe_key_short():
 
 
 def test_remap_legacy_moe_state_dict():
-
     from src.training.checkpoint import _remap_legacy_moe_state_dict
 
     state = {
@@ -356,7 +333,6 @@ def test_remap_legacy_moe_state_dict():
 
 
 def test_log_state_dict_result_not_main():
-
     from src.training.checkpoint import _log_state_dict_result
 
     result = MagicMock()
@@ -370,7 +346,6 @@ def test_log_state_dict_result_not_main():
 
 
 def test_log_state_dict_result_main(capsys):
-
     from src.training.checkpoint import _log_state_dict_result
 
     result = MagicMock()
@@ -384,7 +359,6 @@ def test_log_state_dict_result_main(capsys):
 
 
 def test_checkpoint_manager_save_load(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -412,7 +386,6 @@ def test_checkpoint_manager_save_load(tmp_path):
 
 
 def test_checkpoint_manager_save_non_main(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -429,7 +402,6 @@ def test_checkpoint_manager_save_non_main(tmp_path):
 
 
 def test_checkpoint_manager_load_best(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -453,7 +425,6 @@ def test_checkpoint_manager_load_best(tmp_path):
 
 
 def test_checkpoint_manager_load_no_checkpoint(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     manager = CheckpointManager(str(tmp_path))
@@ -465,7 +436,6 @@ def test_checkpoint_manager_load_no_checkpoint(tmp_path):
 
 
 def test_checkpoint_manager_cleanup(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -487,7 +457,6 @@ def test_checkpoint_manager_cleanup(tmp_path):
 
 
 def test_checkpoint_manager_list(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -508,7 +477,6 @@ def test_checkpoint_manager_list(tmp_path):
 
 
 def test_checkpoint_manager_trainable_only(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -532,7 +500,6 @@ def test_checkpoint_manager_trainable_only(tmp_path):
 
 
 def test_checkpoint_manager_with_scheduler(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -564,7 +531,6 @@ def test_checkpoint_manager_with_scheduler(tmp_path):
 
 
 def test_checkpoint_manager_get_latest_from_dir(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -589,7 +555,6 @@ def test_checkpoint_manager_get_latest_from_dir(tmp_path):
 
 
 def test_checkpoint_manager_keep_last_n_zero(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -609,7 +574,6 @@ def test_checkpoint_manager_keep_last_n_zero(tmp_path):
 
 
 def test_get_state_dict_plain():
-
     from src.training.checkpoint import _get_state_dict
 
     model = nn.Linear(10, 10)
@@ -620,7 +584,6 @@ def test_get_state_dict_plain():
 
 
 def test_get_state_dict_ddp():
-
     from src.training.checkpoint import _get_state_dict
 
     from torch.nn.parallel import DistributedDataParallel as DDP
@@ -637,7 +600,6 @@ def test_get_state_dict_ddp():
 
 
 def test_detect_dtype_cuda_sm8(monkeypatch):
-
     monkeypatch.delenv("TMOE_DTYPE", raising=False)
 
     import importlib
@@ -654,7 +616,6 @@ def test_detect_dtype_cuda_sm8(monkeypatch):
 
 
 def test_detect_dtype_cuda_sm7(monkeypatch):
-
     monkeypatch.delenv("TMOE_DTYPE", raising=False)
 
     import importlib
@@ -671,7 +632,6 @@ def test_detect_dtype_cuda_sm7(monkeypatch):
 
 
 def test_remap_legacy_moe_key_unknown_block():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "moe_layers.11.experts.0.unknown_block.weight"
@@ -682,7 +642,6 @@ def test_remap_legacy_moe_key_unknown_block():
 
 
 def test_remap_legacy_moe_key_mlp_experts_base_weight():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "backbone.transformer.h.11.mlp.experts.0.fc1.base_weight"
@@ -693,7 +652,6 @@ def test_remap_legacy_moe_key_mlp_experts_base_weight():
 
 
 def test_checkpoint_load_with_legacy_keys(tmp_path):
-
     from src.training.checkpoint import CheckpointManager
 
     model = nn.Linear(10, 10)
@@ -721,7 +679,6 @@ def test_checkpoint_load_with_legacy_keys(tmp_path):
 
 
 def test_remap_legacy_moe_key_short_suffix():
-
     from src.training.checkpoint import _remap_legacy_moe_key
 
     key = "moe_layers.11.experts.0.weight"
@@ -734,7 +691,6 @@ def test_remap_legacy_moe_key_short_suffix():
 
 
 def test_checkpoint_manager_get_latest_from_memory():
-
     from src.training.checkpoint import CheckpointManager
 
     import torch.nn as nn
@@ -760,7 +716,6 @@ def test_checkpoint_manager_get_latest_from_memory():
 
 
 def test_switch_router_forces_top_k_1():
-
     from src.routers.standard import SwitchRouter
 
     from src.configs.router import SwitchRouterConfig

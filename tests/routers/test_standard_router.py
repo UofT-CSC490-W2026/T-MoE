@@ -6,7 +6,6 @@ from src.routers.standard import StandardRouter
 
 
 def test_standard_router_forward_shapes(device):
-
     config = StandardRouterConfig(hidden_dim=128, num_experts=6, top_k=2)
 
     router = StandardRouter(config).to(device)
@@ -29,7 +28,6 @@ def test_standard_router_forward_shapes(device):
 
 
 def test_standard_router_aux_loss_nonzero_when_enabled(device):
-
     config = StandardRouterConfig(
         hidden_dim=64, num_experts=4, top_k=2, use_aux_loss=True, aux_loss_coef=0.01
     )
@@ -52,7 +50,6 @@ def test_standard_router_aux_loss_nonzero_when_enabled(device):
 
 
 def test_standard_router_indices_in_range(device):
-
     config = StandardRouterConfig(hidden_dim=32, num_experts=5, top_k=3)
 
     router = StandardRouter(config).to(device)
@@ -69,7 +66,6 @@ def test_standard_router_indices_in_range(device):
 
 
 def test_standard_router_deterministic_in_eval(device):
-
     config = StandardRouterConfig(hidden_dim=16, num_experts=4, top_k=2)
 
     router = StandardRouter(config).to(device)
@@ -88,7 +84,6 @@ def test_standard_router_deterministic_in_eval(device):
 
 
 def test_standard_router_topk_matches_known_logits(device):
-
     config = StandardRouterConfig(hidden_dim=4, num_experts=4, top_k=2)
 
     router = StandardRouter(config).to(device)
@@ -114,7 +109,6 @@ def test_standard_router_topk_matches_known_logits(device):
 
 
 def test_standard_router_aux_loss_reflects_imbalance(device):
-
     config = StandardRouterConfig(
         hidden_dim=4, num_experts=4, top_k=1, use_aux_loss=True, aux_loss_coef=0.01
     )
@@ -149,7 +143,6 @@ def test_standard_router_aux_loss_reflects_imbalance(device):
 
 
 def test_standard_router_accepts_bfloat16_inputs(device):
-
     if device == "cpu":
         return
 

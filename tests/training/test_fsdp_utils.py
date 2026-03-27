@@ -7,31 +7,26 @@ import torch.nn as nn
 
 class FakeLoRAMoELayer(nn.Module):
     def __init__(self, hidden: int = 64):
-
         super().__init__()
 
         self.linear = nn.Linear(hidden, hidden)
 
     def forward(self, x):
-
         return self.linear(x)
 
 
 class FakeAttention(nn.Module):
     def __init__(self, hidden: int = 64):
-
         super().__init__()
 
         self.q = nn.Linear(hidden, hidden)
 
     def forward(self, x):
-
         return self.q(x)
 
 
 class FakeTransformerBlock(nn.Module):
     def __init__(self, hidden: int = 64):
-
         super().__init__()
 
         self.attn = FakeAttention(hidden)
@@ -39,13 +34,11 @@ class FakeTransformerBlock(nn.Module):
         self.mlp = FakeLoRAMoELayer(hidden)
 
     def forward(self, x):
-
         return self.mlp(self.attn(x))
 
 
 class FakeModel(nn.Module):
     def __init__(self, n_layers: int = 2, hidden: int = 64):
-
         super().__init__()
 
         self.blocks = nn.ModuleList(
@@ -55,7 +48,6 @@ class FakeModel(nn.Module):
         self.embed = nn.Embedding(100, hidden)
 
     def forward(self, x):
-
         h = self.embed(x)
 
         for block in self.blocks:
@@ -66,7 +58,6 @@ class FakeModel(nn.Module):
 
 class TestModuleWrapPolicy:
     def _build_policy(self, cls):
-
         try:
             from torch.distributed.fsdp.wrap import ModuleWrapPolicy
 
@@ -76,7 +67,6 @@ class TestModuleWrapPolicy:
         return ModuleWrapPolicy({cls})
 
     def test_lora_moe_layer_is_matched(self):
-
         policy = self._build_policy(FakeLoRAMoELayer)
 
         moe = FakeLoRAMoELayer()
@@ -84,7 +74,6 @@ class TestModuleWrapPolicy:
         assert policy(moe, recurse=False, nonwrapped_numel=0) is True
 
     def test_attention_not_matched(self):
-
         policy = self._build_policy(FakeLoRAMoELayer)
 
         attn = FakeAttention()
@@ -92,7 +81,6 @@ class TestModuleWrapPolicy:
         assert policy(attn, recurse=False, nonwrapped_numel=0) is False
 
     def test_block_not_matched(self):
-
         policy = self._build_policy(FakeLoRAMoELayer)
 
         block = FakeTransformerBlock()
@@ -100,7 +88,6 @@ class TestModuleWrapPolicy:
         assert policy(block, recurse=False, nonwrapped_numel=0) is False
 
     def test_linear_not_matched(self):
-
         policy = self._build_policy(FakeLoRAMoELayer)
 
         linear = nn.Linear(64, 64)
@@ -108,7 +95,6 @@ class TestModuleWrapPolicy:
         assert policy(linear, recurse=False, nonwrapped_numel=0) is False
 
     def test_no_double_wrap_in_model_tree(self):
-
         policy = self._build_policy(FakeLoRAMoELayer)
 
         model = FakeModel(n_layers=3)
@@ -129,9 +115,7 @@ class TestModuleWrapPolicy:
                 )
 
     def test_string_matching_would_cause_double_wrap(self):
-
         def old_buggy_policy(module, recurse, nonwrapped_numel):
-
             name = module.__class__.__name__
 
             return "Block" in name or "Layer" in name
@@ -165,7 +149,6 @@ class TestModuleWrapPolicy:
 
 class TestDistributedUtils:
     def test_is_main_process_returns_true_when_not_distributed(self):
-
         from src.training.fsdp_utils import is_main_process
 
         import torch.distributed as dist
@@ -176,7 +159,6 @@ class TestDistributedUtils:
         assert is_main_process() is True
 
     def test_init_distributed_returns_false_without_env(self, monkeypatch):
-
         monkeypatch.delenv("RANK", raising=False)
 
         from src.training.fsdp_utils import init_distributed
@@ -186,7 +168,6 @@ class TestDistributedUtils:
         assert result == (False, 0, 0, 1)
 
     def test_get_model_for_attr_access_passthrough(self):
-
         from src.training.fsdp_utils import get_model_for_attr_access
 
         model = nn.Linear(10, 10)

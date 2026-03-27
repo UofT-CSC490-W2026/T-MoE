@@ -10,7 +10,6 @@ from unittest.mock import patch, MagicMock
 
 
 def test_shard_dataset(tmp_path):
-
     from scripts.train import ShardDataset
 
     tokens = np.arange(100, dtype=np.uint16)
@@ -34,7 +33,6 @@ def test_shard_dataset(tmp_path):
 
 
 def test_shard_dataset_versioned(tmp_path):
-
     from scripts.train import ShardDataset
 
     tokens = np.arange(100, dtype=np.uint32)
@@ -56,7 +54,6 @@ def test_shard_dataset_versioned(tmp_path):
 
 
 def test_shard_dataset_no_shards(tmp_path):
-
     from scripts.train import ShardDataset
 
     with pytest.raises(FileNotFoundError):
@@ -64,7 +61,6 @@ def test_shard_dataset_no_shards(tmp_path):
 
 
 def test_shard_dataset_unknown_dtype(tmp_path):
-
     from scripts.train import ShardDataset
 
     tokens = np.arange(100, dtype=np.uint32)
@@ -81,7 +77,6 @@ def test_shard_dataset_unknown_dtype(tmp_path):
 
 
 def test_shard_dataset_wraparound(tmp_path):
-
     from scripts.train import ShardDataset
 
     tokens = np.arange(20, dtype=np.uint16)
@@ -101,7 +96,6 @@ def test_shard_dataset_wraparound(tmp_path):
 
 
 def test_load_config(tmp_path):
-
     from scripts.train import load_config
 
     cfg_path = tmp_path / "test.yaml"
@@ -114,7 +108,6 @@ def test_load_config(tmp_path):
 
 
 def test_load_config_with_overrides(tmp_path):
-
     from scripts.train import load_config
 
     cfg_path = tmp_path / "test.yaml"
@@ -127,7 +120,6 @@ def test_load_config_with_overrides(tmp_path):
 
 
 def test_parse_args():
-
     from scripts.train import parse_args
 
     with patch("sys.argv", ["train.py", "--config", "test.yaml"]):
@@ -139,7 +131,6 @@ def test_parse_args():
 
 
 def test_parse_args_with_resume():
-
     from scripts.train import parse_args
 
     with patch(
@@ -151,7 +142,6 @@ def test_parse_args_with_resume():
 
 
 def test_evaluate():
-
     from scripts.train import evaluate
 
     model = MagicMock()
@@ -172,7 +162,6 @@ def test_evaluate():
 
 
 def test_evaluate_empty_loader():
-
     from scripts.train import evaluate
 
     model = MagicMock()
@@ -187,7 +176,6 @@ def test_evaluate_empty_loader():
 
 
 def test_init_wandb_not_main():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -197,7 +185,6 @@ def test_init_wandb_not_main():
 
 
 def test_init_wandb_disabled():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -209,7 +196,6 @@ def test_init_wandb_disabled():
 
 
 def test_init_wandb_mode_disabled():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -223,7 +209,6 @@ def test_init_wandb_mode_disabled():
 
 
 def test_init_wandb_import_error():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -244,7 +229,6 @@ def test_init_wandb_import_error():
 
 
 def test_log_wandb_not_main():
-
     from scripts.train import log_wandb
 
     with patch("scripts.train.is_main_process", return_value=False):
@@ -252,7 +236,6 @@ def test_log_wandb_not_main():
 
 
 def test_log_wandb_no_wandb():
-
     from scripts.train import log_wandb
 
     with patch("scripts.train.is_main_process", return_value=True):
@@ -261,7 +244,6 @@ def test_log_wandb_no_wandb():
 
 
 def test_broadcast_scalar_not_distributed():
-
     from scripts.train import _broadcast_scalar
 
     result = _broadcast_scalar(3.14, "cpu", False)
@@ -270,7 +252,6 @@ def test_broadcast_scalar_not_distributed():
 
 
 def test_build_optimizer_adamw():
-
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(10, 10)
@@ -294,7 +275,6 @@ def test_build_optimizer_adamw():
 
 
 def test_build_optimizer_adam():
-
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(10, 10)
@@ -318,7 +298,6 @@ def test_build_optimizer_adam():
 
 
 def test_build_optimizer_unknown():
-
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(10, 10)
@@ -341,7 +320,6 @@ def test_build_optimizer_unknown():
 
 
 def test_build_optimizer_with_base_lr():
-
     from scripts.train import build_optimizer
 
     model = torch.nn.Module()

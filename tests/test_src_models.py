@@ -8,7 +8,6 @@ from unittest.mock import patch, MagicMock
 
 
 def test_base_model_abstract():
-
     from src.models.base import BaseModelBackbone
 
     with pytest.raises(TypeError):
@@ -16,16 +15,13 @@ def test_base_model_abstract():
 
 
 def test_base_model_inject_moe_layers():
-
     from src.models.base import BaseModelBackbone
 
     class ConcreteModel(BaseModelBackbone):
         def load_pretrained(self):
-
             pass
 
         def forward(self, *a, **kw):
-
             pass
 
     model = ConcreteModel("test", 768)
@@ -38,16 +34,13 @@ def test_base_model_inject_moe_layers():
 
 
 def test_base_model_freeze_unfreeze():
-
     from src.models.base import BaseModelBackbone
 
     class ConcreteModel(BaseModelBackbone):
         def load_pretrained(self):
-
             pass
 
         def forward(self, *a, **kw):
-
             pass
 
     model = ConcreteModel("test", 768)
@@ -64,16 +57,13 @@ def test_base_model_freeze_unfreeze():
 
 
 def test_base_model_param_counts():
-
     from src.models.base import BaseModelBackbone
 
     class ConcreteModel(BaseModelBackbone):
         def load_pretrained(self):
-
             pass
 
         def forward(self, *a, **kw):
-
             pass
 
     model = ConcreteModel("test", 768)
@@ -90,16 +80,13 @@ def test_base_model_param_counts():
 
 
 def test_base_model_get_mlp_at_not_implemented():
-
     from src.models.base import BaseModelBackbone
 
     class ConcreteModel(BaseModelBackbone):
         def load_pretrained(self):
-
             pass
 
         def forward(self, *a, **kw):
-
             pass
 
     model = ConcreteModel("test", 768)
@@ -109,7 +96,6 @@ def test_base_model_get_mlp_at_not_implemented():
 
 
 def _make_mock_gptneo():
-
     mock_backbone = MagicMock()
 
     mock_backbone.config.vocab_size = 50257
@@ -129,7 +115,6 @@ def _make_mock_gptneo():
 
 
 def test_gptneo_invalid_variant():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
@@ -143,7 +128,6 @@ def test_gptneo_invalid_variant():
 
 
 def test_gptneo_get_variant_info():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     info = GPTNeoBackbone.get_variant_info("125m")
@@ -152,7 +136,6 @@ def test_gptneo_get_variant_info():
 
 
 def test_gptneo_get_variant_info_invalid():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     with pytest.raises(ValueError):
@@ -160,7 +143,6 @@ def test_gptneo_get_variant_info_invalid():
 
 
 def test_gptneo_list_variants():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     variants = GPTNeoBackbone.list_variants()
@@ -169,7 +151,6 @@ def test_gptneo_list_variants():
 
 
 def test_gptneo_backbone_init():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     mock_backbone = _make_mock_gptneo()
@@ -188,7 +169,6 @@ def test_gptneo_backbone_init():
 
 
 def test_gptneo_get_mlp_at():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     mock_backbone = _make_mock_gptneo()
@@ -207,7 +187,6 @@ def test_gptneo_get_mlp_at():
 
 
 def test_gptneo_inject_moe_layers():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     mock_backbone = _make_mock_gptneo()
@@ -228,7 +207,6 @@ def test_gptneo_inject_moe_layers():
 
 
 def test_gptneo_inject_moe_layers_invalid_idx():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     mock_backbone = _make_mock_gptneo()
@@ -246,7 +224,6 @@ def test_gptneo_inject_moe_layers_invalid_idx():
 
 
 def test_gptneo_inject_moe_layers_empty():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     mock_backbone = _make_mock_gptneo()
@@ -263,7 +240,6 @@ def test_gptneo_inject_moe_layers_empty():
 
 
 def test_gptneo_forward():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     mock_backbone = _make_mock_gptneo()
@@ -296,7 +272,6 @@ def test_gptneo_forward():
 
 
 def test_gptneo_forward_with_labels():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     mock_backbone = _make_mock_gptneo()
@@ -329,7 +304,6 @@ def test_gptneo_forward_with_labels():
 
 
 def test_gptneo_forward_with_moe_and_metrics():
-
     from src.models.gpt_neo import GPTNeoBackbone
 
     mock_backbone = _make_mock_gptneo()
@@ -368,7 +342,6 @@ def test_gptneo_forward_with_moe_and_metrics():
 
 
 def _make_mock_qwen2():
-
     mock_backbone = MagicMock()
 
     mock_backbone.config.vocab_size = 151936
@@ -386,7 +359,6 @@ def _make_mock_qwen2():
 
 
 def test_qwen2_invalid_variant():
-
     from src.models.qwen2 import Qwen2Backbone
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
@@ -397,7 +369,6 @@ def test_qwen2_invalid_variant():
 
 
 def test_qwen2_backbone_init():
-
     from src.models.qwen2 import Qwen2Backbone
 
     mock_backbone = _make_mock_qwen2()
@@ -411,7 +382,6 @@ def test_qwen2_backbone_init():
 
 
 def test_qwen2_get_mlp_at():
-
     from src.models.qwen2 import Qwen2Backbone
 
     mock_backbone = _make_mock_qwen2()
@@ -427,7 +397,6 @@ def test_qwen2_get_mlp_at():
 
 
 def test_qwen2_inject_moe_layers():
-
     from src.models.qwen2 import Qwen2Backbone
 
     mock_backbone = _make_mock_qwen2()
@@ -445,7 +414,6 @@ def test_qwen2_inject_moe_layers():
 
 
 def test_qwen2_inject_moe_layers_invalid():
-
     from src.models.qwen2 import Qwen2Backbone
 
     mock_backbone = _make_mock_qwen2()
@@ -460,7 +428,6 @@ def test_qwen2_inject_moe_layers_invalid():
 
 
 def test_qwen2_inject_moe_layers_empty():
-
     from src.models.qwen2 import Qwen2Backbone
 
     mock_backbone = _make_mock_qwen2()
@@ -474,7 +441,6 @@ def test_qwen2_inject_moe_layers_empty():
 
 
 def test_qwen2_forward():
-
     from src.models.qwen2 import Qwen2Backbone
 
     mock_backbone = _make_mock_qwen2()
@@ -500,7 +466,6 @@ def test_qwen2_forward():
 
 
 def test_qwen2_forward_with_labels_and_moe():
-
     from src.models.qwen2 import Qwen2Backbone
 
     mock_backbone = _make_mock_qwen2()
@@ -538,7 +503,6 @@ def test_qwen2_forward_with_labels_and_moe():
 
 
 def test_qwen2_load_pretrained_flash_attn():
-
     from src.models.qwen2 import Qwen2Backbone
 
     mock_backbone = _make_mock_qwen2()

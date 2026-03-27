@@ -2,12 +2,10 @@ from unittest.mock import patch
 
 
 def test_train_entrypoint_imports():
-
     import train
 
 
 def test_train_entrypoint_main_not_called_on_import():
-
     with patch("scripts.train.main") as mock_main:
         import importlib
 

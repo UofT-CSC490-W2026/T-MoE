@@ -6,7 +6,6 @@ from src.routers.standard import SwitchRouter
 
 
 def test_switch_router_top1(device):
-
     config = SwitchRouterConfig(hidden_dim=32, num_experts=5)
 
     router = SwitchRouter(config).to(device)

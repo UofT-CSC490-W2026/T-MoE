@@ -4,7 +4,6 @@ from scripts.eval import main, run_task
 
 
 def _fake_load_model(monkeypatch):
-
     monkeypatch.setattr(
         "evals.loading.load_model_for_eval",
         lambda **kwargs: (object(), {}),
@@ -12,11 +11,9 @@ def _fake_load_model(monkeypatch):
 
 
 def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
-
     captured = {}
 
     def fake_load_experiment_config(config_path_or_name, overrides=None):
-
         captured["config_arg"] = config_path_or_name
 
         captured["overrides"] = overrides
@@ -24,7 +21,6 @@ def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
         return {"experiment_name": "demo"}
 
     def fake_run_perplexity_eval(**kwargs):
-
         captured["kwargs"] = kwargs
 
         return {"task": "perplexity", "results": {}}
@@ -79,15 +75,12 @@ def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
 
 
 def test_run_task_uses_default_eval_dir(monkeypatch):
-
     def fake_load_experiment_config(config_path_or_name, overrides=None):
-
         return {"experiment_name": "demo_exp"}
 
     captured = {}
 
     def fake_run_perplexity_eval(**kwargs):
-
         captured["output_path"] = kwargs["output_path"]
 
         return {"ok": True}
@@ -119,7 +112,6 @@ def test_run_task_uses_default_eval_dir(monkeypatch):
 
 
 def test_run_task_rejects_unimplemented_tasks(monkeypatch):
-
     monkeypatch.setattr(
         "scripts.eval.load_experiment_config",
         lambda *args, **kwargs: {"experiment_name": "demo"},
@@ -165,7 +157,6 @@ def test_run_task_rejects_unimplemented_tasks(monkeypatch):
 
 
 def test_run_task_dispatches_lm_harness(monkeypatch, tmp_path):
-
     monkeypatch.setattr(
         "scripts.eval.load_experiment_config",
         lambda *args, **kwargs: {"experiment_name": "demo"},
@@ -174,7 +165,6 @@ def test_run_task_dispatches_lm_harness(monkeypatch, tmp_path):
     captured = {}
 
     def fake_run_lm_harness_eval(**kwargs):
-
         captured.update(kwargs)
 
         return {"task": "lm_harness"}
@@ -216,7 +206,6 @@ def test_run_task_dispatches_lm_harness(monkeypatch, tmp_path):
 
 
 def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
-
     monkeypatch.setattr(
         "scripts.eval.load_experiment_config",
         lambda *args, **kwargs: {"experiment_name": "demo"},
@@ -225,7 +214,6 @@ def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
     captured = {}
 
     def fake_run_efficiency_eval(**kwargs):
-
         captured.update(kwargs)
 
         return {"task": "efficiency"}
@@ -275,7 +263,6 @@ def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
 
 
 def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
-
     monkeypatch.setattr(
         "scripts.eval.load_experiment_config",
         lambda *args, **kwargs: {"experiment_name": "demo"},
@@ -294,7 +281,6 @@ def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
     captured = {}
 
     def fake_log_results_to_wandb(payload, config):
-
         captured["payload"] = payload
 
         captured["config"] = config
@@ -324,7 +310,6 @@ def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
 
 
 def test_run_task_sweeps_all_checkpoints_into_history_outputs(monkeypatch, tmp_path):
-
     checkpoint_dir = tmp_path / "checkpoints"
 
     checkpoint_dir.mkdir()
@@ -345,7 +330,6 @@ def test_run_task_sweeps_all_checkpoints_into_history_outputs(monkeypatch, tmp_p
     captured = []
 
     def fake_run_perplexity_eval(**kwargs):
-
         captured.append(kwargs)
 
         return {

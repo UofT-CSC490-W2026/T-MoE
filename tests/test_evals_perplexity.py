@@ -10,7 +10,6 @@ VOCAB = 256
 
 
 def test_cfg_select_dict():
-
     from evals.perplexity import _cfg_select
 
     cfg = {"a": {"b": 42}}
@@ -23,7 +22,6 @@ def test_cfg_select_dict():
 
 
 def test_cfg_select_none_mid_path():
-
     from evals.perplexity import _cfg_select
 
     cfg = {"a": None}
@@ -32,7 +30,6 @@ def test_cfg_select_none_mid_path():
 
 
 def test_dtype_name():
-
     from evals.perplexity import _dtype_name
 
     assert _dtype_name(torch.float32) == "float32"
@@ -41,7 +38,6 @@ def test_dtype_name():
 
 
 def test_autocast_context_cpu():
-
     from evals.perplexity import _autocast_context
 
     ctx = _autocast_context("cpu", torch.float32)
@@ -51,7 +47,6 @@ def test_autocast_context_cpu():
 
 
 def test_autocast_context_cuda():
-
     from evals.perplexity import _autocast_context
 
     ctx = _autocast_context("cuda:0", torch.bfloat16)
@@ -60,7 +55,6 @@ def test_autocast_context_cuda():
 
 
 def test_summarize_language_model_metrics_basic():
-
     from evals.perplexity import summarize_language_model_metrics
 
     m = summarize_language_model_metrics(total_nll=10.0, total_tokens=10)
@@ -71,7 +65,6 @@ def test_summarize_language_model_metrics_basic():
 
 
 def test_summarize_language_model_metrics_with_bpb():
-
     from evals.perplexity import summarize_language_model_metrics
 
     m = summarize_language_model_metrics(
@@ -82,7 +75,6 @@ def test_summarize_language_model_metrics_with_bpb():
 
 
 def test_summarize_language_model_metrics_zero_tokens():
-
     from evals.perplexity import summarize_language_model_metrics
 
     with pytest.raises(ValueError, match="total_tokens must be positive"):
@@ -90,7 +82,6 @@ def test_summarize_language_model_metrics_zero_tokens():
 
 
 def test_summarize_language_model_metrics_zero_bytes():
-
     from evals.perplexity import summarize_language_model_metrics
 
     with pytest.raises(ValueError, match="total_bytes must be positive"):
@@ -98,7 +89,6 @@ def test_summarize_language_model_metrics_zero_bytes():
 
 
 def test_infer_eval_context_length_from_backbone():
-
     from evals.perplexity import infer_eval_context_length
 
     model = MagicMock()
@@ -113,7 +103,6 @@ def test_infer_eval_context_length_from_backbone():
 
 
 def test_infer_eval_context_length_fallback():
-
     from evals.perplexity import infer_eval_context_length
 
     model = MagicMock()
@@ -126,7 +115,6 @@ def test_infer_eval_context_length_fallback():
 
 
 def test_infer_eval_context_length_tokenizer_limit():
-
     from evals.perplexity import infer_eval_context_length
 
     model = MagicMock()
@@ -145,7 +133,6 @@ def test_infer_eval_context_length_tokenizer_limit():
 
 
 def test_infer_eval_context_length_min_2():
-
     from evals.perplexity import infer_eval_context_length
 
     model = MagicMock()
@@ -158,7 +145,6 @@ def test_infer_eval_context_length_min_2():
 
 
 def test_document_windows_short_seq():
-
     from evals.perplexity import _document_windows
 
     ids = torch.zeros(1, 1, dtype=torch.long)
@@ -169,7 +155,6 @@ def test_document_windows_short_seq():
 
 
 def test_document_windows_basic():
-
     from evals.perplexity import _document_windows
 
     ids = torch.arange(100).unsqueeze(0)
@@ -183,7 +168,6 @@ def test_document_windows_basic():
 
 
 def test_document_windows_single_window():
-
     from evals.perplexity import _document_windows
 
     ids = torch.arange(10).unsqueeze(0)
@@ -194,7 +178,6 @@ def test_document_windows_single_window():
 
 
 def test_tokenize_worker_basic():
-
     import queue
 
     from evals.perplexity import _tokenize_worker
@@ -221,7 +204,6 @@ def test_tokenize_worker_basic():
 
 
 def test_tokenize_worker_max_documents():
-
     import queue
 
     from evals.perplexity import _tokenize_worker
@@ -248,7 +230,6 @@ def test_tokenize_worker_max_documents():
 
 
 def test_tokenize_worker_skips_empty():
-
     import queue
 
     from evals.perplexity import _tokenize_worker
@@ -275,7 +256,6 @@ def test_tokenize_worker_skips_empty():
 
 
 def test_tokenize_worker_type_error_fallback():
-
     import queue
 
     from evals.perplexity import _tokenize_worker
@@ -283,7 +263,6 @@ def test_tokenize_worker_type_error_fallback():
     call_count = [0]
 
     def tokenizer(text, **kwargs):
-
         call_count[0] += 1
 
         if "verbose" in kwargs:
@@ -309,7 +288,6 @@ def test_tokenize_worker_type_error_fallback():
 
 
 def _make_window(seq_len=10):
-
     from evals.perplexity import _Window
 
     ids = torch.zeros(1, seq_len, dtype=torch.long)
@@ -320,7 +298,6 @@ def _make_window(seq_len=10):
 
 
 def _make_model_output(batch_size, seq_len, vocab=VOCAB):
-
     logits = torch.randn(batch_size, seq_len, vocab)
 
     out = MagicMock()
@@ -331,7 +308,6 @@ def _make_model_output(batch_size, seq_len, vocab=VOCAB):
 
 
 def test_run_batched_forward_same_length():
-
     from evals.perplexity import _run_batched_forward
 
     w1 = _make_window(10)
@@ -352,7 +328,6 @@ def test_run_batched_forward_same_length():
 
 
 def test_run_batched_forward_different_lengths():
-
     from evals.perplexity import _run_batched_forward
 
     w1 = _make_window(8)
@@ -369,7 +344,6 @@ def test_run_batched_forward_different_lengths():
 
 
 def test_run_batched_forward_tuple_output():
-
     from evals.perplexity import _run_batched_forward
 
     w = _make_window(10)
@@ -386,7 +360,6 @@ def test_run_batched_forward_tuple_output():
 
 
 def test_compute_document_nll_short_seq():
-
     from evals.perplexity import compute_document_nll
 
     model = MagicMock()
@@ -403,7 +376,6 @@ def test_compute_document_nll_short_seq():
 
 
 def test_compute_document_nll_basic():
-
     from evals.perplexity import compute_document_nll
 
     model = MagicMock()
@@ -428,7 +400,6 @@ def test_compute_document_nll_basic():
 
 
 def test_compute_document_nll_invalid_shape():
-
     from evals.perplexity import compute_document_nll
 
     model = MagicMock()
@@ -440,7 +411,6 @@ def test_compute_document_nll_invalid_shape():
 
 
 def test_compute_document_nll_invalid_stride():
-
     from evals.perplexity import compute_document_nll
 
     model = MagicMock()
@@ -452,7 +422,6 @@ def test_compute_document_nll_invalid_stride():
 
 
 def test_compute_document_nll_invalid_max_length():
-
     from evals.perplexity import compute_document_nll
 
     model = MagicMock()
@@ -464,7 +433,6 @@ def test_compute_document_nll_invalid_max_length():
 
 
 def test_compute_document_nll_tuple_output():
-
     from evals.perplexity import compute_document_nll
 
     model = MagicMock()
@@ -483,7 +451,6 @@ def test_compute_document_nll_tuple_output():
 
 
 def test_evaluate_text_documents_basic():
-
     from evals.perplexity import evaluate_text_documents
 
     tokenizer = MagicMock()
@@ -491,7 +458,6 @@ def test_evaluate_text_documents_basic():
     tokenizer.return_value = {"input_ids": torch.arange(20).unsqueeze(0)}
 
     def model_fn(input_ids, **kwargs):
-
         B, S = input_ids.shape
 
         logits = torch.randn(B, S, 50)
@@ -519,7 +485,6 @@ def test_evaluate_text_documents_basic():
 
 
 def test_evaluate_text_documents_no_tokens():
-
     from evals.perplexity import evaluate_text_documents
 
     tokenizer = MagicMock()
@@ -542,7 +507,6 @@ def test_evaluate_text_documents_no_tokens():
 
 
 def test_load_dataset_texts_streaming():
-
     from evals.perplexity import _load_dataset_texts
 
     mock_ds = [{"text": "hello"}, {"text": "world"}]
@@ -567,7 +531,6 @@ def test_load_dataset_texts_streaming():
 
 
 def test_load_dataset_texts_non_streaming():
-
     from evals.perplexity import _load_dataset_texts
 
     mock_ds = MagicMock()
@@ -598,7 +561,6 @@ def test_load_dataset_texts_non_streaming():
 
 
 def test_load_dataset_texts_missing_column():
-
     from evals.perplexity import _load_dataset_texts
 
     mock_ds = [{"other": "hello"}]
@@ -623,7 +585,6 @@ def test_load_dataset_texts_missing_column():
 
 
 def test_load_tokenizer_for_model():
-
     from evals.perplexity import _load_tokenizer_for_model
 
     mock_transformers = MagicMock()
@@ -642,7 +603,6 @@ def test_load_tokenizer_for_model():
 
 
 def _write_val_shard(path, tokens):
-
     import struct
 
     import numpy as np
@@ -658,7 +618,6 @@ def _write_val_shard(path, tokens):
 
 
 def test_evaluate_token_shards_no_shards(tmp_path):
-
     from evals.perplexity import evaluate_token_shards
 
     model = MagicMock()
@@ -676,7 +635,6 @@ def test_evaluate_token_shards_no_shards(tmp_path):
 
 
 def test_evaluate_token_shards_basic(tmp_path):
-
     from evals.perplexity import evaluate_token_shards
 
     tokens = [i % VOCAB for i in range(100)]
@@ -684,7 +642,6 @@ def test_evaluate_token_shards_basic(tmp_path):
     _write_val_shard(tmp_path / "val_shard_0000.bin", tokens)
 
     def model_fn(input_ids, **kwargs):
-
         B, S = input_ids.shape
 
         out = MagicMock()
@@ -709,7 +666,6 @@ def test_evaluate_token_shards_basic(tmp_path):
 
 
 def test_evaluate_token_shards_max_tokens(tmp_path):
-
     from evals.perplexity import evaluate_token_shards
 
     tokens = [i % VOCAB for i in range(200)]
@@ -717,7 +673,6 @@ def test_evaluate_token_shards_max_tokens(tmp_path):
     _write_val_shard(tmp_path / "val_shard_0000.bin", tokens)
 
     def model_fn(input_ids, **kwargs):
-
         B, S = input_ids.shape
 
         out = MagicMock()
@@ -741,7 +696,6 @@ def test_evaluate_token_shards_max_tokens(tmp_path):
 
 
 def test_evaluate_token_shards_uint32(tmp_path):
-
     import struct
 
     import numpy as np
@@ -760,7 +714,6 @@ def test_evaluate_token_shards_uint32(tmp_path):
         f.write(arr.tobytes())
 
     def model_fn(input_ids, **kwargs):
-
         B, S = input_ids.shape
 
         out = MagicMock()
@@ -783,7 +736,6 @@ def test_evaluate_token_shards_uint32(tmp_path):
 
 
 def test_evaluate_token_shards_legacy_shard(tmp_path):
-
     import struct
 
     import numpy as np
@@ -800,7 +752,6 @@ def test_evaluate_token_shards_legacy_shard(tmp_path):
         f.write(arr.tobytes())
 
     def model_fn(input_ids, **kwargs):
-
         B, S = input_ids.shape
 
         out = MagicMock()
@@ -823,7 +774,6 @@ def test_evaluate_token_shards_legacy_shard(tmp_path):
 
 
 def test_evaluate_token_shards_no_tokens_scored(tmp_path):
-
     from evals.perplexity import evaluate_token_shards
 
     import struct
@@ -854,7 +804,6 @@ def test_evaluate_token_shards_no_tokens_scored(tmp_path):
 
 
 def test_load_dataset_texts_len_type_error():
-
     from evals.perplexity import _load_dataset_texts
 
     mock_ds = MagicMock()
@@ -881,7 +830,6 @@ def test_load_dataset_texts_len_type_error():
 
 
 def test_evaluate_text_documents_multiple_docs():
-
     from evals.perplexity import evaluate_text_documents
 
     tokenizer = MagicMock()
@@ -889,7 +837,6 @@ def test_evaluate_text_documents_multiple_docs():
     tokenizer.return_value = {"input_ids": torch.zeros(1, 20, dtype=torch.long)}
 
     def model_fn(input_ids, **kwargs):
-
         B, S = input_ids.shape
 
         out = MagicMock()

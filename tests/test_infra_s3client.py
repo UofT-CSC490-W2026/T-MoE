@@ -6,7 +6,6 @@ from unittest.mock import patch, MagicMock
 
 
 def _fresh_client():
-
     mock_boto3 = MagicMock()
 
     mock_session = MagicMock()
@@ -36,14 +35,12 @@ def _fresh_client():
 
 
 def test_s3client_init():
-
     client, mock_s3 = _fresh_client()
 
     assert client.region == "us-east-1"
 
 
 def test_s3client_init_no_credentials():
-
     from botocore.exceptions import NoCredentialsError
 
     mock_boto3 = MagicMock()
@@ -68,7 +65,6 @@ def test_s3client_init_no_credentials():
 
 
 def test_upload_file_not_found(tmp_path):
-
     client, mock_s3 = _fresh_client()
 
     result = client.upload_file(tmp_path / "nonexistent.txt", "bucket", "key")
@@ -77,7 +73,6 @@ def test_upload_file_not_found(tmp_path):
 
 
 def test_upload_file_success(tmp_path):
-
     client, mock_s3 = _fresh_client()
 
     f = tmp_path / "data.txt"
@@ -92,7 +87,6 @@ def test_upload_file_success(tmp_path):
 
 
 def test_upload_file_no_progress(tmp_path):
-
     client, mock_s3 = _fresh_client()
 
     f = tmp_path / "data.txt"
@@ -105,7 +99,6 @@ def test_upload_file_no_progress(tmp_path):
 
 
 def test_download_file_success(tmp_path):
-
     client, mock_s3 = _fresh_client()
 
     dest = tmp_path / "out.txt"
@@ -113,7 +106,6 @@ def test_download_file_success(tmp_path):
     mock_s3.head_object.return_value = {"ContentLength": 5}
 
     def fake_download(Bucket, Key, Filename, Callback, Config):
-
         Path(Filename).write_text("hello")
 
     mock_s3.download_file.side_effect = fake_download
@@ -124,7 +116,6 @@ def test_download_file_success(tmp_path):
 
 
 def test_download_file_size_mismatch(tmp_path):
-
     client, mock_s3 = _fresh_client()
 
     dest = tmp_path / "out.txt"
@@ -132,7 +123,6 @@ def test_download_file_size_mismatch(tmp_path):
     mock_s3.head_object.return_value = {"ContentLength": 999}
 
     def fake_download(Bucket, Key, Filename, Callback, Config):
-
         Path(Filename).write_text("hi")
 
     mock_s3.download_file.side_effect = fake_download
@@ -143,7 +133,6 @@ def test_download_file_size_mismatch(tmp_path):
 
 
 def test_download_file_head_error(tmp_path):
-
     from botocore.exceptions import ClientError
 
     client, mock_s3 = _fresh_client()
@@ -158,7 +147,6 @@ def test_download_file_head_error(tmp_path):
 
 
 def test_list_objects_success():
-
     client, mock_s3 = _fresh_client()
 
     mock_paginator = MagicMock()
@@ -188,7 +176,6 @@ def test_list_objects_success():
 
 
 def test_list_objects_empty():
-
     client, mock_s3 = _fresh_client()
 
     mock_paginator = MagicMock()
@@ -203,7 +190,6 @@ def test_list_objects_empty():
 
 
 def test_list_objects_client_error():
-
     from botocore.exceptions import ClientError
 
     client, mock_s3 = _fresh_client()
@@ -222,7 +208,6 @@ def test_list_objects_client_error():
 
 
 def test_delete_objects_empty():
-
     client, mock_s3 = _fresh_client()
 
     result = client.delete_objects("bucket", [])
@@ -231,7 +216,6 @@ def test_delete_objects_empty():
 
 
 def test_delete_objects_success():
-
     client, mock_s3 = _fresh_client()
 
     mock_s3.delete_objects.return_value = {"Errors": []}
@@ -242,7 +226,6 @@ def test_delete_objects_success():
 
 
 def test_delete_objects_client_error():
-
     from botocore.exceptions import ClientError
 
     client, mock_s3 = _fresh_client()
@@ -257,7 +240,6 @@ def test_delete_objects_client_error():
 
 
 def test_check_bucket_exists_true():
-
     client, mock_s3 = _fresh_client()
 
     mock_s3.head_bucket.return_value = {}
@@ -266,7 +248,6 @@ def test_check_bucket_exists_true():
 
 
 def test_check_bucket_exists_404():
-
     from botocore.exceptions import ClientError
 
     client, mock_s3 = _fresh_client()
@@ -279,7 +260,6 @@ def test_check_bucket_exists_404():
 
 
 def test_check_bucket_exists_403():
-
     from botocore.exceptions import ClientError
 
     client, mock_s3 = _fresh_client()
@@ -292,7 +272,6 @@ def test_check_bucket_exists_403():
 
 
 def test_generate_presigned_url_success():
-
     client, mock_s3 = _fresh_client()
 
     mock_s3.generate_presigned_url.return_value = "https://example.com/signed"
@@ -303,7 +282,6 @@ def test_generate_presigned_url_success():
 
 
 def test_generate_presigned_url_error():
-
     from botocore.exceptions import ClientError
 
     client, mock_s3 = _fresh_client()
@@ -318,7 +296,6 @@ def test_generate_presigned_url_error():
 
 
 def test_dataset_exists_found():
-
     client, mock_s3 = _fresh_client()
 
     mock_paginator = MagicMock()
@@ -344,7 +321,6 @@ def test_dataset_exists_found():
 
 
 def test_dataset_exists_not_found():
-
     client, mock_s3 = _fresh_client()
 
     mock_paginator = MagicMock()
@@ -370,7 +346,6 @@ def test_dataset_exists_not_found():
 
 
 def test_progress_callback():
-
     import infra.s3client.client as mod
 
     cb = mod.S3Client._progress_callback(100, "test")
@@ -385,7 +360,6 @@ def test_progress_callback():
 
 
 def test_progress_callback_zero_total():
-
     import infra.s3client.client as mod
 
     cb = mod.S3Client._progress_callback(0, "test")
@@ -394,7 +368,6 @@ def test_progress_callback_zero_total():
 
 
 def test_upload_experiment_dir_not_found():
-
     from infra.s3client.s3_sync import upload_experiment_dir
 
     with pytest.raises(FileNotFoundError):
@@ -402,7 +375,6 @@ def test_upload_experiment_dir_not_found():
 
 
 def test_upload_experiment_dir_bucket_inaccessible(tmp_path):
-
     mock_client = MagicMock()
 
     mock_client.check_bucket_exists.return_value = False
@@ -423,7 +395,6 @@ def test_upload_experiment_dir_bucket_inaccessible(tmp_path):
 
 
 def test_upload_experiment_dir_success(tmp_path):
-
     (tmp_path / "model.pt").write_text("weights")
 
     (tmp_path / "config.yaml").write_text("cfg: 1")
@@ -453,7 +424,6 @@ def test_upload_experiment_dir_success(tmp_path):
 
 
 def test_upload_experiment_dir_partial_failure(tmp_path):
-
     (tmp_path / "model.pt").write_text("weights")
 
     mock_client = MagicMock()
@@ -479,7 +449,6 @@ def test_upload_experiment_dir_partial_failure(tmp_path):
 
 
 def test_download_s3_prefix_no_objects(tmp_path):
-
     mock_client = MagicMock()
 
     mock_client.list_objects.return_value = []
@@ -501,7 +470,6 @@ def test_download_s3_prefix_no_objects(tmp_path):
 
 
 def test_download_s3_prefix_success(tmp_path):
-
     mock_client = MagicMock()
 
     mock_client.list_objects.return_value = [
@@ -528,7 +496,6 @@ def test_download_s3_prefix_success(tmp_path):
 
 
 def test_download_s3_prefix_download_failure(tmp_path):
-
     mock_client = MagicMock()
 
     mock_client.list_objects.return_value = [{"Key": "prefix/data.jsonl"}]
@@ -552,7 +519,6 @@ def test_download_s3_prefix_download_failure(tmp_path):
 
 
 def test_upload_file_client_error(tmp_path):
-
     from botocore.exceptions import ClientError
 
     client, mock_s3 = _fresh_client()
@@ -571,7 +537,6 @@ def test_upload_file_client_error(tmp_path):
 
 
 def test_upload_file_with_metadata_and_content_type(tmp_path):
-
     client, mock_s3 = _fresh_client()
 
     f = tmp_path / "data.txt"
@@ -596,7 +561,6 @@ def test_upload_file_with_metadata_and_content_type(tmp_path):
 
 
 def test_download_file_client_error(tmp_path):
-
     from botocore.exceptions import ClientError
 
     client, mock_s3 = _fresh_client()
@@ -613,7 +577,6 @@ def test_download_file_client_error(tmp_path):
 
 
 def test_check_bucket_exists_other_error():
-
     from botocore.exceptions import ClientError
 
     client, mock_s3 = _fresh_client()
@@ -626,7 +589,6 @@ def test_check_bucket_exists_other_error():
 
 
 def test_s3client_init_with_endpoint_url():
-
     mock_boto3 = MagicMock()
 
     mock_session = MagicMock()

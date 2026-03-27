@@ -19,7 +19,6 @@ from src.project_types import ExpertType
 
 class MockRouter(BaseRouter):
     def forward(self, x, return_metrics=False, record_usage=True):
-
         B, S, _ = x.shape
 
         N = B * S
@@ -33,7 +32,6 @@ class MockRouter(BaseRouter):
         return weights, None, {}
 
     def compute_aux_loss(self):
-
         return torch.tensor(0.0)
 
 
@@ -47,7 +45,6 @@ class _RouterCfg:
 
 class MockMLP(nn.Module):
     def __init__(self):
-
         super().__init__()
 
         self.c_fc = nn.Linear(32, 128)
@@ -57,18 +54,15 @@ class MockMLP(nn.Module):
         self.c_proj = nn.Linear(128, 32)
 
     def forward(self, x):
-
         return self.c_proj(self.act(self.c_fc(x)))
 
 
 @pytest.fixture
 def lora_config():
-
     return LoRAConfig(hidden_dim=32, intermediate_dim=128, rank=4, alpha=8)
 
 
 def test_lora_layer_init():
-
     layer = LoRALayer(32, 64, rank=4, alpha=16)
 
     assert layer.lora_A.weight.shape == (4, 32)
@@ -85,7 +79,6 @@ def test_lora_layer_init():
 
 
 def test_lora_layer_forward_zero_at_init():
-
     layer = LoRALayer(32, 32, rank=4, alpha=16)
 
     x = torch.randn(2, 10, 32)
@@ -96,7 +89,6 @@ def test_lora_layer_forward_zero_at_init():
 
 
 def test_lora_layer_forward_nonzero_after_perturb():
-
     layer = LoRALayer(32, 32, rank=4, alpha=16)
 
     nn.init.ones_(layer.lora_B.weight)
@@ -109,7 +101,6 @@ def test_lora_layer_forward_nonzero_after_perturb():
 
 
 def test_shared_lora_layer_memory_sharing():
-
     w = torch.randn(64, 32)
 
     layers = [SharedLoRALayer(w, None, rank=4, alpha=16) for _ in range(4)]
@@ -121,7 +112,6 @@ def test_shared_lora_layer_memory_sharing():
 
 
 def test_shared_lora_layer_not_in_state_dict():
-
     w = torch.randn(64, 32)
 
     layer = SharedLoRALayer(w, None, rank=4, alpha=16)
@@ -136,7 +126,6 @@ def test_shared_lora_layer_not_in_state_dict():
 
 
 def test_shared_lora_layer_forward():
-
     w = torch.randn(64, 32)
 
     layer = SharedLoRALayer(w, None, rank=4, alpha=16)
@@ -151,7 +140,6 @@ def test_shared_lora_layer_forward():
 
 
 def test_gpt_neo_lora_mlp_structure():
-
     mlp = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
 
     mock_base = MockMLP()
@@ -164,7 +152,6 @@ def test_gpt_neo_lora_mlp_structure():
 
 
 def test_gpt_neo_lora_mlp_zero_at_init():
-
     mlp = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
 
     mock_base = MockMLP()
@@ -181,7 +168,6 @@ def test_gpt_neo_lora_mlp_zero_at_init():
 
 
 def test_gpt_neo_lora_load_from_mlp_raises_on_missing():
-
     mlp = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
 
     dummy = nn.Module()
@@ -191,7 +177,6 @@ def test_gpt_neo_lora_load_from_mlp_raises_on_missing():
 
 
 def test_expert_pool(lora_config):
-
     pool = ExpertPool(lora_config, num_experts=3, expert_type=ExpertType.GPTNEO_LORA)
 
     assert pool.num_experts == 3
@@ -202,7 +187,6 @@ def test_expert_pool(lora_config):
 
 
 def test_lora_moe_layer_matches_base_at_init(lora_config):
-
     base_mlp = MockMLP()
 
     router = MockRouter(_RouterCfg())
@@ -223,7 +207,6 @@ def test_lora_moe_layer_matches_base_at_init(lora_config):
 
 
 def test_lora_moe_layer_returns_tuple_with_metrics(lora_config):
-
     base_mlp = MockMLP()
 
     router = MockRouter(_RouterCfg())
@@ -244,7 +227,6 @@ def test_lora_moe_layer_returns_tuple_with_metrics(lora_config):
 
 
 def test_lora_moe_layer_changes_after_perturb(lora_config):
-
     base_mlp = MockMLP()
 
     router = MockRouter(_RouterCfg())
@@ -273,7 +255,6 @@ def test_lora_moe_layer_changes_after_perturb(lora_config):
 
 
 def test_consolidate_shared_weights_aliases_buffers(lora_config):
-
     base_mlp = MockMLP()
 
     pool = ExpertPool(lora_config, num_experts=4)
@@ -292,7 +273,6 @@ def test_consolidate_shared_weights_aliases_buffers(lora_config):
 
 
 def test_gptneo_lora_forward_raises_before_load():
-
     from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
 
     from src.experts.lora import LoRAConfig
@@ -304,7 +284,6 @@ def test_gptneo_lora_forward_raises_before_load():
 
 
 def test_b_init_scale_breaks_expert_symmetry():
-
     config = LoRAConfig(hidden_dim=32, rank=4, alpha=8, b_init_scale=0.01)
 
     base_mlp = MockMLP()
@@ -337,7 +316,6 @@ def test_b_init_scale_breaks_expert_symmetry():
 
 
 def test_b_init_scale_zero_preserves_base_output():
-
     config = LoRAConfig(hidden_dim=32, rank=4, alpha=8, b_init_scale=0.0)
 
     base_mlp = MockMLP()

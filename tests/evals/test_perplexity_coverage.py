@@ -31,13 +31,11 @@ from evals.perplexity import (
 
 class _SimpleModel(torch.nn.Module):
     def __init__(self, vocab_size: int = 16):
-
         super().__init__()
 
         self.vocab_size = vocab_size
 
     def forward(self, input_ids):
-
         b, s = input_ids.shape
 
         return torch.zeros(b, s, self.vocab_size), None
@@ -47,14 +45,12 @@ class _SimpleTokenizer:
     model_max_length = 128
 
     def __call__(self, text, add_special_tokens=False, return_tensors="pt", **kwargs):
-
         ids = [ord(c) % 16 for c in text.split()]
 
         return {"input_ids": torch.tensor([ids], dtype=torch.long)}
 
 
 def _make_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
-
     n = len(tokens)
 
     if uint32:
@@ -73,14 +69,12 @@ def _make_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
 
 
 def test_cfg_select_non_dict_returns_default():
-
     result = _cfg_select(object(), "model.key", default="fallback")
 
     assert result == "fallback"
 
 
 def test_autocast_context_cpu_returns_nullcontext():
-
     from contextlib import nullcontext
 
     ctx = _autocast_context("cpu", torch.float32)
@@ -89,7 +83,6 @@ def test_autocast_context_cpu_returns_nullcontext():
 
 
 def test_compute_document_nll_short_sequence():
-
     model = _SimpleModel()
 
     input_ids = torch.tensor([[5]], dtype=torch.long)
@@ -104,7 +97,6 @@ def test_compute_document_nll_short_sequence():
 
 
 def test_compute_document_nll_bad_shape_raises():
-
     model = _SimpleModel()
 
     with pytest.raises(ValueError, match="shape"):
@@ -118,7 +110,6 @@ def test_compute_document_nll_bad_shape_raises():
 
 
 def test_compute_document_nll_bad_stride_raises():
-
     model = _SimpleModel()
 
     with pytest.raises(ValueError, match="stride"):
@@ -132,7 +123,6 @@ def test_compute_document_nll_bad_stride_raises():
 
 
 def test_compute_document_nll_bad_max_length_raises():
-
     model = _SimpleModel()
 
     with pytest.raises(ValueError, match="max_length"):
@@ -146,21 +136,17 @@ def test_compute_document_nll_bad_max_length_raises():
 
 
 def test_summarize_metrics_zero_tokens_raises():
-
     with pytest.raises(ValueError, match="total_tokens"):
         summarize_language_model_metrics(total_nll=1.0, total_tokens=0)
 
 
 def test_summarize_metrics_zero_bytes_raises():
-
     with pytest.raises(ValueError, match="total_bytes"):
         summarize_language_model_metrics(total_nll=1.0, total_tokens=5, total_bytes=0)
 
 
 def test_tokenize_worker_typeerror_fallback():
-
     def _tok(text, add_special_tokens=False, return_tensors="pt", **kwargs):
-
         if "verbose" in kwargs:
             raise TypeError("unexpected kwarg")
 
@@ -180,11 +166,9 @@ def test_tokenize_worker_typeerror_fallback():
 
 
 def test_run_batched_forward_mixed_lengths():
-
     model = _SimpleModel(vocab_size=16)
 
     def _forward(input_ids):
-
         b, s = input_ids.shape
 
         return (torch.zeros(b, s, 16),)
@@ -205,7 +189,6 @@ def test_run_batched_forward_mixed_lengths():
 
 
 def test_evaluate_text_documents_empty_raises():
-
     tokenizer = MagicMock()
 
     tokenizer.side_effect = lambda text, **kw: {
@@ -226,7 +209,6 @@ def test_evaluate_text_documents_empty_raises():
 
 
 def test_evaluate_token_shards_no_files_raises():
-
     with tempfile.TemporaryDirectory() as tmpdir:
         model = _SimpleModel()
 
@@ -243,7 +225,6 @@ def test_evaluate_token_shards_no_files_raises():
 
 
 def test_evaluate_token_shards_world_size_gt1():
-
     with tempfile.TemporaryDirectory() as tmpdir:
         shard = Path(tmpdir) / "val_shard_0000.bin"
 
@@ -275,16 +256,13 @@ def test_evaluate_token_shards_world_size_gt1():
 
 
 def test_load_dataset_texts_len_typeerror():
-
     from evals.perplexity import _load_dataset_texts
 
     class _NoLen:
         def __len__(self):
-
             raise TypeError("no len")
 
         def __iter__(self):
-
             yield {"text": "hello world"}
 
     mock_ds = _NoLen()
@@ -302,10 +280,8 @@ def test_load_dataset_texts_len_typeerror():
 
 
 def _make_mock_model(vocab_size=16):
-
     class _M(torch.nn.Module):
         def __init__(self):
-
             super().__init__()
 
             self.backbone = MagicMock()
@@ -317,7 +293,6 @@ def _make_mock_model(vocab_size=16):
             self.backbone.config.n_positions = None
 
         def forward(self, input_ids):
-
             b, s = input_ids.shape
 
             return (torch.zeros(b, s, vocab_size),)
@@ -326,7 +301,6 @@ def _make_mock_model(vocab_size=16):
 
 
 def test_run_perplexity_eval_with_shard_source(tmp_path):
-
     from evals.perplexity import run_perplexity_eval
 
     shard = tmp_path / "val_shard_0000.bin"

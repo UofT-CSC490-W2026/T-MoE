@@ -6,7 +6,6 @@ from src.routers.deepseek import DeepSeekRouter
 
 
 def test_deepseek_router_forward(device):
-
     config = DeepSeekRouterConfig(
         hidden_dim=32, num_experts=4, top_k=2, bias_update_rate=0.01
     )

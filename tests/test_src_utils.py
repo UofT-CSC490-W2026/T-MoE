@@ -4,7 +4,6 @@ from unittest.mock import patch, MagicMock
 
 
 def test_load_experiment_config_by_path(tmp_path):
-
     from src.utils.config_loader import load_experiment_config
 
     cfg_path = tmp_path / "test.yaml"
@@ -17,7 +16,6 @@ def test_load_experiment_config_by_path(tmp_path):
 
 
 def test_load_experiment_config_with_overrides(tmp_path):
-
     from src.utils.config_loader import load_experiment_config
 
     cfg_path = tmp_path / "test.yaml"
@@ -30,7 +28,6 @@ def test_load_experiment_config_with_overrides(tmp_path):
 
 
 def test_load_experiment_config_bare_name(tmp_path):
-
     from src.utils.config_loader import load_experiment_config
 
     from src.project_types import EXPERIMENTS_DIR
@@ -48,7 +45,6 @@ def test_load_experiment_config_bare_name(tmp_path):
 
 
 def test_load_experiment_config_not_found(tmp_path):
-
     from src.utils.config_loader import load_experiment_config
 
     with pytest.raises(SystemExit):
@@ -56,7 +52,6 @@ def test_load_experiment_config_not_found(tmp_path):
 
 
 def test_load_experiment_config_sets_experiment_name(tmp_path):
-
     from src.utils.config_loader import load_experiment_config
 
     cfg_path = tmp_path / "my_experiment.yaml"
@@ -69,7 +64,6 @@ def test_load_experiment_config_sets_experiment_name(tmp_path):
 
 
 def test_read_last_checkpoint_metrics_no_checkpoints(tmp_path):
-
     from src.utils.training_workflow import _read_last_checkpoint_metrics
 
     result = _read_last_checkpoint_metrics(tmp_path)
@@ -78,7 +72,6 @@ def test_read_last_checkpoint_metrics_no_checkpoints(tmp_path):
 
 
 def test_read_last_checkpoint_metrics_with_checkpoint(tmp_path):
-
     import json
 
     from src.utils.training_workflow import _read_last_checkpoint_metrics
@@ -97,7 +90,6 @@ def test_read_last_checkpoint_metrics_with_checkpoint(tmp_path):
 
 
 def test_execute_training_workflow_config_not_found(tmp_path):
-
     from src.utils.training_workflow import execute_training_workflow
 
     from omegaconf import OmegaConf
@@ -109,7 +101,6 @@ def test_execute_training_workflow_config_not_found(tmp_path):
 
 
 def test_execute_training_workflow_runs(tmp_path):
-
     from src.utils.training_workflow import execute_training_workflow
 
     from omegaconf import OmegaConf

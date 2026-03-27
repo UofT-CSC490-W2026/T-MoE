@@ -11,7 +11,6 @@ from evals.results_schema import (
 
 
 def test_infer_checkpoint_step_prefers_checkpoint_info():
-
     step = infer_checkpoint_step(
         "outputs/exp/checkpoint_step_1000.pt",
         checkpoint_info={"step": 42},
@@ -21,14 +20,12 @@ def test_infer_checkpoint_step_prefers_checkpoint_info():
 
 
 def test_infer_checkpoint_step_falls_back_to_filename():
-
     step = infer_checkpoint_step("outputs/exp/checkpoint_step_1000.pt")
 
     assert step == 1000
 
 
 def test_build_results_payload_matches_required_shape(monkeypatch):
-
     monkeypatch.setattr(
         "evals.results_schema.get_git_commit",
         lambda cwd=None: "deadbeef",
@@ -64,7 +61,6 @@ def test_build_results_payload_matches_required_shape(monkeypatch):
 
 
 def test_write_results_json_creates_parent_dirs(tmp_path):
-
     output_path = tmp_path / "outputs" / "demo" / "eval" / "perplexity.json"
 
     payload = {
@@ -90,7 +86,6 @@ def test_write_results_json_creates_parent_dirs(tmp_path):
 
 
 def test_flatten_scalars_keeps_only_scalar_entries():
-
     flattened = flatten_scalars(
         {
             "results": {"wikitext103_bpb": 1.23, "tags": ["ignored"]},
@@ -108,9 +103,7 @@ def test_flatten_scalars_keeps_only_scalar_entries():
 
 
 def test_get_git_commit_returns_unknown_when_git_fails(monkeypatch):
-
     def fake_run(*args, **kwargs):
-
         raise FileNotFoundError
 
     monkeypatch.setattr("evals.results_schema.subprocess.run", fake_run)
@@ -119,10 +112,8 @@ def test_get_git_commit_returns_unknown_when_git_fails(monkeypatch):
 
 
 def test_write_results_json_stringifies_unknown_leaf_types(tmp_path):
-
     class _WeirdLeaf:
         def __str__(self):
-
             return "float32"
 
     output_path = tmp_path / "results.json"
@@ -148,21 +139,17 @@ def test_write_results_json_stringifies_unknown_leaf_types(tmp_path):
 
 
 def test_log_results_to_wandb_logs_scalars_and_mmlu_table(monkeypatch):
-
     class _FakeTable:
         def __init__(self, columns):
-
             self.columns = columns
 
             self.rows = []
 
         def add_data(self, *row):
-
             self.rows.append(row)
 
     class _FakeRun:
         def __init__(self):
-
             self.logged = []
 
             self.finished = False
@@ -170,24 +157,20 @@ def test_log_results_to_wandb_logs_scalars_and_mmlu_table(monkeypatch):
             self.summary = {}
 
         def log(self, data, step=None):
-
             self.logged.append((data, step))
 
         def finish(self):
-
             self.finished = True
 
     class _FakeWandb:
         Table = _FakeTable
 
         def __init__(self):
-
             self.init_kwargs = None
 
             self.run = _FakeRun()
 
         def init(self, **kwargs):
-
             self.init_kwargs = kwargs
 
             return self.run
@@ -255,29 +238,23 @@ def test_log_results_to_wandb_logs_scalars_and_mmlu_table(monkeypatch):
 
 
 def test_log_results_to_wandb_uses_wandb_env_defaults(monkeypatch):
-
     class _FakeRun:
         def __init__(self):
-
             self.summary = {}
 
         def log(self, data, step=None):
-
             return None
 
         def finish(self):
-
             return None
 
     class _FakeWandb:
         Table = object
 
         def __init__(self):
-
             self.init_kwargs = None
 
         def init(self, **kwargs):
-
             self.init_kwargs = kwargs
 
             return _FakeRun()
@@ -313,29 +290,23 @@ def test_log_results_to_wandb_uses_wandb_env_defaults(monkeypatch):
 
 
 def test_log_results_to_wandb_overrides_disabled_env_to_online(monkeypatch):
-
     class _FakeRun:
         def __init__(self):
-
             self.summary = {}
 
         def log(self, data, step=None):
-
             return None
 
         def finish(self):
-
             return None
 
     class _FakeWandb:
         Table = object
 
         def __init__(self):
-
             self.init_kwargs = None
 
         def init(self, **kwargs):
-
             self.init_kwargs = kwargs
 
             return _FakeRun()
@@ -365,7 +336,6 @@ def test_log_results_to_wandb_overrides_disabled_env_to_online(monkeypatch):
 
 
 def test_log_results_to_wandb_skips_when_logging_disabled(monkeypatch):
-
     monkeypatch.setattr("evals.results_schema.WANDB_AVAILABLE", True)
 
     monkeypatch.setattr("evals.results_schema.wandb", object())

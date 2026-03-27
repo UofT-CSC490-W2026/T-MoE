@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 def test_build_parser():
-
     from scripts.eval import _build_parser
 
     parser = _build_parser()
@@ -15,7 +14,6 @@ def test_build_parser():
 
 
 def test_get_eval_param_cli_priority():
-
     from scripts.eval import _get_eval_param
 
     config = MagicMock()
@@ -26,7 +24,6 @@ def test_get_eval_param_cli_priority():
 
 
 def test_get_eval_param_yaml_fallback():
-
     from scripts.eval import _get_eval_param
 
     from omegaconf import OmegaConf
@@ -39,7 +36,6 @@ def test_get_eval_param_yaml_fallback():
 
 
 def test_get_eval_param_default_fallback():
-
     from scripts.eval import _get_eval_param
 
     from omegaconf import OmegaConf
@@ -52,7 +48,6 @@ def test_get_eval_param_default_fallback():
 
 
 def test_default_output_dir():
-
     from scripts.eval import _default_output_dir
 
     config = {"experiment_name": "test_exp"}
@@ -63,7 +58,6 @@ def test_default_output_dir():
 
 
 def test_checkpoint_sort_key():
-
     from scripts.eval import _checkpoint_sort_key
 
     p1 = Path("checkpoint_step_100.pt")
@@ -78,7 +72,6 @@ def test_checkpoint_sort_key():
 
 
 def test_resolve_checkpoint_paths_single(tmp_path):
-
     from scripts.eval import _resolve_checkpoint_paths
 
     ckpt = tmp_path / "checkpoint_step_100.pt"
@@ -93,7 +86,6 @@ def test_resolve_checkpoint_paths_single(tmp_path):
 
 
 def test_resolve_checkpoint_paths_directory(tmp_path):
-
     from scripts.eval import _resolve_checkpoint_paths
 
     (tmp_path / "checkpoint_step_100.pt").touch()
@@ -106,7 +98,6 @@ def test_resolve_checkpoint_paths_directory(tmp_path):
 
 
 def test_resolve_checkpoint_paths_empty_dir(tmp_path):
-
     from scripts.eval import _resolve_checkpoint_paths
 
     with pytest.raises(FileNotFoundError):
@@ -114,7 +105,6 @@ def test_resolve_checkpoint_paths_empty_dir(tmp_path):
 
 
 def test_resolve_output_path_single(tmp_path):
-
     from scripts.eval import _resolve_output_path
 
     config = {"experiment_name": "test"}
@@ -125,7 +115,6 @@ def test_resolve_output_path_single(tmp_path):
 
 
 def test_resolve_output_path_multiple(tmp_path):
-
     from scripts.eval import _resolve_output_path
 
     config = {"experiment_name": "test"}
@@ -144,7 +133,6 @@ def test_resolve_output_path_multiple(tmp_path):
 
 
 def test_resolve_output_path_multiple_no_checkpoint():
-
     from scripts.eval import _resolve_output_path
 
     config = {"experiment_name": "test"}
@@ -156,7 +144,6 @@ def test_resolve_output_path_multiple_no_checkpoint():
 
 
 def test_get_dist_info_no_env(monkeypatch):
-
     from scripts.eval import _get_dist_info
 
     monkeypatch.delenv("RANK", raising=False)
@@ -171,7 +158,6 @@ def test_get_dist_info_no_env(monkeypatch):
 
 
 def test_get_dist_info_with_env(monkeypatch):
-
     from scripts.eval import _get_dist_info
 
     monkeypatch.setenv("RANK", "1")
@@ -186,14 +172,12 @@ def test_get_dist_info_with_env(monkeypatch):
 
 
 def test_init_distributed_single():
-
     from scripts.eval import _init_distributed
 
     _init_distributed(0, 1)
 
 
 def test_load_experiment_config(tmp_path):
-
     from scripts.eval import load_experiment_config
 
     cfg_path = tmp_path / "test.yaml"
@@ -206,7 +190,6 @@ def test_load_experiment_config(tmp_path):
 
 
 def _run_eval_main(tmp_path, task, extra_args=None, mock_payload=None):
-
     from scripts.eval import main
 
     from omegaconf import OmegaConf
@@ -245,28 +228,24 @@ def _run_eval_main(tmp_path, task, extra_args=None, mock_payload=None):
 
 
 def test_main_perplexity(tmp_path):
-
     result, _ = _run_eval_main(tmp_path, "perplexity")
 
     assert result["task"] == "perplexity"
 
 
 def test_main_lm_harness(tmp_path):
-
     result, _ = _run_eval_main(tmp_path, "lm_harness")
 
     assert result["task"] == "lm_harness"
 
 
 def test_main_efficiency(tmp_path):
-
     result, _ = _run_eval_main(tmp_path, "efficiency")
 
     assert result["task"] == "efficiency"
 
 
 def test_main_multiple_checkpoints(tmp_path):
-
     from scripts.eval import main
 
     from omegaconf import OmegaConf
@@ -304,7 +283,6 @@ def test_main_multiple_checkpoints(tmp_path):
 
 
 def test_main_with_reference_config(tmp_path):
-
     from scripts.eval import main
 
     from omegaconf import OmegaConf
@@ -344,7 +322,6 @@ def test_main_with_reference_config(tmp_path):
 
 
 def test_main_lm_harness_batch_size_fallback(tmp_path):
-
     from scripts.eval import main
 
     from omegaconf import OmegaConf

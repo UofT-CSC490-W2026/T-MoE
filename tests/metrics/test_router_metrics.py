@@ -13,7 +13,6 @@ from src.metrics.router_metrics import RouterMetricsTracker, GlobalSpecializatio
 
 @pytest.fixture
 def router():
-
     cfg = MetabolicRouterConfig(hidden_dim=64, num_experts=4, top_k=2)
 
     return MetabolicRouter(cfg)
@@ -21,12 +20,10 @@ def router():
 
 @pytest.fixture
 def tracker(router):
-
     return RouterMetricsTracker(router)
 
 
 def _uniform_routing(num_experts=4, top_k=2, batch=2, seq=8):
-
     indices = torch.zeros(batch, seq, top_k, dtype=torch.long)
 
     for i in range(batch * seq):
@@ -41,7 +38,6 @@ def _uniform_routing(num_experts=4, top_k=2, batch=2, seq=8):
 
 
 def _collapsed_routing(num_experts=4, top_k=2, batch=2, seq=8):
-
     indices = torch.zeros(batch, seq, top_k, dtype=torch.long)
 
     weights = torch.full((batch, seq, top_k), 1.0 / top_k)
@@ -51,7 +47,6 @@ def _collapsed_routing(num_experts=4, top_k=2, batch=2, seq=8):
 
 class TestComputeUsage:
     def test_returns_per_expert_tensor(self, tracker):
-
         indices, weights = _uniform_routing()
 
         usage = tracker._compute_usage(indices, weights)
@@ -61,7 +56,6 @@ class TestComputeUsage:
         assert usage.dtype == torch.float32
 
     def test_sums_to_total_weight(self, tracker):
-
         indices, weights = _uniform_routing()
 
         usage = tracker._compute_usage(indices, weights)
@@ -71,7 +65,6 @@ class TestComputeUsage:
         assert abs(usage.sum().item() - expected) < 1e-4
 
     def test_collapsed_routing_concentrates_on_expert_0(self, tracker):
-
         indices, weights = _collapsed_routing()
 
         usage = tracker._compute_usage(indices, weights)
@@ -83,7 +76,6 @@ class TestComputeUsage:
 
 class TestExpertEntropy:
     def test_returns_expected_keys(self, tracker):
-
         indices, weights = _uniform_routing()
 
         result = tracker.compute_expert_entropy(indices, weights)
@@ -93,7 +85,6 @@ class TestExpertEntropy:
         assert "expert_entropy_normalized" in result
 
     def test_uniform_routing_has_max_entropy(self, tracker):
-
         indices, weights = _uniform_routing(num_experts=4)
 
         result = tracker.compute_expert_entropy(indices, weights)
@@ -101,7 +92,6 @@ class TestExpertEntropy:
         assert result["expert_entropy_normalized"] > 0.9
 
     def test_collapsed_routing_has_zero_entropy(self, tracker):
-
         indices, weights = _collapsed_routing()
 
         result = tracker.compute_expert_entropy(indices, weights)
@@ -111,7 +101,6 @@ class TestExpertEntropy:
 
 class TestGiniCoefficient:
     def test_uniform_routing_near_zero_gini(self, tracker):
-
         indices, weights = _uniform_routing()
 
         gini = tracker.compute_gini_coefficient(indices, weights)
@@ -119,7 +108,6 @@ class TestGiniCoefficient:
         assert gini < 0.2
 
     def test_collapsed_routing_high_gini(self, tracker):
-
         indices, weights = _collapsed_routing()
 
         gini = tracker.compute_gini_coefficient(indices, weights)
@@ -127,7 +115,6 @@ class TestGiniCoefficient:
         assert gini > 0.5
 
     def test_gini_in_range(self, tracker):
-
         indices, weights = _uniform_routing()
 
         gini = tracker.compute_gini_coefficient(indices, weights)
@@ -137,7 +124,6 @@ class TestGiniCoefficient:
 
 class TestEffectiveExperts:
     def test_uniform_routing_near_num_experts(self, tracker):
-
         indices, weights = _uniform_routing(num_experts=4)
 
         eff = tracker.compute_effective_experts(indices, weights)
@@ -145,7 +131,6 @@ class TestEffectiveExperts:
         assert eff > 3.0
 
     def test_collapsed_routing_near_one(self, tracker):
-
         indices, weights = _collapsed_routing()
 
         eff = tracker.compute_effective_experts(indices, weights)
@@ -153,7 +138,6 @@ class TestEffectiveExperts:
         assert eff < 1.5
 
     def test_accepts_precomputed_entropy(self, tracker):
-
         indices, weights = _uniform_routing()
 
         entropy_val = 1.0
@@ -165,7 +149,6 @@ class TestEffectiveExperts:
 
 class TestComputeAllMetrics:
     def test_includes_all_expected_keys(self, tracker):
-
         indices, weights = _uniform_routing()
 
         metrics = tracker.compute_all_metrics(indices, weights)
@@ -184,7 +167,6 @@ class TestComputeAllMetrics:
             assert key in metrics, f"Missing key: {key}"
 
     def test_fatigue_keys_present_for_metabolic(self, tracker):
-
         indices, weights = _uniform_routing()
 
         metrics = tracker.compute_all_metrics(indices, weights)
@@ -194,7 +176,6 @@ class TestComputeAllMetrics:
         assert "fatigue_max" in metrics
 
     def test_entropy_computed_once(self, tracker):
-
         indices, weights = _uniform_routing()
 
         metrics = tracker.compute_all_metrics(indices, weights)
@@ -206,7 +187,6 @@ class TestComputeAllMetrics:
 
 class TestGlobalSpecializationTracker:
     def test_update_increments_total_tokens(self):
-
         tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
 
         token_ids = torch.randint(0, 100, (2, 8))
@@ -218,7 +198,6 @@ class TestGlobalSpecializationTracker:
         assert tracker.total_tokens == 16
 
     def test_update_filters_padding_tokens(self):
-
         tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
 
         token_ids = torch.full((2, 8), -1, dtype=torch.long)
@@ -230,13 +209,11 @@ class TestGlobalSpecializationTracker:
         assert tracker.total_tokens == 0
 
     def test_compute_metrics_returns_empty_before_update(self):
-
         tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
 
         assert tracker.compute_metrics() == {}
 
     def test_compute_metrics_returns_expected_keys(self):
-
         tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
 
         token_ids = torch.randint(0, 100, (4, 16))
@@ -257,7 +234,6 @@ class TestGlobalSpecializationTracker:
             assert key in metrics
 
     def test_specialization_score_bounded(self):
-
         tracker = GlobalSpecializationTracker(vocab_size=50, num_experts=4)
 
         token_ids = torch.randint(0, 50, (8, 32))

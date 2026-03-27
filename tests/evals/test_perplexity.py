@@ -11,13 +11,11 @@ from evals.perplexity import (
 
 class _PerfectNextTokenModel(torch.nn.Module):
     def __init__(self, vocab_size: int):
-
         super().__init__()
 
         self.vocab_size = vocab_size
 
     def forward(self, input_ids):
-
         batch, seq_len = input_ids.shape
 
         logits = torch.zeros(batch, seq_len, self.vocab_size, dtype=torch.float32)
@@ -34,13 +32,11 @@ class _PerfectNextTokenModel(torch.nn.Module):
 
 class _UniformModel(torch.nn.Module):
     def __init__(self, vocab_size: int):
-
         super().__init__()
 
         self.vocab_size = vocab_size
 
     def forward(self, input_ids):
-
         batch, seq_len = input_ids.shape
 
         logits = torch.zeros(batch, seq_len, self.vocab_size, dtype=torch.float32)
@@ -50,20 +46,17 @@ class _UniformModel(torch.nn.Module):
 
 class _WhitespaceTokenizer:
     def __init__(self, token_map):
-
         self.token_map = token_map
 
         self.model_max_length = 128
 
     def __call__(self, text, add_special_tokens=False, return_tensors="pt"):
-
         tokens = [self.token_map[token] for token in text.split()]
 
         return {"input_ids": torch.tensor([tokens], dtype=torch.long)}
 
 
 def test_compute_document_nll_counts_each_target_once_with_overlap():
-
     model = _PerfectNextTokenModel(vocab_size=16)
 
     input_ids = torch.tensor([[0, 1, 2, 3, 4, 5, 6]], dtype=torch.long)
@@ -82,7 +75,6 @@ def test_compute_document_nll_counts_each_target_once_with_overlap():
 
 
 def test_summarize_language_model_metrics_computes_ppl_and_bpb():
-
     total_nll = 6 * math.log(10)
 
     summary = summarize_language_model_metrics(
@@ -99,7 +91,6 @@ def test_summarize_language_model_metrics_computes_ppl_and_bpb():
 
 
 def test_evaluate_text_documents_aggregates_metrics():
-
     tokenizer = _WhitespaceTokenizer(
         {"alpha": 0, "beta": 1, "gamma": 2, "delta": 3, "epsilon": 4}
     )

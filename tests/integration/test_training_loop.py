@@ -15,7 +15,6 @@ from src.configs.router import MetabolicRouterConfig
 
 class MockMLP(nn.Module):
     def __init__(self, hidden_dim, intermediate_dim):
-
         super().__init__()
 
         self.c_fc = nn.Linear(hidden_dim, intermediate_dim)
@@ -25,12 +24,10 @@ class MockMLP(nn.Module):
         self.c_proj = nn.Linear(intermediate_dim, hidden_dim)
 
     def forward(self, x):
-
         return self.c_proj(self.act(self.c_fc(x)))
 
 
 def test_training_integration():
-
     hidden_dim, intermediate_dim = 64, 256
 
     backbone = MockMLP(hidden_dim, intermediate_dim)
@@ -120,7 +117,6 @@ def test_training_integration():
 
 
 def test_gradient_accumulation_defers_fatigue():
-
     hidden_dim = 64
 
     cfg = MetabolicRouterConfig(hidden_dim=hidden_dim, num_experts=4, top_k=2)

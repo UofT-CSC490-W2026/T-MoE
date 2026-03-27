@@ -6,14 +6,12 @@ import pytest
 
 
 def test_load_configuration_import_error():
-
     from run_pipeline import load_configuration
 
     assert callable(load_configuration)
 
 
 def test_load_configuration_success():
-
     mock_config = MagicMock()
 
     mock_config.use_sagemaker = False
@@ -44,21 +42,18 @@ def test_load_configuration_success():
 
 
 def test_run_sagemaker_pipeline_callable():
-
     from run_pipeline import run_sagemaker_pipeline
 
     assert callable(run_sagemaker_pipeline)
 
 
 def test_run_fallback_pipeline_callable():
-
     from run_pipeline import run_fallback_pipeline
 
     assert callable(run_fallback_pipeline)
 
 
 def test_main_keyboard_interrupt():
-
     from run_pipeline import main
 
     with patch("run_pipeline.load_configuration", side_effect=KeyboardInterrupt):
@@ -69,7 +64,6 @@ def test_main_keyboard_interrupt():
 
 
 def test_main_value_error():
-
     from run_pipeline import main
 
     with patch("run_pipeline.load_configuration", side_effect=ValueError("bad")):
@@ -80,7 +74,6 @@ def test_main_value_error():
 
 
 def test_main_import_error():
-
     from run_pipeline import main
 
     with patch("run_pipeline.load_configuration", side_effect=ImportError("missing")):
@@ -91,7 +84,6 @@ def test_main_import_error():
 
 
 def test_main_generic_exception():
-
     from run_pipeline import main
 
     with patch("run_pipeline.load_configuration", side_effect=RuntimeError("boom")):
@@ -102,7 +94,6 @@ def test_main_generic_exception():
 
 
 def test_main_sagemaker_path():
-
     mock_config = MagicMock()
 
     mock_config.use_sagemaker = True
@@ -129,7 +120,6 @@ def test_main_sagemaker_path():
 
 
 def test_main_fallback_path():
-
     mock_config = MagicMock()
 
     mock_config.use_sagemaker = False

@@ -5,20 +5,17 @@ from evals.efficiency import run_efficiency_eval, summarize_timing_measurements
 
 class _DummyBackbone:
     def __init__(self):
-
         self.config = type("Config", (), {"vocab_size": 32})()
 
 
 class _DummyModel:
     def __init__(self):
-
         self.backbone = _DummyBackbone()
 
         self.vocab_size = 32
 
 
 def test_summarize_timing_measurements_computes_expected_stats():
-
     summary = summarize_timing_measurements(
         [1.0, 2.0],
         batch_size=2,
@@ -35,7 +32,6 @@ def test_summarize_timing_measurements_computes_expected_stats():
 
 
 def test_run_efficiency_eval_adds_reference_ratio(monkeypatch, tmp_path):
-
     call_log = []
 
     monkeypatch.setattr(
@@ -44,7 +40,6 @@ def test_run_efficiency_eval_adds_reference_ratio(monkeypatch, tmp_path):
     )
 
     def fake_profile(model, **kwargs):
-
         call_log.append(kwargs)
 
         if len(call_log) == 1:

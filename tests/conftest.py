@@ -9,7 +9,6 @@ from src.configs.router import MetabolicRouterConfig
 
 @pytest.fixture
 def device() -> torch.device:
-
     if torch.cuda.is_available():
         return torch.device("cuda")
 
@@ -21,7 +20,6 @@ def device() -> torch.device:
 
 @pytest.fixture
 def standard_config() -> MetabolicRouterConfig:
-
     return MetabolicRouterConfig(
         hidden_dim=256,
         num_experts=8,
@@ -37,7 +35,6 @@ def standard_config() -> MetabolicRouterConfig:
 
 @pytest.fixture
 def minimal_config() -> MetabolicRouterConfig:
-
     return MetabolicRouterConfig(
         hidden_dim=64,
         num_experts=2,
@@ -53,7 +50,6 @@ def minimal_config() -> MetabolicRouterConfig:
 
 @pytest.fixture
 def router(standard_config, device):
-
     from src.routers.metabolic import MetabolicRouter
 
     router = MetabolicRouter(standard_config)
@@ -63,7 +59,6 @@ def router(standard_config, device):
 
 @pytest.fixture
 def test_input(device) -> torch.Tensor:
-
     return torch.randn(2, 4, 256, device=device)
 
 
@@ -75,7 +70,6 @@ def test_input(device) -> torch.Tensor:
     ]
 )
 def parametric_input(request, device) -> Tuple[torch.Tensor, Tuple[int, int, int]]:
-
     batch, seq, hidden = request.param
 
     return torch.randn(batch, seq, hidden, device=device), (batch, seq, hidden)
@@ -83,7 +77,6 @@ def parametric_input(request, device) -> Tuple[torch.Tensor, Tuple[int, int, int
 
 @pytest.fixture
 def zero_fatigue_router(standard_config, device):
-
     from src.routers.metabolic import MetabolicRouter
 
     router = MetabolicRouter(standard_config).to(device)

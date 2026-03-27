@@ -12,7 +12,6 @@ import torch.nn as nn
 
 
 def test_init_distributed_no_rank_env():
-
     from src.training.fsdp_utils import init_distributed
 
     with patch.dict(os.environ, {}, clear=True):
@@ -22,7 +21,6 @@ def test_init_distributed_no_rank_env():
 
 
 def test_init_distributed_no_cuda(monkeypatch):
-
     from src.training.fsdp_utils import init_distributed
 
     env = {"RANK": "0", "LOCAL_RANK": "0", "WORLD_SIZE": "1"}
@@ -34,7 +32,6 @@ def test_init_distributed_no_cuda(monkeypatch):
 
 
 def test_init_distributed_local_rank_exceeds_devices(monkeypatch):
-
     from src.training.fsdp_utils import init_distributed
 
     env = {"RANK": "0", "LOCAL_RANK": "5", "WORLD_SIZE": "1"}
@@ -47,7 +44,6 @@ def test_init_distributed_local_rank_exceeds_devices(monkeypatch):
 
 
 def test_init_distributed_success(monkeypatch):
-
     from src.training.fsdp_utils import init_distributed
 
     env = {"RANK": "0", "LOCAL_RANK": "0", "WORLD_SIZE": "2"}
@@ -64,7 +60,6 @@ def test_init_distributed_success(monkeypatch):
 
 
 def test_cleanup_distributed_not_initialized():
-
     from src.training.fsdp_utils import cleanup_distributed
 
     with patch("torch.distributed.is_available", return_value=True):
@@ -73,7 +68,6 @@ def test_cleanup_distributed_not_initialized():
 
 
 def test_cleanup_distributed_initialized():
-
     from src.training.fsdp_utils import cleanup_distributed
 
     with patch("torch.distributed.is_available", return_value=True):
@@ -85,7 +79,6 @@ def test_cleanup_distributed_initialized():
 
 
 def test_is_main_process_not_distributed():
-
     from src.training.fsdp_utils import is_main_process
 
     with patch("torch.distributed.is_available", return_value=False):
@@ -93,7 +86,6 @@ def test_is_main_process_not_distributed():
 
 
 def test_is_main_process_rank0():
-
     from src.training.fsdp_utils import is_main_process
 
     with patch("torch.distributed.is_available", return_value=True):
@@ -103,7 +95,6 @@ def test_is_main_process_rank0():
 
 
 def test_is_main_process_rank1():
-
     from src.training.fsdp_utils import is_main_process
 
     with patch("torch.distributed.is_available", return_value=True):
@@ -113,7 +104,6 @@ def test_is_main_process_rank1():
 
 
 def test_get_model_for_attr_access_plain():
-
     from src.training.fsdp_utils import get_model_for_attr_access
 
     model = nn.Linear(4, 4)
@@ -122,7 +112,6 @@ def test_get_model_for_attr_access_plain():
 
 
 def test_get_model_for_attr_access_ddp():
-
     from src.training.fsdp_utils import get_model_for_attr_access
 
     from torch.nn.parallel import DistributedDataParallel as DDP
@@ -137,7 +126,6 @@ def test_get_model_for_attr_access_ddp():
 
 
 def test_wrap_model_for_distributed_ddp():
-
     from src.training.fsdp_utils import wrap_model_for_distributed
 
     model = nn.Linear(4, 4)
@@ -163,7 +151,6 @@ def test_wrap_model_for_distributed_ddp():
 
 
 def test_wrap_model_for_distributed_fsdp():
-
     from src.training.fsdp_utils import wrap_model_for_distributed
 
     model = nn.Linear(4, 4)
@@ -189,7 +176,6 @@ def test_wrap_model_for_distributed_fsdp():
 
 
 def test_wrap_model_for_distributed_no_dist_cfg():
-
     from src.training.fsdp_utils import wrap_model_for_distributed
 
     model = nn.Linear(4, 4)
@@ -209,7 +195,6 @@ def test_wrap_model_for_distributed_no_dist_cfg():
 
 
 def test_wrap_model_with_ddp():
-
     from src.training.fsdp_utils import wrap_model_with_ddp
 
     model = nn.Linear(4, 4)
@@ -231,7 +216,6 @@ def test_wrap_model_with_ddp():
 
 
 def test_wrap_model_with_ddp_with_barrier():
-
     from src.training.fsdp_utils import wrap_model_with_ddp
 
     model = nn.Linear(4, 4)
@@ -256,7 +240,6 @@ def test_wrap_model_with_ddp_with_barrier():
 
 
 def test_get_fsdp_wrap_targets_gpt_neo():
-
     from src.training.fsdp_utils import _get_fsdp_wrap_targets
 
     cfg = MagicMock()
@@ -272,7 +255,6 @@ def test_get_fsdp_wrap_targets_gpt_neo():
 
 
 def test_get_fsdp_wrap_targets_qwen2():
-
     from src.training.fsdp_utils import _get_fsdp_wrap_targets
 
     cfg = MagicMock()
@@ -286,7 +268,6 @@ def test_get_fsdp_wrap_targets_qwen2():
 
 
 def test_wrap_model_with_fsdp():
-
     from src.training.fsdp_utils import wrap_model_with_fsdp
 
     model = nn.Linear(4, 4)
@@ -305,11 +286,9 @@ def test_wrap_model_with_fsdp():
 
     class _FakeFSDP(nn.Module):
         def __init__(self, *a, **kw):
-
             super().__init__()
 
         def modules(self):
-
             return iter([self])
 
     _FakeFSDP()
@@ -333,7 +312,6 @@ def test_wrap_model_with_fsdp():
 
 
 def test_wrap_model_with_fsdp_with_mixed_precision_and_checkpointing():
-
     from src.training.fsdp_utils import wrap_model_with_fsdp
 
     model = nn.Linear(4, 4)
@@ -352,11 +330,9 @@ def test_wrap_model_with_fsdp_with_mixed_precision_and_checkpointing():
 
     class _FakeFSDP(nn.Module):
         def __init__(self, *a, **kw):
-
             super().__init__()
 
         def modules(self):
-
             return iter([self])
 
     with (
@@ -380,7 +356,6 @@ def test_wrap_model_with_fsdp_with_mixed_precision_and_checkpointing():
 
 
 def test_wrap_model_with_fsdp_no_shard_strategy():
-
     from src.training.fsdp_utils import wrap_model_with_fsdp
 
     model = nn.Linear(4, 4)
@@ -399,11 +374,9 @@ def test_wrap_model_with_fsdp_no_shard_strategy():
 
     class _FakeFSDP(nn.Module):
         def __init__(self, *a, **kw):
-
             super().__init__()
 
         def modules(self):
-
             return iter([])
 
     with (
@@ -425,7 +398,6 @@ def test_wrap_model_with_fsdp_no_shard_strategy():
 
 
 def test_apply_activation_checkpointing():
-
     from src.training.fsdp_utils import _apply_activation_checkpointing
 
     model = nn.Linear(4, 4)

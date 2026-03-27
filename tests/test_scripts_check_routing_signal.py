@@ -2,7 +2,6 @@ import torch
 
 
 def test_frozen_mlp_forward():
-
     from scripts.check_routing_signal import frozen_mlp_forward
 
     x = torch.randn(4, 768)
@@ -21,7 +20,6 @@ def test_frozen_mlp_forward():
 
 
 def test_routing_spread():
-
     from scripts.check_routing_signal import routing_spread
 
     import torch.nn.functional as F
@@ -38,7 +36,6 @@ def test_routing_spread():
 
 
 def test_run_diagnostic():
-
     from scripts.check_routing_signal import run_diagnostic
 
     ratio = run_diagnostic()

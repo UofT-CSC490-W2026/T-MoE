@@ -12,7 +12,6 @@ from unittest.mock import patch, MagicMock
 
 
 def test_load_config_no_overrides(tmp_path):
-
     from scripts.train import load_config
 
     cfg_file = tmp_path / "test.yaml"
@@ -25,7 +24,6 @@ def test_load_config_no_overrides(tmp_path):
 
 
 def test_load_config_with_overrides(tmp_path):
-
     from scripts.train import load_config
 
     cfg_file = tmp_path / "test.yaml"
@@ -38,7 +36,6 @@ def test_load_config_with_overrides(tmp_path):
 
 
 def test_parse_args_basic():
-
     from scripts.train import parse_args
 
     with patch("sys.argv", ["train.py", "--config", "experiments/test.yaml"]):
@@ -52,7 +49,6 @@ def test_parse_args_basic():
 
 
 def test_parse_args_with_resume_and_output():
-
     from scripts.train import parse_args
 
     with patch(
@@ -79,7 +75,6 @@ def test_parse_args_with_resume_and_output():
 
 
 def _write_shard(path: Path, tokens: list, dtype_flag: int = 0):
-
     arr = np.array(tokens, dtype=np.uint16 if dtype_flag == 0 else np.uint32)
 
     with open(path, "wb") as f:
@@ -91,7 +86,6 @@ def _write_shard(path: Path, tokens: list, dtype_flag: int = 0):
 
 
 def _write_legacy_shard(path: Path, tokens: list):
-
     arr = np.array(tokens, dtype=np.uint16)
 
     with open(path, "wb") as f:
@@ -101,7 +95,6 @@ def _write_legacy_shard(path: Path, tokens: list):
 
 
 def test_shard_dataset_basic(tmp_path):
-
     from scripts.train import ShardDataset
 
     tokens = list(range(200))
@@ -118,7 +111,6 @@ def test_shard_dataset_basic(tmp_path):
 
 
 def test_shard_dataset_legacy_shard(tmp_path):
-
     from scripts.train import ShardDataset
 
     tokens = list(range(200))
@@ -131,7 +123,6 @@ def test_shard_dataset_legacy_shard(tmp_path):
 
 
 def test_shard_dataset_uint32(tmp_path):
-
     from scripts.train import ShardDataset
 
     tokens = list(range(200))
@@ -144,7 +135,6 @@ def test_shard_dataset_uint32(tmp_path):
 
 
 def test_shard_dataset_no_shards(tmp_path):
-
     from scripts.train import ShardDataset
 
     with pytest.raises(FileNotFoundError, match="No shards found"):
@@ -152,7 +142,6 @@ def test_shard_dataset_no_shards(tmp_path):
 
 
 def test_shard_dataset_unknown_dtype_flag(tmp_path):
-
     from scripts.train import ShardDataset
 
     tokens = list(range(200))
@@ -171,7 +160,6 @@ def test_shard_dataset_unknown_dtype_flag(tmp_path):
 
 
 def test_shard_dataset_getitem_wrap(tmp_path):
-
     from scripts.train import ShardDataset
 
     tokens = list(range(20))
@@ -193,7 +181,6 @@ def test_shard_dataset_getitem_wrap(tmp_path):
 
 
 def test_shard_dataset_multiple_shards(tmp_path):
-
     from scripts.train import ShardDataset
 
     for i in range(3):
@@ -209,14 +196,12 @@ def test_shard_dataset_multiple_shards(tmp_path):
 
 
 def _simple_model():
-
     model = torch.nn.Linear(4, 4)
 
     return model
 
 
 def _make_cfg(optimizer="adamw", lr=1e-4, lr_base=None):
-
     cfg = MagicMock()
 
     cfg.training.optimizer = optimizer
@@ -234,7 +219,6 @@ def _make_cfg(optimizer="adamw", lr=1e-4, lr_base=None):
 
 
 def test_build_optimizer_adamw():
-
     from scripts.train import build_optimizer
 
     model = _simple_model()
@@ -247,7 +231,6 @@ def test_build_optimizer_adamw():
 
 
 def test_build_optimizer_adam():
-
     from scripts.train import build_optimizer
 
     model = _simple_model()
@@ -260,7 +243,6 @@ def test_build_optimizer_adam():
 
 
 def test_build_optimizer_unknown():
-
     from scripts.train import build_optimizer
 
     model = _simple_model()
@@ -272,12 +254,10 @@ def test_build_optimizer_unknown():
 
 
 def test_build_optimizer_with_lr_base():
-
     from scripts.train import build_optimizer
 
     class ModelWithMixed(torch.nn.Module):
         def __init__(self):
-
             super().__init__()
 
             self.shared_fc_weight = torch.nn.Parameter(torch.randn(4, 4))
@@ -296,7 +276,6 @@ def test_build_optimizer_with_lr_base():
 
 
 def test_evaluate_basic():
-
     from scripts.train import evaluate
 
     model = MagicMock()
@@ -317,7 +296,6 @@ def test_evaluate_basic():
 
 
 def test_evaluate_empty_loader():
-
     from scripts.train import evaluate
 
     model = MagicMock()
@@ -328,7 +306,6 @@ def test_evaluate_empty_loader():
 
 
 def test_init_wandb_disabled():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -340,7 +317,6 @@ def test_init_wandb_disabled():
 
 
 def test_init_wandb_mode_disabled():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -352,7 +328,6 @@ def test_init_wandb_mode_disabled():
 
 
 def test_init_wandb_not_main_process():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -362,7 +337,6 @@ def test_init_wandb_not_main_process():
 
 
 def test_init_wandb_import_error():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -375,7 +349,6 @@ def test_init_wandb_import_error():
 
 
 def test_init_wandb_success():
-
     from scripts.train import init_wandb
 
     from omegaconf import OmegaConf
@@ -401,7 +374,6 @@ def test_init_wandb_success():
 
 
 def test_log_wandb_not_main():
-
     from scripts.train import log_wandb
 
     with patch("scripts.train.is_main_process", return_value=False):
@@ -409,7 +381,6 @@ def test_log_wandb_not_main():
 
 
 def test_log_wandb_no_run():
-
     from scripts.train import log_wandb
 
     mock_wandb = MagicMock()
@@ -422,7 +393,6 @@ def test_log_wandb_no_run():
 
 
 def test_log_wandb_success():
-
     from scripts.train import log_wandb
 
     mock_wandb = MagicMock()
@@ -437,7 +407,6 @@ def test_log_wandb_success():
 
 
 def test_broadcast_scalar_non_distributed():
-
     from scripts.train import _broadcast_scalar
 
     result = _broadcast_scalar(3.14, "cpu", is_distributed=False)
@@ -446,7 +415,6 @@ def test_broadcast_scalar_non_distributed():
 
 
 def test_build_model_mocked(tmp_path):
-
     from scripts.train import build_model
 
     cfg = MagicMock()
@@ -515,7 +483,6 @@ def test_build_model_mocked(tmp_path):
 
 
 def test_main_missing_config():
-
     from scripts.train import main
 
     with patch("sys.argv", ["train.py"]):
@@ -524,7 +491,6 @@ def test_main_missing_config():
 
 
 def test_main_keyboard_interrupt(tmp_path):
-
     from scripts.train import main
 
     cfg_file = tmp_path / "test.yaml"
@@ -550,14 +516,12 @@ def test_main_keyboard_interrupt(tmp_path):
 
 
 def _patch_wandb(mock_wandb):
-
     import sys
 
     from contextlib import contextmanager
 
     @contextmanager
     def _ctx():
-
         orig = sys.modules.get("wandb")
 
         sys.modules["wandb"] = mock_wandb
@@ -576,7 +540,6 @@ def _patch_wandb(mock_wandb):
 
 
 def test_init_wandb_with_entity():
-
     from scripts.train import init_wandb
 
     from omegaconf import OmegaConf
@@ -611,7 +574,6 @@ def test_init_wandb_with_entity():
 
 
 def test_init_wandb_exception():
-
     from scripts.train import init_wandb
 
     from omegaconf import OmegaConf
@@ -633,7 +595,6 @@ def test_init_wandb_exception():
 
 
 def test_initialize_router_prototypes_no_spar_routers():
-
     from scripts.train import _initialize_router_prototypes
 
     model = torch.nn.Linear(4, 4)
@@ -647,7 +608,6 @@ def test_initialize_router_prototypes_no_spar_routers():
 
 
 def test_shard_dataset_cross_shard_boundary(tmp_path):
-
     from scripts.train import ShardDataset
 
     _write_shard(tmp_path / "train_shard_0000.bin", list(range(15)))
@@ -665,7 +625,6 @@ def test_shard_dataset_cross_shard_boundary(tmp_path):
 
 
 def test_log_wandb_import_error():
-
     from scripts.train import log_wandb
 
     import sys
@@ -689,7 +648,6 @@ def test_log_wandb_import_error():
 
 
 def test_build_optimizer_lr_base_no_matching_params():
-
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(4, 4)
@@ -713,7 +671,6 @@ def test_build_optimizer_lr_base_no_matching_params():
 
 
 def test_shard_dataset_val_split(tmp_path):
-
     from scripts.train import ShardDataset
 
     _write_shard(tmp_path / "val_shard_0000.bin", list(range(100)))

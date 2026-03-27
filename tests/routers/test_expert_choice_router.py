@@ -6,7 +6,6 @@ from src.routers.expert_choice import ExpertChoiceRouter
 
 
 def test_expert_choice_router_forward(device):
-
     config = ExpertChoiceRouterConfig(hidden_dim=32, num_experts=4, top_k=2)
 
     router = ExpertChoiceRouter(config).to(device)

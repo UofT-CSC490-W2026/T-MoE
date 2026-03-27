@@ -6,7 +6,6 @@ from unittest.mock import patch, MagicMock
 
 
 def test_load_configuration_import_error_raises():
-
     mods_to_remove = [k for k in sys.modules if "infra.config" in k]
 
     saved = {k: sys.modules.pop(k) for k in mods_to_remove}
@@ -23,7 +22,6 @@ def test_load_configuration_import_error_raises():
 
 
 def test_load_configuration_value_error_raises():
-
     mock_infra = MagicMock()
 
     mock_infra.config.config.load_pipeline_config.side_effect = ValueError(
@@ -45,7 +43,6 @@ def test_load_configuration_value_error_raises():
 
 
 def test_run_sagemaker_pipeline_import_error():
-
     from run_pipeline import run_sagemaker_pipeline
 
     mock_config = MagicMock()
@@ -56,7 +53,6 @@ def test_run_sagemaker_pipeline_import_error():
 
 
 def test_run_sagemaker_pipeline_success():
-
     from run_pipeline import run_sagemaker_pipeline
 
     mock_config = MagicMock()
@@ -86,7 +82,6 @@ def test_run_sagemaker_pipeline_success():
 
 
 def test_run_sagemaker_pipeline_with_tf_outputs():
-
     from run_pipeline import run_sagemaker_pipeline
 
     mock_config = MagicMock()
@@ -112,7 +107,6 @@ def test_run_sagemaker_pipeline_with_tf_outputs():
 
 
 def test_run_fallback_pipeline_import_error():
-
     from run_pipeline import run_fallback_pipeline
 
     mock_config = MagicMock()
@@ -123,7 +117,6 @@ def test_run_fallback_pipeline_import_error():
 
 
 def test_run_fallback_pipeline_success():
-
     from run_pipeline import run_fallback_pipeline
 
     mock_config = MagicMock()

@@ -6,18 +6,15 @@ import torch.nn as nn
 
 
 def test_base_expert_get_param_count():
-
     from src.experts.base import BaseExpert
 
     class ConcreteExpert(BaseExpert):
         def __init__(self):
-
             super().__init__(config=None)
 
             self.linear = nn.Linear(10, 10)
 
         def forward(self, x):
-
             return self.linear(x)
 
     e = ConcreteExpert()
@@ -28,18 +25,15 @@ def test_base_expert_get_param_count():
 
 
 def test_base_expert_get_flops():
-
     from src.experts.base import BaseExpert
 
     class ConcreteExpert(BaseExpert):
         def __init__(self):
-
             super().__init__(config=None)
 
             self.linear = nn.Linear(10, 10)
 
         def forward(self, x):
-
             return self.linear(x)
 
     e = ConcreteExpert()
@@ -52,18 +46,15 @@ def test_base_expert_get_flops():
 
 
 def test_base_expert_clone_from_parent():
-
     from src.experts.base import BaseExpert
 
     class ConcreteExpert(BaseExpert):
         def __init__(self):
-
             super().__init__(config=None)
 
             self.linear = nn.Linear(10, 10)
 
         def forward(self, x):
-
             return self.linear(x)
 
     parent = ConcreteExpert()
@@ -81,7 +72,6 @@ def test_base_expert_clone_from_parent():
 
 
 def test_lora_config_defaults():
-
     from src.experts.lora import LoRAConfig
 
     cfg = LoRAConfig(hidden_dim=768)
@@ -92,7 +82,6 @@ def test_lora_config_defaults():
 
 
 def test_lora_config_shared_base_alpha_auto():
-
     from src.experts.lora import LoRAConfig
 
     cfg = LoRAConfig(hidden_dim=768, shared_base_rank=8, shared_base_alpha=0.0)
@@ -101,7 +90,6 @@ def test_lora_config_shared_base_alpha_auto():
 
 
 def test_lora_config_shared_base_alpha_explicit():
-
     from src.experts.lora import LoRAConfig
 
     cfg = LoRAConfig(hidden_dim=768, shared_base_rank=8, shared_base_alpha=4.0)
@@ -110,7 +98,6 @@ def test_lora_config_shared_base_alpha_explicit():
 
 
 def test_lora_layer_forward_no_base():
-
     from src.experts.lora import LoRALayer
 
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
@@ -123,7 +110,6 @@ def test_lora_layer_forward_no_base():
 
 
 def test_lora_layer_forward_with_base():
-
     from src.experts.lora import LoRALayer
 
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
@@ -142,7 +128,6 @@ def test_lora_layer_forward_with_base():
 
 
 def test_lora_layer_load_base_weight_wrong_shape():
-
     from src.experts.lora import LoRALayer
 
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
@@ -152,7 +137,6 @@ def test_lora_layer_load_base_weight_wrong_shape():
 
 
 def test_lora_layer_forward_dtype_mismatch():
-
     from src.experts.lora import LoRALayer
 
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
@@ -171,7 +155,6 @@ def test_lora_layer_forward_dtype_mismatch():
 
 
 def test_lora_layer_b_init_scale():
-
     from src.experts.lora import LoRALayer
 
     layer = LoRALayer(
@@ -182,7 +165,6 @@ def test_lora_layer_b_init_scale():
 
 
 def test_lora_layer_with_dropout():
-
     from src.experts.lora import LoRALayer
 
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8, dropout=0.1)
@@ -191,7 +173,6 @@ def test_lora_layer_with_dropout():
 
 
 def test_shared_lora_layer_forward():
-
     from src.experts.lora import SharedLoRALayer
 
     weight = torch.randn(32, 64)
@@ -206,7 +187,6 @@ def test_shared_lora_layer_forward():
 
 
 def test_shared_lora_layer_forward_with_bias():
-
     from src.experts.lora import SharedLoRALayer
 
     weight = torch.randn(32, 64)
@@ -223,7 +203,6 @@ def test_shared_lora_layer_forward_with_bias():
 
 
 def test_shared_lora_layer_forward_override_weight():
-
     from src.experts.lora import SharedLoRALayer
 
     weight = torch.randn(32, 64)
@@ -240,7 +219,6 @@ def test_shared_lora_layer_forward_override_weight():
 
 
 def test_shared_lora_layer_dtype_mismatch():
-
     from src.experts.lora import SharedLoRALayer
 
     weight = torch.randn(32, 64).float()
@@ -257,7 +235,6 @@ def test_shared_lora_layer_dtype_mismatch():
 
 
 def test_shared_lora_layer_b_init_scale():
-
     from src.experts.lora import SharedLoRALayer
 
     weight = torch.randn(32, 64)
@@ -270,7 +247,6 @@ def test_shared_lora_layer_b_init_scale():
 
 
 def test_shared_lora_layer_with_dropout():
-
     from src.experts.lora import SharedLoRALayer
 
     weight = torch.randn(32, 64)
@@ -283,7 +259,6 @@ def test_shared_lora_layer_with_dropout():
 
 
 def test_shared_base_lora_forward():
-
     from src.experts.lora import SharedBaseLoRA
 
     layer = SharedBaseLoRA(in_features=64, out_features=32, rank=4, alpha=8.0)
@@ -296,7 +271,6 @@ def test_shared_base_lora_forward():
 
 
 def test_lora_mlp_expert_freeze_base_weights():
-
     from src.experts.lora import LoRAConfig
 
     from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
@@ -317,7 +291,6 @@ def test_lora_mlp_expert_freeze_base_weights():
 
 
 def test_expert_pool_consolidate_shared_weights():
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig
@@ -346,7 +319,6 @@ def test_expert_pool_consolidate_shared_weights():
 
 
 def test_expert_pool_consolidate_single_expert():
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig
@@ -361,7 +333,6 @@ def test_expert_pool_consolidate_single_expert():
 
 
 def test_expert_pool_make_base_trainable():
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig
@@ -390,7 +361,6 @@ def test_expert_pool_make_base_trainable():
 
 
 def test_expert_pool_make_base_trainable_empty():
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig
@@ -405,7 +375,6 @@ def test_expert_pool_make_base_trainable_empty():
 
 
 def test_expert_pool_save_load_expert(tmp_path):
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig
@@ -432,7 +401,6 @@ def test_expert_pool_save_load_expert(tmp_path):
 
 
 def test_expert_pool_save_load_all(tmp_path):
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig
@@ -457,7 +425,6 @@ def test_expert_pool_save_load_all(tmp_path):
 
 
 def test_expert_pool_freeze_base_weights():
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig
@@ -472,7 +439,6 @@ def test_expert_pool_freeze_base_weights():
 
 
 def test_qwen2_lora_mlp_load_from_mlp():
-
     from src.experts.qwen2_lora import Qwen2LoRAMLP
 
     from src.experts.lora import LoRAConfig
@@ -499,7 +465,6 @@ def test_qwen2_lora_mlp_load_from_mlp():
 
 
 def test_qwen2_lora_mlp_missing_attr():
-
     from src.experts.qwen2_lora import Qwen2LoRAMLP
 
     from src.experts.lora import LoRAConfig
@@ -515,7 +480,6 @@ def test_qwen2_lora_mlp_missing_attr():
 
 
 def test_qwen2_lora_mlp_forward_not_loaded():
-
     from src.experts.qwen2_lora import Qwen2LoRAMLP
 
     from src.experts.lora import LoRAConfig
@@ -529,7 +493,6 @@ def test_qwen2_lora_mlp_forward_not_loaded():
 
 
 def test_qwen2_lora_mlp_get_lora_layer_names():
-
     from src.experts.qwen2_lora import Qwen2LoRAMLP
 
     from src.experts.lora import LoRAConfig
@@ -546,7 +509,6 @@ def test_qwen2_lora_mlp_get_lora_layer_names():
 
 
 def test_expert_pool_consolidate_no_lora_layer_names():
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig
@@ -577,7 +539,6 @@ def test_expert_pool_consolidate_no_lora_layer_names():
 
 
 def test_expert_pool_load_all_missing_file(tmp_path):
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig
@@ -592,7 +553,6 @@ def test_expert_pool_load_all_missing_file(tmp_path):
 
 
 def test_lora_layer_forward_base_bias_dtype_mismatch():
-
     from src.experts.lora import LoRALayer
 
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
@@ -611,7 +571,6 @@ def test_lora_layer_forward_base_bias_dtype_mismatch():
 
 
 def test_shared_lora_layer_dtype_mismatch_weight_and_bias():
-
     from src.experts.lora import SharedLoRALayer
 
     weight = torch.randn(32, 64).to(torch.float16)
@@ -628,7 +587,6 @@ def test_shared_lora_layer_dtype_mismatch_weight_and_bias():
 
 
 def test_expert_pool_consolidate_no_c_fc():
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig, LoRAMLPExpert
@@ -637,15 +595,12 @@ def test_expert_pool_consolidate_no_c_fc():
 
     class BareExpert(LoRAMLPExpert):
         def __init__(self, config):
-
             super().__init__(config)
 
         def load_from_mlp(self, mlp):
-
             pass
 
         def forward(self, x):
-
             return x
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -676,7 +631,6 @@ def test_expert_pool_consolidate_no_c_fc():
 
 
 def test_expert_pool_make_base_trainable_no_c_fc():
-
     from src.experts.pool import ExpertPool
 
     from src.experts.lora import LoRAConfig, LoRAMLPExpert
@@ -685,15 +639,12 @@ def test_expert_pool_make_base_trainable_no_c_fc():
 
     class BareExpert(LoRAMLPExpert):
         def __init__(self, config):
-
             super().__init__(config)
 
         def load_from_mlp(self, mlp):
-
             pass
 
         def forward(self, x):
-
             return x
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -716,7 +667,6 @@ def test_expert_pool_make_base_trainable_no_c_fc():
 
 
 def test_lora_mlp_expert_freeze_base_weights_sets_no_grad():
-
     from src.experts.lora import LoRAConfig
 
     from src.experts.gpt_neo_lora import GPTNeoLoRAMLP

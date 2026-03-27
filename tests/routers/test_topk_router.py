@@ -6,7 +6,6 @@ from src.routers.standard import TopKRouter
 
 
 def test_topk_router_aux_loss_zero(device):
-
     config = TopKRouterConfig(hidden_dim=64, num_experts=4, top_k=2)
 
     router = TopKRouter(config).to(device)

@@ -7,7 +7,6 @@ import sys
 
 @pytest.fixture(autouse=True)
 def mock_modal_module():
-
     mock_modal = MagicMock()
 
     mock_modal.App = MagicMock(return_value=MagicMock())
@@ -25,7 +24,6 @@ def mock_modal_module():
 
 
 def test_config_path():
-
     import run_modal_training
 
     assert (
@@ -39,7 +37,6 @@ def test_config_path():
 
 
 def test_override_list():
-
     import run_modal_training
 
     assert run_modal_training._override_list("") == []
@@ -50,7 +47,6 @@ def test_override_list():
 
 
 def test_experiment_output_dir():
-
     import run_modal_training
 
     cfg = MagicMock()
@@ -63,7 +59,6 @@ def test_experiment_output_dir():
 
 
 def test_checkpoint_sort_key():
-
     import run_modal_training
 
     from pathlib import Path
@@ -82,7 +77,6 @@ def test_checkpoint_sort_key():
 
 
 def test_latest_checkpoint_path(tmp_path):
-
     import run_modal_training
 
     (tmp_path / "checkpoint_step_100.pt").touch()
@@ -95,7 +89,6 @@ def test_latest_checkpoint_path(tmp_path):
 
 
 def test_latest_checkpoint_path_empty(tmp_path):
-
     import run_modal_training
 
     with pytest.raises(FileNotFoundError):
@@ -103,7 +96,6 @@ def test_latest_checkpoint_path_empty(tmp_path):
 
 
 def test_resolve_runtime_path():
-
     import run_modal_training
 
     assert run_modal_training._resolve_runtime_path("") == ""
@@ -119,7 +111,6 @@ def test_resolve_runtime_path():
 
 
 def test_resolve_eval_tasks():
-
     import run_modal_training
 
     assert run_modal_training._resolve_eval_tasks("all") == [
@@ -142,7 +133,6 @@ def test_resolve_eval_tasks():
 
 
 def test_resolve_eval_checkpoint_best(tmp_path):
-
     import run_modal_training
 
     cfg = MagicMock()
@@ -166,7 +156,6 @@ def test_resolve_eval_checkpoint_best(tmp_path):
 
 
 def test_resolve_eval_checkpoint_latest(tmp_path):
-
     import run_modal_training
 
     cfg = MagicMock()
@@ -190,7 +179,6 @@ def test_resolve_eval_checkpoint_latest(tmp_path):
 
 
 def test_resolve_eval_checkpoint_explicit():
-
     import run_modal_training
 
     cfg = MagicMock()
@@ -203,7 +191,6 @@ def test_resolve_eval_checkpoint_explicit():
 
 
 def test_resolve_eval_checkpoint_all(tmp_path):
-
     import run_modal_training
 
     cfg = MagicMock()
@@ -221,7 +208,6 @@ def test_resolve_eval_checkpoint_all(tmp_path):
 
 
 def test_load_cfg():
-
     import run_modal_training
 
     from omegaconf import OmegaConf
@@ -238,7 +224,6 @@ def test_load_cfg():
 
 
 def test_load_cfg_no_overrides():
-
     import run_modal_training
 
     from omegaconf import OmegaConf

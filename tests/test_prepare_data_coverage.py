@@ -8,23 +8,19 @@ import numpy as np
 
 
 def _make_streaming_dataset(examples):
-
     from datasets import IterableDataset
 
     class _FakeIterableDataset(IterableDataset):
         def __init__(self):
-
             pass
 
         def __iter__(self):
-
             return iter(examples)
 
     return _FakeIterableDataset()
 
 
 def test_iter_token_arrays_streaming_basic():
-
     from scripts.prepare_data import _iter_token_arrays
 
     examples = [{"text": "hello world"}, {"text": "  "}, {"text": "foo bar"}]
@@ -56,7 +52,6 @@ def test_iter_token_arrays_streaming_basic():
 
 
 def test_iter_token_arrays_streaming_flush_remainder():
-
     from scripts.prepare_data import _iter_token_arrays
 
     examples = [{"text": "hello world"}]
@@ -86,7 +81,6 @@ def test_iter_token_arrays_streaming_flush_remainder():
 
 
 def test_iter_token_arrays_streaming_uint32_vocab():
-
     from scripts.prepare_data import _iter_token_arrays
 
     examples = [{"text": "hello"}]
@@ -116,12 +110,10 @@ def test_iter_token_arrays_streaming_uint32_vocab():
 
 
 def test_iter_token_arrays_non_streaming():
-
     from scripts.prepare_data import _iter_token_arrays
 
     class _FakeDataset:
         def __iter__(self):
-
             yield {"text": "hello world"}
 
             yield {"text": "foo bar baz"}
@@ -151,7 +143,6 @@ def test_iter_token_arrays_non_streaming():
 
 
 def _make_cfg(dataset_key="wikitext-2", model_key="gpt-neo-125m"):
-
     cfg = MagicMock()
 
     cfg.dataset.dataset_key = dataset_key
@@ -162,7 +153,6 @@ def _make_cfg(dataset_key="wikitext-2", model_key="gpt-neo-125m"):
 
 
 def test_tokenize_and_pack_basic(tmp_path):
-
     from scripts.prepare_data import tokenize_and_pack
 
     cfg = _make_cfg()
@@ -201,7 +191,6 @@ def test_tokenize_and_pack_basic(tmp_path):
 
 
 def test_tokenize_and_pack_skips_none_split(tmp_path):
-
     from scripts.prepare_data import tokenize_and_pack
 
     cfg = _make_cfg()
@@ -244,7 +233,6 @@ def test_tokenize_and_pack_skips_none_split(tmp_path):
 
 
 def test_tokenize_and_pack_multiple_shards(tmp_path):
-
     from scripts.prepare_data import tokenize_and_pack, SHARD_SIZE
 
     cfg = _make_cfg()
@@ -283,7 +271,6 @@ def test_tokenize_and_pack_multiple_shards(tmp_path):
 
 
 def test_tokenize_and_pack_uint32_vocab(tmp_path):
-
     from scripts.prepare_data import tokenize_and_pack
 
     cfg = _make_cfg(model_key="qwen2-1.5b")
@@ -329,7 +316,6 @@ def test_tokenize_and_pack_uint32_vocab(tmp_path):
 
 
 def test_main_uses_cpu_count_when_num_proc_none(tmp_path):
-
     from scripts.prepare_data import main
 
     cfg_path = tmp_path / "test.yaml"

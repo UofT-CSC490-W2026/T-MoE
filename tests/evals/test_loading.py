@@ -11,7 +11,6 @@ from src.training import CheckpointManager
 
 class _FakeBlock(torch.nn.Module):
     def __init__(self, hidden_dim: int):
-
         super().__init__()
 
         self.mlp = torch.nn.Module()
@@ -23,7 +22,6 @@ class _FakeBlock(torch.nn.Module):
 
 class _FakeBackbone(torch.nn.Module):
     def __init__(self, hidden_dim: int, num_layers: int):
-
         super().__init__()
 
         self.transformer = torch.nn.Module()
@@ -35,7 +33,6 @@ class _FakeBackbone(torch.nn.Module):
 
 class _FakeModel(torch.nn.Module):
     def __init__(self, variant, freeze_backbone, moe_layer_indices, device):
-
         super().__init__()
 
         self.variant = variant
@@ -57,18 +54,15 @@ class _FakeModel(torch.nn.Module):
         self.to_calls = []
 
     def get_mlp_at(self, idx):
-
         return self.backbone.transformer.h[idx].mlp
 
     def inject_moe_layers(self, moe_layers):
-
         for idx, moe_layer in moe_layers.items():
             self.backbone.transformer.h[idx].mlp = moe_layer
 
             self.moe_layers[str(idx)] = moe_layer
 
     def to(self, device=None, dtype=None, **kwargs):
-
         self.to_calls.append(
             {
                 "device": None if device is None else str(device),
@@ -80,7 +74,6 @@ class _FakeModel(torch.nn.Module):
 
 
 def _test_config():
-
     return {
         "experiment_name": "smoketest",
         "model": {
@@ -115,7 +108,6 @@ def _test_config():
 
 
 def _patch_model_registry(monkeypatch):
-
     monkeypatch.setattr(
         loading,
         "model_lookup",
@@ -126,7 +118,6 @@ def _patch_model_registry(monkeypatch):
 
 
 def test_build_model_from_config_injects_requested_moe_layers(monkeypatch):
-
     _patch_model_registry(monkeypatch)
 
     model = build_model_from_config(_test_config(), device="cuda:0")
@@ -142,7 +133,6 @@ def test_build_model_from_config_injects_requested_moe_layers(monkeypatch):
 
 
 def test_load_model_for_eval_returns_checkpoint_info(monkeypatch, tmp_path):
-
     def fake_load_checkpoint(
         self,
         model,
@@ -151,7 +141,6 @@ def test_load_model_for_eval_returns_checkpoint_info(monkeypatch, tmp_path):
         checkpoint_path=None,
         load_best=False,
     ):
-
         assert checkpoint_path is not None
 
         model.loaded_checkpoint_path = checkpoint_path
@@ -186,7 +175,6 @@ def test_load_model_for_eval_returns_checkpoint_info(monkeypatch, tmp_path):
 
 
 def test_load_model_for_eval_applies_explicit_dtype(monkeypatch, tmp_path):
-
     def fake_load_checkpoint(
         self,
         model,
@@ -195,7 +183,6 @@ def test_load_model_for_eval_applies_explicit_dtype(monkeypatch, tmp_path):
         checkpoint_path=None,
         load_best=False,
     ):
-
         return {"step": 42, "metrics": {}, "metadata": {}}
 
     _patch_model_registry(monkeypatch)

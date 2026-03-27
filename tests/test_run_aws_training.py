@@ -6,26 +6,22 @@ import pytest
 
 
 def test_imports():
-
     import run_aws_training
 
 
 def test_log_dataset_status_found(capsys):
-
     from run_aws_training import _log_dataset_status
 
     _log_dataset_status(True)
 
 
 def test_log_dataset_status_not_found(capsys):
-
     from run_aws_training import _log_dataset_status
 
     _log_dataset_status(False)
 
 
 def test_log_dry_run(capsys):
-
     from run_aws_training import _log_dry_run
 
     args = argparse.Namespace(mode="local")
@@ -36,7 +32,6 @@ def test_log_dry_run(capsys):
 
 
 def test_log_completion(capsys):
-
     from run_aws_training import _log_completion
 
     _log_completion(True, {"loss": 0.5, "best_loss": 0.4}, "/tmp/out")
@@ -45,7 +40,6 @@ def test_log_completion(capsys):
 
 
 def test_dataset_s3_prefix():
-
     from run_aws_training import _dataset_s3_prefix
 
     mock_config = MagicMock()
@@ -60,7 +54,6 @@ def test_dataset_s3_prefix():
 
 
 def test_find_latest_timestamp_prefix_no_objects():
-
     from run_aws_training import _find_latest_timestamp_prefix
 
     mock_s3 = MagicMock()
@@ -72,7 +65,6 @@ def test_find_latest_timestamp_prefix_no_objects():
 
 
 def test_find_latest_timestamp_prefix_no_timestamps():
-
     from run_aws_training import _find_latest_timestamp_prefix
 
     mock_s3 = MagicMock()
@@ -84,7 +76,6 @@ def test_find_latest_timestamp_prefix_no_timestamps():
 
 
 def test_find_latest_timestamp_prefix_success():
-
     from run_aws_training import _find_latest_timestamp_prefix
 
     mock_s3 = MagicMock()
@@ -100,7 +91,6 @@ def test_find_latest_timestamp_prefix_success():
 
 
 def test_check_dataset_in_s3_not_found():
-
     from run_aws_training import check_dataset_in_s3
 
     mock_config = MagicMock()
@@ -130,7 +120,6 @@ def test_check_dataset_in_s3_not_found():
 
 
 def test_check_dataset_in_s3_found():
-
     from run_aws_training import check_dataset_in_s3
 
     mock_config = MagicMock()
@@ -164,7 +153,6 @@ def test_check_dataset_in_s3_found():
 
 
 def test_run_data_ingestion():
-
     from run_aws_training import run_data_ingestion
 
     mock_config = MagicMock()
@@ -204,7 +192,6 @@ def test_run_data_ingestion():
 
 
 def test_download_dataset_from_s3(tmp_path):
-
     from run_aws_training import download_dataset_from_s3
 
     mock_config = MagicMock()
@@ -244,7 +231,6 @@ def test_download_dataset_from_s3(tmp_path):
 
 
 def test_download_dataset_from_s3_no_files(tmp_path):
-
     from run_aws_training import download_dataset_from_s3
 
     mock_config = MagicMock()
@@ -285,7 +271,6 @@ def test_download_dataset_from_s3_no_files(tmp_path):
 
 
 def test_upload_outputs_to_s3():
-
     from run_aws_training import upload_outputs_to_s3
 
     mock_config = MagicMock()
@@ -309,7 +294,6 @@ def test_upload_outputs_to_s3():
 
 
 def test_upload_outputs_to_s3_with_failures():
-
     from run_aws_training import upload_outputs_to_s3
 
     mock_config = MagicMock()
@@ -333,7 +317,6 @@ def test_upload_outputs_to_s3_with_failures():
 
 
 def test_upload_outputs_non_critical_failures():
-
     from run_aws_training import upload_outputs_to_s3
 
     mock_config = MagicMock()
@@ -356,7 +339,6 @@ def test_upload_outputs_non_critical_failures():
 
 
 def test_run_training():
-
     from run_aws_training import run_training
 
     mock_config = MagicMock()
@@ -372,7 +354,6 @@ def test_run_training():
 
 
 def test_submit_batch_job():
-
     from run_aws_training import submit_batch_job
 
     mock_config = MagicMock()
@@ -394,7 +375,6 @@ def test_submit_batch_job():
 
 
 def test_wait_for_batch_job_succeeded():
-
     from run_aws_training import wait_for_batch_job
 
     mock_boto3 = MagicMock()
@@ -416,7 +396,6 @@ def test_wait_for_batch_job_succeeded():
 
 
 def test_wait_for_batch_job_failed():
-
     from run_aws_training import wait_for_batch_job
 
     mock_boto3 = MagicMock()
@@ -438,7 +417,6 @@ def test_wait_for_batch_job_failed():
 
 
 def test_wait_for_batch_job_not_found():
-
     from run_aws_training import wait_for_batch_job
 
     mock_boto3 = MagicMock()
@@ -458,7 +436,6 @@ def test_wait_for_batch_job_not_found():
 
 
 def test_wait_for_batch_job_with_log_streaming():
-
     from run_aws_training import wait_for_batch_job
 
     mock_boto3 = MagicMock()
@@ -483,7 +460,6 @@ def test_wait_for_batch_job_with_log_streaming():
     }
 
     def client_factory(svc, **kw):
-
         if svc == "batch":
             return mock_batch
 
@@ -500,7 +476,6 @@ def test_wait_for_batch_job_with_log_streaming():
 
 
 def test_stream_job_logs_no_stream_name():
-
     from run_aws_training import _stream_job_logs
 
     token, name = _stream_job_logs(
@@ -511,7 +486,6 @@ def test_stream_job_logs_no_stream_name():
 
 
 def test_stream_job_logs_exception():
-
     from run_aws_training import _stream_job_logs
 
     mock_logs = MagicMock()
@@ -524,7 +498,6 @@ def test_stream_job_logs_exception():
 
 
 def test_run_local_mode_dry_run():
-
     from run_aws_training import run_local_mode
 
     args = argparse.Namespace(dry_run=True, mode="local", skip_upload=False)
@@ -538,7 +511,6 @@ def test_run_local_mode_dry_run():
 
 
 def test_run_batch_mode_dry_run():
-
     from run_aws_training import run_batch_mode
 
     args = argparse.Namespace(dry_run=True, mode="batch", config="test")
@@ -552,7 +524,6 @@ def test_run_batch_mode_dry_run():
 
 
 def test_run_local_mode_full():
-
     from run_aws_training import run_local_mode
 
     args = argparse.Namespace(dry_run=False, mode="local", skip_upload=False)
@@ -579,7 +550,6 @@ def test_run_local_mode_full():
 
 
 def test_run_local_mode_skip_upload():
-
     from run_aws_training import run_local_mode
 
     args = argparse.Namespace(dry_run=False, mode="local", skip_upload=True)
@@ -605,7 +575,6 @@ def test_run_local_mode_skip_upload():
 
 
 def test_run_local_mode_ingest_needed():
-
     from run_aws_training import run_local_mode
 
     args = argparse.Namespace(dry_run=False, mode="local", skip_upload=True)
@@ -632,7 +601,6 @@ def test_run_local_mode_ingest_needed():
 
 
 def test_run_batch_mode_full():
-
     from run_aws_training import run_batch_mode
 
     args = argparse.Namespace(dry_run=False, mode="batch", config="test", overrides=[])
@@ -653,7 +621,6 @@ def test_run_batch_mode_full():
 
 
 def test_run_batch_mode_failed():
-
     from run_aws_training import run_batch_mode
 
     args = argparse.Namespace(dry_run=False, mode="batch", config="test", overrides=[])
@@ -674,7 +641,6 @@ def test_run_batch_mode_failed():
 
 
 def test_run_container_mode():
-
     from run_aws_training import run_container_mode
 
     args = argparse.Namespace(mode="container")
@@ -698,7 +664,6 @@ def test_run_container_mode():
 
 
 def test_run_container_mode_training_fails():
-
     from run_aws_training import run_container_mode
 
     args = argparse.Namespace(mode="container")
@@ -722,7 +687,6 @@ def test_run_container_mode_training_fails():
 
 
 def test_main_keyboard_interrupt():
-
     from run_aws_training import main
 
     with patch("run_aws_training.load_configs", side_effect=KeyboardInterrupt):
@@ -736,7 +700,6 @@ def test_main_keyboard_interrupt():
 
 
 def test_main_value_error():
-
     from run_aws_training import main
 
     with patch("run_aws_training.load_configs", side_effect=ValueError("bad")):
@@ -750,7 +713,6 @@ def test_main_value_error():
 
 
 def test_main_import_error():
-
     from run_aws_training import main
 
     with patch("run_aws_training.load_configs", side_effect=ImportError("missing")):
@@ -764,7 +726,6 @@ def test_main_import_error():
 
 
 def test_main_generic_exception():
-
     from run_aws_training import main
 
     with patch("run_aws_training.load_configs", side_effect=RuntimeError("boom")):
@@ -778,7 +739,6 @@ def test_main_generic_exception():
 
 
 def test_main_success():
-
     from run_aws_training import main
 
     mock_pc = MagicMock()
@@ -798,7 +758,6 @@ def test_main_success():
 
 
 def test_load_configs():
-
     from run_aws_training import load_configs
 
     args = argparse.Namespace(config="test", overrides=[])
@@ -841,7 +800,6 @@ def test_load_configs():
 
 
 def test_run_batch_mode_ingest_needed():
-
     from run_aws_training import run_batch_mode
 
     import argparse

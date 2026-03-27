@@ -18,7 +18,6 @@ from omegaconf import OmegaConf
 
 
 def _write_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
-
     n = len(tokens)
 
     with open(path, "wb") as f:
@@ -36,7 +35,6 @@ def _write_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
 
 
 def _write_versioned_shard(path: Path, tokens: list[int], dtype_flag: int = 0) -> None:
-
     n = len(tokens)
 
     dtype = np.uint32 if dtype_flag == 1 else np.uint16
@@ -50,7 +48,6 @@ def _write_versioned_shard(path: Path, tokens: list[int], dtype_flag: int = 0) -
 
 
 def test_shard_dataset_basic(tmp_path):
-
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
@@ -69,7 +66,6 @@ def test_shard_dataset_basic(tmp_path):
 
 
 def test_shard_dataset_versioned_uint16(tmp_path):
-
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
@@ -82,7 +78,6 @@ def test_shard_dataset_versioned_uint16(tmp_path):
 
 
 def test_shard_dataset_versioned_uint32(tmp_path):
-
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
@@ -95,7 +90,6 @@ def test_shard_dataset_versioned_uint32(tmp_path):
 
 
 def test_shard_dataset_unknown_dtype_flag(tmp_path):
-
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
@@ -114,7 +108,6 @@ def test_shard_dataset_unknown_dtype_flag(tmp_path):
 
 
 def test_shard_dataset_no_shards_raises(tmp_path):
-
     from scripts.train import ShardDataset
 
     with pytest.raises(FileNotFoundError):
@@ -122,7 +115,6 @@ def test_shard_dataset_no_shards_raises(tmp_path):
 
 
 def test_shard_dataset_wrap_around(tmp_path):
-
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
@@ -137,7 +129,6 @@ def test_shard_dataset_wrap_around(tmp_path):
 
 
 def test_shard_dataset_multi_shard(tmp_path):
-
     from scripts.train import ShardDataset
 
     for i in range(3):
@@ -155,7 +146,6 @@ def test_shard_dataset_multi_shard(tmp_path):
 
 
 def test_load_config_no_overrides(tmp_path):
-
     from scripts.train import load_config
 
     cfg_path = tmp_path / "cfg.yaml"
@@ -168,7 +158,6 @@ def test_load_config_no_overrides(tmp_path):
 
 
 def test_load_config_with_overrides(tmp_path):
-
     from scripts.train import load_config
 
     cfg_path = tmp_path / "cfg.yaml"
@@ -181,7 +170,6 @@ def test_load_config_with_overrides(tmp_path):
 
 
 def test_parse_args_basic():
-
     from scripts.train import parse_args
 
     with patch("sys.argv", ["train.py", "--config", "exp.yaml"]):
@@ -195,7 +183,6 @@ def test_parse_args_basic():
 
 
 def test_parse_args_with_all_flags():
-
     from scripts.train import parse_args
 
     with patch(
@@ -225,7 +212,6 @@ def test_parse_args_with_all_flags():
 
 
 def _make_opt_cfg(optimizer="adamw", lr=1e-4, lr_base=None):
-
     cfg = MagicMock()
 
     cfg.training.optimizer = optimizer
@@ -243,7 +229,6 @@ def _make_opt_cfg(optimizer="adamw", lr=1e-4, lr_base=None):
 
 
 def test_build_optimizer_adamw():
-
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(4, 4)
@@ -256,7 +241,6 @@ def test_build_optimizer_adamw():
 
 
 def test_build_optimizer_adam():
-
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(4, 4)
@@ -269,7 +253,6 @@ def test_build_optimizer_adam():
 
 
 def test_build_optimizer_unknown_raises():
-
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(4, 4)
@@ -281,12 +264,10 @@ def test_build_optimizer_unknown_raises():
 
 
 def test_build_optimizer_with_lr_base():
-
     from scripts.train import build_optimizer
 
     class _ModelWithBase(torch.nn.Module):
         def __init__(self):
-
             super().__init__()
 
             self.shared_fc_weight = torch.nn.Parameter(torch.randn(4, 4))
@@ -305,12 +286,10 @@ def test_build_optimizer_with_lr_base():
 
 
 def test_evaluate_basic():
-
     from scripts.train import evaluate
 
     class _M(torch.nn.Module):
         def forward(self, input_ids, labels, return_metrics, record_usage):
-
             loss = torch.tensor(1.5)
 
             return None, loss, {}
@@ -325,7 +304,6 @@ def test_evaluate_basic():
 
 
 def test_evaluate_empty_loader():
-
     from scripts.train import evaluate
 
     model = MagicMock()
@@ -336,14 +314,12 @@ def test_evaluate_empty_loader():
 
 
 def test_evaluate_respects_max_batches():
-
     from scripts.train import evaluate
 
     call_count = 0
 
     class _M(torch.nn.Module):
         def forward(self, input_ids, labels, return_metrics, record_usage):
-
             nonlocal call_count
 
             call_count += 1
@@ -362,7 +338,6 @@ def test_evaluate_respects_max_batches():
 
 
 def test_init_wandb_not_main_process():
-
     from scripts.train import init_wandb
 
     with patch("scripts.train.is_main_process", return_value=False):
@@ -370,7 +345,6 @@ def test_init_wandb_not_main_process():
 
 
 def test_init_wandb_disabled_by_config():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -382,7 +356,6 @@ def test_init_wandb_disabled_by_config():
 
 
 def test_init_wandb_mode_disabled():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -396,7 +369,6 @@ def test_init_wandb_mode_disabled():
 
 
 def test_init_wandb_import_error():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -413,7 +385,6 @@ def test_init_wandb_import_error():
 
 
 def test_init_wandb_success_with_url():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -446,7 +417,6 @@ def test_init_wandb_success_with_url():
 
 
 def test_init_wandb_success_no_url():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -477,7 +447,6 @@ def test_init_wandb_success_no_url():
 
 
 def test_init_wandb_exception():
-
     from scripts.train import init_wandb
 
     cfg = MagicMock()
@@ -499,7 +468,6 @@ def test_init_wandb_exception():
 
 
 def test_init_wandb_env_mode_fallback():
-
     from scripts.train import init_wandb
 
     import os
@@ -532,7 +500,6 @@ def test_init_wandb_env_mode_fallback():
 
 
 def test_log_wandb_not_main():
-
     from scripts.train import log_wandb
 
     with patch("scripts.train.is_main_process", return_value=False):
@@ -540,7 +507,6 @@ def test_log_wandb_not_main():
 
 
 def test_log_wandb_no_run():
-
     from scripts.train import log_wandb
 
     mock_wandb = MagicMock()
@@ -555,7 +521,6 @@ def test_log_wandb_no_run():
 
 
 def test_log_wandb_with_run():
-
     from scripts.train import log_wandb
 
     mock_wandb = MagicMock()
@@ -570,7 +535,6 @@ def test_log_wandb_with_run():
 
 
 def test_log_wandb_import_error():
-
     from scripts.train import log_wandb
 
     with patch("scripts.train.is_main_process", return_value=True):
@@ -579,7 +543,6 @@ def test_log_wandb_import_error():
 
 
 def test_broadcast_scalar_not_distributed():
-
     from scripts.train import _broadcast_scalar
 
     result = _broadcast_scalar(3.14, "cpu", is_distributed=False)
@@ -588,7 +551,6 @@ def test_broadcast_scalar_not_distributed():
 
 
 def _make_full_cfg(tmp_path):
-
     shard_dir = tmp_path / "shards"
 
     shard_dir.mkdir()
@@ -650,7 +612,6 @@ class _TinyModel(torch.nn.Module):
     moe_layers = {}
 
     def __init__(self):
-
         super().__init__()
 
         self.embed = torch.nn.Embedding(16, 8)
@@ -658,7 +619,6 @@ class _TinyModel(torch.nn.Module):
         self.fc = torch.nn.Linear(8, 16)
 
     def forward(self, input_ids, labels=None, return_metrics=True, record_usage=True):
-
         x = self.embed(input_ids % 16)
 
         logits = self.fc(x)
@@ -668,16 +628,13 @@ class _TinyModel(torch.nn.Module):
         return logits, loss, {}
 
     def eval(self):
-
         return self
 
     def train(self, mode=True):
-
         return self
 
 
 def test_main_runs_minimal(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -720,7 +677,6 @@ def test_main_runs_minimal(tmp_path):
 
 
 def test_main_no_val_shards(tmp_path):
-
     from scripts.train import main
 
     shard_dir = tmp_path / "shards"
@@ -796,7 +752,6 @@ def test_main_no_val_shards(tmp_path):
 
 
 def test_main_with_resume(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -851,7 +806,6 @@ def test_main_with_resume(tmp_path):
 
 
 def test_main_adam_optimizer(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -892,7 +846,6 @@ def test_main_adam_optimizer(tmp_path):
 
 
 def test_main_steps_from_config(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -934,7 +887,6 @@ def test_main_steps_from_config(tmp_path):
 
 class _MoELayer(torch.nn.Module):
     def __init__(self):
-
         super().__init__()
 
         self._last_routing_weights = None
@@ -954,7 +906,6 @@ class _MoELayer(torch.nn.Module):
         self.expert_pool.consolidate_shared_weights = MagicMock()
 
     def step(self):
-
         pass
 
 
@@ -962,7 +913,6 @@ class _TinyModelWithMoE(torch.nn.Module):
     vocab_size = 16
 
     def __init__(self):
-
         super().__init__()
 
         self.embed = torch.nn.Embedding(16, 8)
@@ -974,7 +924,6 @@ class _TinyModelWithMoE(torch.nn.Module):
         self.moe_layers = {0: moe}
 
     def forward(self, input_ids, labels=None, return_metrics=True, record_usage=True):
-
         x = self.embed(input_ids % 16)
 
         logits = self.fc(x)
@@ -1003,16 +952,13 @@ class _TinyModelWithMoE(torch.nn.Module):
         return logits, loss, moe_metrics
 
     def eval(self):
-
         return self
 
     def train(self, mode=True):
-
         return self
 
 
 def test_main_with_moe_metrics_logging(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1051,7 +997,6 @@ def test_main_with_moe_metrics_logging(tmp_path):
 
 
 def test_main_early_stopping(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1071,7 +1016,6 @@ def test_main_early_stopping(tmp_path):
     call_count = [0]
 
     def _fake_evaluate(model, val_loader, device, max_batches=20):
-
         call_count[0] += 1
 
         return 2.0 + call_count[0]
@@ -1106,7 +1050,6 @@ def test_main_early_stopping(tmp_path):
         ).load_config
 
         def _patched_load(path, overrides):
-
             c = original_load(path, overrides)
 
             from omegaconf import OmegaConf
@@ -1120,7 +1063,6 @@ def test_main_early_stopping(tmp_path):
 
 
 def test_main_periodic_save(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1172,7 +1114,6 @@ def test_main_periodic_save(tmp_path):
 
 
 def test_main_grad_accum_gt1(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1215,7 +1156,6 @@ def test_main_grad_accum_gt1(tmp_path):
 
 
 def test_main_warmup_steps(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1258,7 +1198,6 @@ def test_main_warmup_steps(tmp_path):
 
 
 def test_main_compile_path(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1271,7 +1210,6 @@ def test_main_compile_path(tmp_path):
 
     class _ModelWithBackbone(_TinyModel):
         def __init__(self):
-
             super().__init__()
 
             self.backbone = torch.nn.Linear(4, 4)
@@ -1307,7 +1245,6 @@ def test_main_compile_path(tmp_path):
 
 
 def test_main_compile_no_backbone(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1349,7 +1286,6 @@ def test_main_compile_no_backbone(tmp_path):
 
 
 def test_main_chinchilla_steps_none(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1363,7 +1299,6 @@ def test_main_chinchilla_steps_none(tmp_path):
     original_load = __import__("scripts.train", fromlist=["load_config"]).load_config
 
     def _no_steps_load(path, overrides):
-
         c = original_load(path, overrides)
 
         OmegaConf.update(c, "training.steps", OmegaConf.MISSING)
@@ -1398,7 +1333,6 @@ def test_main_chinchilla_steps_none(tmp_path):
 
 
 def test_main_moe_layer_with_expert_pool_grads(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1409,14 +1343,12 @@ def test_main_moe_layer_with_expert_pool_grads(tmp_path):
 
     class _ExpertWithGrad(torch.nn.Module):
         def __init__(self):
-
             super().__init__()
 
             self.w = torch.nn.Parameter(torch.randn(4, 4))
 
     class _MoELayerWithPool(_MoELayer):
         def __init__(self):
-
             super().__init__()
 
             expert = _ExpertWithGrad()
@@ -1431,7 +1363,6 @@ def test_main_moe_layer_with_expert_pool_grads(tmp_path):
 
     class _ModelWithPool(_TinyModelWithMoE):
         def __init__(self):
-
             super().__init__()
 
             self.moe_layers = {0: _MoELayerWithPool()}
@@ -1466,7 +1397,6 @@ def test_main_moe_layer_with_expert_pool_grads(tmp_path):
 
 
 def test_main_moe_layer_with_router_grads(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1477,7 +1407,6 @@ def test_main_moe_layer_with_router_grads(tmp_path):
 
     class _RouterWithGrad(torch.nn.Module):
         def __init__(self):
-
             super().__init__()
 
             self.w = torch.nn.Parameter(torch.randn(4, 4))
@@ -1488,14 +1417,12 @@ def test_main_moe_layer_with_router_grads(tmp_path):
 
     class _MoELayerWithRouterGrad(_MoELayer):
         def __init__(self):
-
             super().__init__()
 
             self.router = _RouterWithGrad()
 
     class _ModelWithRouterGrad(_TinyModelWithMoE):
         def __init__(self):
-
             super().__init__()
 
             self.moe_layers = {0: _MoELayerWithRouterGrad()}
@@ -1530,7 +1457,6 @@ def test_main_moe_layer_with_router_grads(tmp_path):
 
 
 def test_main_moe_router_with_lambda_val(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1541,7 +1467,6 @@ def test_main_moe_router_with_lambda_val(tmp_path):
 
     class _RouterWithLambda(torch.nn.Module):
         def __init__(self):
-
             super().__init__()
 
             self.lambda_val = torch.tensor(0.5)
@@ -1551,19 +1476,16 @@ def test_main_moe_router_with_lambda_val(tmp_path):
             self.clear_aux_state = MagicMock()
 
         def _welford_variance(self):
-
             return torch.tensor([0.1, 0.1])
 
     class _MoELayerWithLambda(_MoELayer):
         def __init__(self):
-
             super().__init__()
 
             self.router = _RouterWithLambda()
 
     class _ModelWithLambda(_TinyModelWithMoE):
         def __init__(self):
-
             super().__init__()
 
             self.moe_layers = {0: _MoELayerWithLambda()}
@@ -1598,7 +1520,6 @@ def test_main_moe_router_with_lambda_val(tmp_path):
 
 
 def test_main_moe_router_with_get_state(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1609,13 +1530,11 @@ def test_main_moe_router_with_get_state(tmp_path):
 
     class _RouterWithState(torch.nn.Module):
         def __init__(self):
-
             super().__init__()
 
             self.clear_aux_state = MagicMock()
 
         def get_state(self):
-
             return {
                 "lambda_eff": 0.3,
                 "fraction_penalised": 0.1,
@@ -1625,14 +1544,12 @@ def test_main_moe_router_with_get_state(tmp_path):
 
     class _MoELayerWithState(_MoELayer):
         def __init__(self):
-
             super().__init__()
 
             self.router = _RouterWithState()
 
     class _ModelWithState(_TinyModelWithMoE):
         def __init__(self):
-
             super().__init__()
 
             self.moe_layers = {0: _MoELayerWithState()}
@@ -1640,7 +1557,6 @@ def test_main_moe_router_with_get_state(tmp_path):
         def forward(
             self, input_ids, labels=None, return_metrics=True, record_usage=True
         ):
-
             x = self.embed(input_ids % 16)
 
             logits = self.fc(x)
@@ -1696,7 +1612,6 @@ def test_main_moe_router_with_get_state(tmp_path):
 
 
 def test_main_moe_router_with_fatigue(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1707,25 +1622,21 @@ def test_main_moe_router_with_fatigue(tmp_path):
 
     class _RouterWithWelford(torch.nn.Module):
         def __init__(self):
-
             super().__init__()
 
             self.clear_aux_state = MagicMock()
 
         def reset_welford(self):
-
             pass
 
     class _MoELayerWithWelford(_MoELayer):
         def __init__(self):
-
             super().__init__()
 
             self.router = _RouterWithWelford()
 
     class _ModelWithWelford(_TinyModelWithMoE):
         def __init__(self):
-
             super().__init__()
 
             self.moe_layers = {0: _MoELayerWithWelford()}
@@ -1760,7 +1671,6 @@ def test_main_moe_router_with_fatigue(tmp_path):
 
 
 def test_main_spec_trackers_with_moe(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1775,7 +1685,6 @@ def test_main_spec_trackers_with_moe(tmp_path):
         def forward(
             self, input_ids, labels=None, return_metrics=True, record_usage=True
         ):
-
             x = self.embed(input_ids % 16)
 
             logits = self.fc(x)
@@ -1834,7 +1743,6 @@ def test_main_spec_trackers_with_moe(tmp_path):
 
 
 def test_main_stopiteration_epoch_wrap(tmp_path):
-
     from scripts.train import main
 
     shard_dir = tmp_path / "shards"
@@ -1912,7 +1820,6 @@ def test_main_stopiteration_epoch_wrap(tmp_path):
 
 
 def test_main_clip_norm_zero(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1953,7 +1860,6 @@ def test_main_clip_norm_zero(tmp_path):
 
 
 def test_main_not_main_process(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -1992,7 +1898,6 @@ def test_main_not_main_process(tmp_path):
 
 
 def test_main_shard_dir_override(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -2031,7 +1936,6 @@ def test_main_shard_dir_override(tmp_path):
 
 
 def test_main_no_output_dir(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -2062,7 +1966,6 @@ def test_main_no_output_dir(tmp_path):
 
 
 def test_main_moe_trainable_base(tmp_path):
-
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
@@ -2075,7 +1978,6 @@ def test_main_moe_trainable_base(tmp_path):
 
     class _MoELayerWithBase(_MoELayer):
         def __init__(self):
-
             super().__init__()
 
             self.expert_pool = MagicMock(
@@ -2090,7 +1992,6 @@ def test_main_moe_trainable_base(tmp_path):
 
     class _ModelWithBase(_TinyModelWithMoE):
         def __init__(self):
-
             super().__init__()
 
             self.moe_layers = {0: _MoELayerWithBase()}
@@ -2127,13 +2028,11 @@ def test_main_moe_trainable_base(tmp_path):
 
 
 def test_broadcast_scalar_distributed():
-
     from scripts.train import _broadcast_scalar
 
     mock_dist = MagicMock()
 
     def _fake_broadcast(t, src):
-
         pass
 
     mock_dist.broadcast = _fake_broadcast

@@ -11,7 +11,6 @@ from src.routers.stress_corrected import StressCorrectedRouter
 
 @pytest.fixture
 def device() -> torch.device:
-
     if torch.cuda.is_available():
         return torch.device("cuda")
 
@@ -22,7 +21,6 @@ def device() -> torch.device:
 
 
 def make_router(hidden_dim=64, num_experts=4, top_k=2, temperature=1.0, device="cpu"):
-
     cfg = StressCorrectedRouterConfig(
         hidden_dim=hidden_dim,
         num_experts=num_experts,
@@ -35,12 +33,10 @@ def make_router(hidden_dim=64, num_experts=4, top_k=2, temperature=1.0, device="
 
 
 def make_input(batch=2, seq=4, hidden=64, device="cpu"):
-
     return torch.randn(batch, seq, hidden, device=device)
 
 
 def run_steps(router, x, n):
-
     for _ in range(n):
         router(x, record_usage=True)
 
@@ -51,7 +47,6 @@ CALIB_STEP = 200
 
 
 def make_router_calib(calib_step=CALIB_STEP, device="cpu", **kwargs):
-
     cfg = StressCorrectedRouterConfig(
         hidden_dim=kwargs.get("hidden_dim", 64),
         num_experts=kwargs.get("num_experts", 4),
@@ -66,7 +61,6 @@ def make_router_calib(calib_step=CALIB_STEP, device="cpu", **kwargs):
 
 class TestForwardShapes:
     def test_output_shapes(self, device):
-
         router = make_router(hidden_dim=64, num_experts=4, top_k=2, device=device)
 
         x = make_input(batch=3, seq=6, hidden=64, device=device)
@@ -82,7 +76,6 @@ class TestForwardShapes:
         assert (weights > 0).sum(dim=-1).eq(2).all()
 
     def test_weights_sum_to_one(self, device):
-
         router = make_router(device=device)
 
         x = make_input(batch=4, seq=8, device=device)
@@ -94,7 +87,6 @@ class TestForwardShapes:
         assert torch.allclose(sums, torch.ones_like(sums), atol=1e-5)
 
     def test_weights_nonneg(self, device):
-
         router = make_router(device=device)
 
         x = make_input(device=device)
@@ -104,7 +96,6 @@ class TestForwardShapes:
         assert (weights >= 0).all()
 
     def test_metrics_returned_when_requested(self, device):
-
         router = make_router(device=device)
 
         x = make_input(device=device)
@@ -116,7 +107,6 @@ class TestForwardShapes:
 
 class TestLambdaCalibration:
     def test_lambda_stays_default_before_calib_step(self, device):
-
         router = make_router_calib(device=device)
 
         router.train()
@@ -133,7 +123,6 @@ class TestLambdaCalibration:
             assert router.lambda_val.item() == pytest.approx(0.1)
 
     def test_lambda_initializes_at_calib_step(self, device):
-
         router = make_router_calib(device=device)
 
         router.train()
@@ -151,7 +140,6 @@ class TestLambdaCalibration:
         assert router.lambda_initialized.item()
 
     def test_lambda_not_initialized_twice(self, device):
-
         router = make_router_calib(device=device)
 
         router.train()
@@ -167,7 +155,6 @@ class TestLambdaCalibration:
         assert router.lambda_val.item() == pytest.approx(val)
 
     def test_lambda_capped_at_5(self, device):
-
         router = make_router_calib(device=device)
 
         router.train()
@@ -179,7 +166,6 @@ class TestLambdaCalibration:
         assert router.lambda_val.item() <= 5.0 + 1e-6
 
     def test_lambda_positive(self, device):
-
         router = make_router_calib(device=device)
 
         router.train()
@@ -191,7 +177,6 @@ class TestLambdaCalibration:
         assert router.lambda_val.item() > 0.0
 
     def test_step_without_forward_no_crash(self, device):
-
         router = make_router_calib(calib_step=10, device=device)
 
         router.train()
@@ -204,7 +189,6 @@ class TestLambdaCalibration:
 
 class TestOneSidedPenalty:
     def test_zero_penalty_at_fair_share(self, device):
-
         router = make_router(num_experts=4, device=device)
 
         router.eval()
@@ -221,7 +205,6 @@ class TestOneSidedPenalty:
         )
 
     def test_penalty_only_for_overloaded(self, device):
-
         router = make_router(num_experts=4, device=device)
 
         router.eval()
@@ -239,7 +222,6 @@ class TestOneSidedPenalty:
         )
 
     def test_overloaded_expert_selected_less(self, device):
-
         router = make_router(num_experts=4, top_k=1, temperature=0.5, device=device)
 
         router.eval()
@@ -280,7 +262,6 @@ class TestOneSidedPenalty:
         )
 
     def test_output_weights_use_cosine_only(self, device):
-
         router = make_router(temperature=1.0, device=device)
 
         router.eval()
@@ -315,7 +296,6 @@ class TestTauAnnealing:
     def _make_annealing_router(
         self, tau_start=1.0, tau_final=0.1, anneal_steps=100, device="cpu"
     ):
-
         cfg = StressCorrectedRouterConfig(
             hidden_dim=64,
             num_experts=4,
@@ -329,13 +309,11 @@ class TestTauAnnealing:
         return StressCorrectedRouter(cfg).to(device)
 
     def test_tau_starts_at_temperature(self, device):
-
         router = self._make_annealing_router(device=device)
 
         assert router._current_tau() == pytest.approx(router.temperature)
 
     def test_tau_decreases_over_steps(self, device):
-
         router = self._make_annealing_router(device=device)
 
         router.train()
@@ -357,7 +335,6 @@ class TestTauAnnealing:
         assert tau_100 < tau_50, "τ must keep decreasing until tau_anneal_steps"
 
     def test_tau_clamps_at_tau_final(self, device):
-
         router = self._make_annealing_router(
             tau_start=1.0, tau_final=0.1, anneal_steps=50, device=device
         )
@@ -371,7 +348,6 @@ class TestTauAnnealing:
         assert router._current_tau() == pytest.approx(0.1, abs=1e-6)
 
     def test_no_annealing_when_disabled(self, device):
-
         cfg = StressCorrectedRouterConfig(
             hidden_dim=64,
             num_experts=4,
@@ -393,7 +369,6 @@ class TestTauAnnealing:
         assert router._current_tau() == pytest.approx(0.5)
 
     def test_no_annealing_when_tau_final_equals_temperature(self, device):
-
         cfg = StressCorrectedRouterConfig(
             hidden_dim=64,
             num_experts=4,
@@ -415,7 +390,6 @@ class TestTauAnnealing:
         assert router._current_tau() == pytest.approx(0.5)
 
     def test_tau_affects_output_weight_sharpness(self, device):
-
         router_sharp = self._make_annealing_router(
             tau_start=1.0, tau_final=0.1, anneal_steps=10, device=device
         )
@@ -459,7 +433,6 @@ class TestTauAnnealing:
 
 class TestWelford:
     def test_welford_accumulates_after_forward(self, device):
-
         router = make_router(device=device)
 
         router.train()
@@ -478,7 +451,6 @@ class TestWelford:
         )
 
     def test_welford_not_in_logit(self, device):
-
         router = make_router(device=device)
 
         router.eval()
@@ -520,7 +492,6 @@ class TestWelford:
 
 class TestNoiseAnnealing:
     def _make_annealing_router(self, noise_std=0.1, anneal_steps=100, device="cpu"):
-
         cfg = StressCorrectedRouterConfig(
             hidden_dim=64,
             num_experts=4,
@@ -533,13 +504,11 @@ class TestNoiseAnnealing:
         return StressCorrectedRouter(cfg).to(device)
 
     def test_noise_std_starts_at_config_value(self, device):
-
         router = self._make_annealing_router(device=device)
 
         assert router._current_noise_std() == pytest.approx(router.noise_std)
 
     def test_noise_std_decreases_over_steps(self, device):
-
         router = self._make_annealing_router(device=device)
 
         router.train()
@@ -561,7 +530,6 @@ class TestNoiseAnnealing:
         assert n100 < n50, "noise_std must keep decreasing until noise_anneal_steps"
 
     def test_noise_std_reaches_zero_at_anneal_steps(self, device):
-
         router = self._make_annealing_router(anneal_steps=50, device=device)
 
         router.train()
@@ -573,7 +541,6 @@ class TestNoiseAnnealing:
         assert router._current_noise_std() == pytest.approx(0.0, abs=1e-7)
 
     def test_no_annealing_when_disabled(self, device):
-
         cfg = StressCorrectedRouterConfig(
             hidden_dim=64,
             num_experts=4,
@@ -594,7 +561,6 @@ class TestNoiseAnnealing:
         assert router._current_noise_std() == pytest.approx(0.05)
 
     def test_noise_std_in_get_custom_metrics(self, device):
-
         router = self._make_annealing_router(
             noise_std=0.1, anneal_steps=100, device=device
         )
@@ -618,7 +584,6 @@ class TestNoiseAnnealing:
 
 class TestPrototypeInit:
     def test_initialize_prototypes_changes_W(self, device):
-
         router = make_router(hidden_dim=64, num_experts=4, device=device)
 
         W_before = router.W.data.clone()
@@ -632,7 +597,6 @@ class TestPrototypeInit:
         )
 
     def test_initialized_prototypes_are_unit_normalized(self, device):
-
         router = make_router(hidden_dim=64, num_experts=4, device=device)
 
         activations = torch.randn(200, 64, device=device)
@@ -646,7 +610,6 @@ class TestPrototypeInit:
         )
 
     def test_initialized_prototypes_improve_cosine_similarity(self, device):
-
         torch.manual_seed(0)
 
         hidden_dim, num_experts = 64, 4
@@ -685,7 +648,6 @@ class TestPrototypeInit:
         )
 
     def test_initialize_prototypes_no_crash_with_exact_k_tokens(self, device):
-
         router = make_router(hidden_dim=64, num_experts=4, device=device)
 
         activations = torch.randn(4, 64, device=device)
@@ -693,7 +655,6 @@ class TestPrototypeInit:
         router.initialize_prototypes_from_data(activations, n_iter=5)
 
     def test_kmeans_init_all_experts_assigned(self, device):
-
         from src.routers.stress_corrected import _kmeans_init
 
         torch.manual_seed(1)
