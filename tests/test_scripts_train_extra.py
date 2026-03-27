@@ -356,7 +356,6 @@ def test_build_model_mocked(tmp_path):
                 ):
                     with patch("src.experts.lora.LoRAConfig"):
                         with patch("src.project_types.ExpertType"):
-                            import src.models
 
                             model = build_model(cfg)
     assert model is not None
