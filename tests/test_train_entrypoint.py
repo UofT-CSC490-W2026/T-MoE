@@ -1,0 +1,16 @@
+"""Tests for train.py entrypoint."""
+from unittest.mock import patch
+
+
+def test_train_entrypoint_imports():
+    """train.py imports main from scripts.train."""
+    import train  # noqa: F401
+
+
+def test_train_entrypoint_main_not_called_on_import():
+    """Importing train.py should not call main()."""
+    with patch("scripts.train.main") as mock_main:
+        import importlib
+        import train
+        importlib.reload(train)
+        mock_main.assert_not_called()
