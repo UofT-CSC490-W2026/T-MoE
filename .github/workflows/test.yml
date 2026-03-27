@@ -25,9 +25,13 @@ jobs:
         run: |
           COVERAGE=$(grep '^TOTAL' coverage.txt | awk '{print $NF}')
           echo "COVERAGE=$COVERAGE" >> "$GITHUB_ENV"
-      - name: Update README.md with coverage
+      - name: Update README.md with coverage badge
         run: |
-          sed -i "s/^Coverage: .*$/Coverage: $COVERAGE/" README.md
+          NUM=$(echo "$COVERAGE" | tr -d '%')
+          if [ "$(echo "$NUM >= 80" | bc)" -eq 1 ]; then COLOR="brightgreen"
+          elif [ "$(echo "$NUM >= 60" | bc)" -eq 1 ]; then COLOR="yellow"
+          else COLOR="red"; fi
+          sed -i "s|!\[Coverage\](https://img.shields.io/badge/coverage-.*)|![Coverage](https://img.shields.io/badge/coverage-${COVERAGE}25-${COLOR})|" README.md
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"

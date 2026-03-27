@@ -1,5 +1,3 @@
-Coverage: 62%
-
 # T-MoE
 
 Mixture-of-Experts fine-tuning of GPT-Neo using LoRA adapters and the SPAR router.
@@ -115,3 +113,7 @@ pre-commit install
 
 2. **Cloud Infrastructure**
 See [infra/README.md](infra/README.md) for environment setup instructions for Modal, AWS, WandB, and HuggingFace.
+
+## Coverage
+
+![Coverage](https://img.shields.io/badge/coverage---25-lightgrey)
