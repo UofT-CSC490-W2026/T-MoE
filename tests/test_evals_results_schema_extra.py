@@ -1,6 +1,5 @@
 """Extra coverage for evals/results_schema.py — lines 354 and 372."""
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 
 def test_log_results_to_wandb_no_checkpoint_step_with_mmlu():

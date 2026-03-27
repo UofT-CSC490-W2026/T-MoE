@@ -92,7 +92,7 @@ def test_build_model_from_config():
             "model_type": "gpt_neo", "variant": "125m", "hidden_dim": 768,
             "intermediate_dim": 3072
         }):
-            model = build_model_from_config(config, device="cpu")
+            build_model_from_config(config, device="cpu")
 
 
 def test_load_model_for_eval_not_found(tmp_path):
@@ -477,7 +477,7 @@ def test_run_lm_harness_eval_different_batch_sizes():
         with patch("evals.lm_harness_runner._build_harness_model", return_value=mock_harness_model):
             with patch("evals.lm_harness_runner._simple_evaluate", return_value=mock_eval_result):
                 with patch("evals.lm_harness_runner.build_results_payload", return_value={"task": "lm_harness"}):
-                    result = run_lm_harness_eval(
+                    run_lm_harness_eval(
                         config={}, checkpoint_path="ckpt.pt",
                         model=mock_model, checkpoint_info={},
                         device="cpu",
@@ -493,7 +493,7 @@ def test_run_lm_harness_eval_no_tasks():
 
     with patch("evals.lm_harness_runner._load_tokenizer_for_model", return_value=mock_tokenizer):
         with patch("evals.lm_harness_runner.build_results_payload", return_value={"task": "lm_harness"}):
-            result = run_lm_harness_eval(
+            run_lm_harness_eval(
                 config={}, checkpoint_path="ckpt.pt",
                 model=mock_model, checkpoint_info={},
                 device="cpu",

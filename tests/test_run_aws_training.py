@@ -1,5 +1,4 @@
 """Tests for run_aws_training.py — lightweight mocked tests."""
-import sys
 import argparse
 from unittest.mock import patch, MagicMock
 import pytest
@@ -477,7 +476,7 @@ def test_load_configs():
     mock_infra.config.config.load_pipeline_config.return_value = mock_pc
     mock_src_utils = MagicMock()
     mock_src_utils.load_experiment_config.return_value = mock_ec
-    mock_omegaconf_mod = MagicMock()
+    MagicMock()
     with patch.dict("sys.modules", {
         "infra": mock_infra,
         "infra.config": mock_infra.config,

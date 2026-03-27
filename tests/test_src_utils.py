@@ -1,8 +1,6 @@
 """Tests for src/utils/ modules."""
-import sys
 import pytest
 from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 
 # ── config_loader ──────────────────────────────────────────────────────────────
@@ -27,7 +25,6 @@ def test_load_experiment_config_bare_name(tmp_path):
     from src.utils.config_loader import load_experiment_config
     from src.project_types import EXPERIMENTS_DIR
     # Use a real experiment file
-    import os
     exp_files = list(EXPERIMENTS_DIR.glob("*.yaml"))
     if not exp_files:
         pytest.skip("No experiment files found")  # pragma: no cover

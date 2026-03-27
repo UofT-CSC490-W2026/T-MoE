@@ -1,7 +1,6 @@
 """Coverage tests for evals/perplexity.py — targeting uncovered lines."""
 from __future__ import annotations
 
-import math
 import queue
 import struct
 import tempfile
@@ -15,14 +14,12 @@ import torch
 from evals.perplexity import (
     _autocast_context,
     _cfg_select,
-    _document_windows,
     _run_batched_forward,
     _tokenize_worker,
     _Window,
     compute_document_nll,
     evaluate_text_documents,
     evaluate_token_shards,
-    infer_eval_context_length,
     summarize_language_model_metrics,
 )
 

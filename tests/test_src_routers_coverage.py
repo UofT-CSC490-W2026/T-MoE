@@ -1,8 +1,7 @@
 """Tests for src/routers/ coverage gaps — base, deepseek, standard, metabolic, stress."""
 import pytest
 import torch
-import torch.nn as nn
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 
 # ── BaseRouter ─────────────────────────────────────────────────────────────────
@@ -535,7 +534,6 @@ def test_stress_router_get_custom_metrics():
 
 def test_stress_router_get_custom_metrics_with_indices():
     r = _make_stress_router()
-    x = torch.randn(2, 4, 64)
     indices = torch.randint(0, 4, (2, 4, 2))
     weights = torch.randn(8, 4).abs()
     metrics = r.get_custom_metrics(indices, weights)
@@ -754,7 +752,6 @@ def test_stress_router_update_welford_no_active():
     x_norm = torch.randn(1, 1, 4)
     topk_idx = torch.zeros(1, 1, 1, dtype=torch.long)
     W_norm = torch.randn(2, 4)
-    n_before = router.welford_n.clone()
     # Force w_sum to be zero by using an empty mask — pass topk_idx that maps to no tokens
     # We can't easily force w_sum=0 without patching, so just verify it runs without error
     router._update_welford(x_norm, topk_idx, W_norm)

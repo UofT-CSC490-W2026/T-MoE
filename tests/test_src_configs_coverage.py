@@ -1,6 +1,5 @@
 """Tests for src/configs/ coverage gaps — dataset, model."""
 import pytest
-from unittest.mock import patch, MagicMock
 
 
 # ── dataset config ─────────────────────────────────────────────────────────────

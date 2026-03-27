@@ -1,5 +1,4 @@
 """Tests for scripts/check_routing_signal.py."""
-from unittest.mock import patch
 import torch
 
 

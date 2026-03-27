@@ -1,9 +1,5 @@
 """Tests for scripts/prepare_data.py — lightweight mocked tests."""
-import struct
-import numpy as np
-import pytest
-from unittest.mock import patch, MagicMock, call
-from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 
 def test_parse_args():

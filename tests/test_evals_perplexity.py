@@ -446,7 +446,8 @@ def test_load_tokenizer_for_model():
 
 def _write_val_shard(path, tokens):
     """Write a val shard binary file."""
-    import struct, numpy as np
+    import struct
+    import numpy as np
     arr = np.array(tokens, dtype=np.uint16)
     with open(path, "wb") as f:
         f.write(struct.pack("<Q", len(tokens)))
@@ -509,7 +510,8 @@ def test_evaluate_token_shards_max_tokens(tmp_path):
 
 def test_evaluate_token_shards_uint32(tmp_path):
     """Covers the uint32 shard path."""
-    import struct, numpy as np
+    import struct
+    import numpy as np
     from evals.perplexity import evaluate_token_shards
 
     tokens = [i % VOCAB for i in range(100)]
@@ -535,7 +537,8 @@ def test_evaluate_token_shards_uint32(tmp_path):
 
 def test_evaluate_token_shards_legacy_shard(tmp_path):
     """Covers the legacy 8-byte header detection path."""
-    import struct, numpy as np
+    import struct
+    import numpy as np
     from evals.perplexity import evaluate_token_shards
 
     tokens = [i % VOCAB for i in range(100)]
@@ -563,7 +566,8 @@ def test_evaluate_token_shards_no_tokens_scored(tmp_path):
     from evals.perplexity import evaluate_token_shards
 
     # Write a shard with only 1 token — too short to score anything
-    import struct, numpy as np
+    import struct
+    import numpy as np
     arr = np.array([42], dtype=np.uint16)
     with open(tmp_path / "val_shard_0000.bin", "wb") as f:
         f.write(struct.pack("<Q", 1))

@@ -2,7 +2,7 @@
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 
 # ── BaseMoELayer ───────────────────────────────────────────────────────────────
@@ -321,7 +321,6 @@ def test_lora_moe_layer_init_shared_base_lora_out_proj_none():
     router = MetabolicRouter(router_cfg)
 
     from src.core.registry import ExpertRegistry
-    from src.project_types import ExpertType
     ExpertRegistry._registries["experts"]["no_out_proj"] = NoOutProjExpert
 
     # Build layer manually so we can test _init_shared_base_lora with no out_proj
@@ -365,7 +364,6 @@ def test_lora_moe_layer_forward_all_experts_zero_weight():
     from src.experts.lora import LoRAConfig
     from src.layers.lora_moe import LoRAMoELayer
     from src.routers.base import BaseRouter
-    from src.configs.router import StandardRouterConfig
 
     class ZeroWeightRouter(BaseRouter):
         """Returns zero weights for all experts except expert 0."""

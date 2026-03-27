@@ -1,5 +1,4 @@
 """Extra coverage for scripts/train.py — missing lines."""
-import math
 import struct
 import numpy as np
 import pytest
@@ -126,14 +125,14 @@ def test_shard_dataset_getitem_wrap(tmp_path):
     # Use seq_len close to total tokens so the last sequence must wrap
     tokens = list(range(20))
     _write_shard(tmp_path / "train_shard_0000.bin", tokens)
-    ds = ShardDataset(tmp_path, "train", seq_len=15)
+    ShardDataset(tmp_path, "train", seq_len=15)
     # With 20 tokens and seq_len=15, n_seqs = (20-1)//15 = 1
     # seq[0] starts at 0, needs tokens[0:16] — fits without wrap
     # Force wrap by using seq_len=18: needs 19 tokens, only 20 available
     # Access idx=0: global_start=0, needs 19 tokens from 20 → no wrap
     # Use two small shards so wrap happens across shard boundary
     _write_shard(tmp_path / "train_shard_0001.bin", list(range(20, 25)))
-    ds2 = ShardDataset(tmp_path, "train", seq_len=23)
+    ShardDataset(tmp_path, "train", seq_len=23)
     # total=25 tokens, seq_len=23 → n_seqs=1, needs 24 tokens → no wrap
     # The wrap happens when pos >= cumulative[-1] and resets to 0
     # Trigger it: seq_len > total_tokens forces wrap
@@ -316,15 +315,12 @@ def test_log_wandb_no_run():
 
 def test_log_wandb_success():
     from scripts.train import log_wandb
-    import scripts.train as train_mod
     mock_wandb = MagicMock()
     mock_run = MagicMock()
     mock_wandb.run = mock_run
     with patch("scripts.train.is_main_process", return_value=True):
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             # Reload to pick up the mock
-            import importlib
-            orig_wandb = getattr(train_mod, "wandb", None)
             log_wandb({"loss": 1.0})
             # Just verify no exception — wandb.run.log may or may not be called
             # depending on import caching

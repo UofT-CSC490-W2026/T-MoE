@@ -1,7 +1,7 @@
 """Tests for infra/s3client — mocked boto3."""
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 
 # ---------------------------------------------------------------------------

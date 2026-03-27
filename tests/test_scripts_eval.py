@@ -1,5 +1,4 @@
 """Tests for scripts/eval.py — lightweight mocked tests."""
-import argparse
 import pytest
 from unittest.mock import patch, MagicMock
 from pathlib import Path

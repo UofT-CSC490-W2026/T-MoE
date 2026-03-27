@@ -1,0 +1,30 @@
+[run]
+omit =
+    */tests/*
+    */__pycache__/*
+    */site-packages/*
+    A1/*
+    A2/*
+    A3/*
+    A4/*
+    run_modal_training.py
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+omit =
+    */tests/*
+    */__pycache__/*
+    */site-packages/*
+    A1/*
+    A2/*
+    A3/*
+    A4/*
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    ^\s*pass\s*$
+    ^\s*\.\.\.\s*$

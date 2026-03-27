@@ -4,7 +4,6 @@ import numpy as np
 import torch
 import pytest
 from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 
 def test_shard_dataset(tmp_path):

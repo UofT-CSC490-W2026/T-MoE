@@ -1,11 +1,8 @@
 """Tests for src/training/ modules — checkpoint, fsdp_utils, precision."""
-import json
-import os
 import pytest
 import torch
 import torch.nn as nn
 from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 
 # ── precision ──────────────────────────────────────────────────────────────────
@@ -110,7 +107,7 @@ def test_wrap_model_for_distributed_ddp_strategy():
 
     with patch("src.training.fsdp_utils.wrap_model_with_ddp") as mock_ddp:
         mock_ddp.return_value = model
-        result = wrap_model_for_distributed(model, cfg, 0, torch.device("cpu"))
+        wrap_model_for_distributed(model, cfg, 0, torch.device("cpu"))
         mock_ddp.assert_called_once()
 
 
@@ -125,7 +122,7 @@ def test_wrap_model_for_distributed_fsdp_strategy():
 
     with patch("src.training.fsdp_utils.wrap_model_with_fsdp") as mock_fsdp:
         mock_fsdp.return_value = model
-        result = wrap_model_for_distributed(model, cfg, 0, torch.device("cpu"))
+        wrap_model_for_distributed(model, cfg, 0, torch.device("cpu"))
         mock_fsdp.assert_called_once()
 
 
@@ -138,7 +135,7 @@ def test_wrap_model_for_distributed_no_strategy():
 
     with patch("src.training.fsdp_utils.wrap_model_with_ddp") as mock_ddp:
         mock_ddp.return_value = model
-        result = wrap_model_for_distributed(model, cfg, 0, torch.device("cpu"))
+        wrap_model_for_distributed(model, cfg, 0, torch.device("cpu"))
         mock_ddp.assert_called_once()
 
 
@@ -478,7 +475,7 @@ def test_remap_legacy_moe_key_mlp_experts_base_weight():
 
 
 def test_checkpoint_load_with_legacy_keys(tmp_path):
-    from src.training.checkpoint import CheckpointManager, _remap_legacy_moe_state_dict
+    from src.training.checkpoint import CheckpointManager
     model = nn.Linear(10, 10)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     manager = CheckpointManager(str(tmp_path))

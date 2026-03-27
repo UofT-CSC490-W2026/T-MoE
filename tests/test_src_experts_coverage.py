@@ -2,7 +2,6 @@
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import patch, MagicMock
 
 
 # ── BaseExpert ─────────────────────────────────────────────────────────────────
@@ -197,7 +196,7 @@ def test_shared_base_lora_forward():
 # ── LoRAMLPExpert ──────────────────────────────────────────────────────────────
 
 def test_lora_mlp_expert_freeze_base_weights():
-    from src.experts.lora import LoRAConfig, LoRAMLPExpert
+    from src.experts.lora import LoRAConfig
     from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)

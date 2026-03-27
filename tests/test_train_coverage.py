@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import math
 import struct
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import patch, MagicMock
 
 import numpy as np
 import pytest
@@ -788,7 +787,6 @@ def test_main_early_stopping(tmp_path):
 
     tiny_model = _TinyModel()
     call_count = [0]
-    original_evaluate = None
 
     def _fake_evaluate(model, val_loader, device, max_batches=20):
         call_count[0] += 1

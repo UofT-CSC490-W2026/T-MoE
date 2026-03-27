@@ -2,13 +2,9 @@
 from __future__ import annotations
 
 import struct
-import multiprocessing
-from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 import numpy as np
-import pytest
-import torch
 
 
 # ── _iter_token_arrays: streaming path (lines 157-178) ────────────────────────
@@ -110,7 +106,6 @@ def test_iter_token_arrays_streaming_uint32_vocab():
 def test_iter_token_arrays_non_streaming():
     """Non-streaming path uses multiprocessing.Pool."""
     from scripts.prepare_data import _iter_token_arrays
-    from datasets import IterableDataset  # real class for isinstance check
 
     class _FakeDataset:
         def __iter__(self):

@@ -1,9 +1,8 @@
 """Coverage tests for src/routers/stress_corrected.py — targeting uncovered lines."""
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 import torch
 
 from src.configs.router import StressCorrectedRouterConfig

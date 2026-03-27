@@ -1,5 +1,4 @@
 """Tests for src/metrics/ coverage gaps — router_metrics."""
-import pytest
 import torch
 import numpy as np
 from unittest.mock import patch, MagicMock

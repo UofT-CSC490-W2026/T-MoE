@@ -73,7 +73,7 @@ def test_run_sagemaker_pipeline_with_tf_outputs():
     mock_run_proc.run_processing_job.return_value = "arn:123"
 
     with patch.dict(sys.modules, {"infra.data_ingestion.run_processing": mock_run_proc}):
-        result = run_sagemaker_pipeline(mock_config)
+        run_sagemaker_pipeline(mock_config)
     mock_run_proc.apply_terraform_outputs.assert_called_once()
 
 

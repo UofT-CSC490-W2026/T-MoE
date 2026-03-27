@@ -243,7 +243,7 @@ def test_wrap_model_with_fsdp():
         def modules(self):
             return iter([self])
 
-    fake_instance = _FakeFSDP()
+    _FakeFSDP()
 
     with patch("src.training.fsdp_utils._get_fsdp_wrap_targets", return_value={nn.Linear}), \
          patch("torch.distributed.fsdp.wrap.ModuleWrapPolicy", return_value=MagicMock()), \
@@ -286,7 +286,7 @@ def test_wrap_model_with_fsdp_with_mixed_precision_and_checkpointing():
          patch("src.training.precision.is_mixed_precision", return_value=True):
         import torch.distributed.fsdp as fsdp_mod
         with patch.object(fsdp_mod, "FullyShardedDataParallel", _FakeFSDP):
-            result = wrap_model_with_fsdp(model, cfg, device=torch.device("cpu"))
+            wrap_model_with_fsdp(model, cfg, device=torch.device("cpu"))
     mock_ckpt.assert_called_once()
 
 
