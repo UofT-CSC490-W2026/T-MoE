@@ -6,11 +6,8 @@ def test_parse_args():
 
     with patch("sys.argv", ["prepare_data.py", "--config", "test.yaml"]):
         args = parse_args()
-
         assert args.config == "test.yaml"
-
         assert args.dataset is None
-
         assert args.out_dir is None
 
 
@@ -32,11 +29,8 @@ def test_parse_args_with_overrides():
         ],
     ):
         args = parse_args()
-
         assert args.dataset == "wikitext-2"
-
         assert args.out_dir == "/tmp/out"
-
         assert args.num_proc == 4
 
 
@@ -87,15 +81,12 @@ def test_get_tokenizer():
     ):
         with patch("transformers.AutoTokenizer") as MockTok:
             MockTok.from_pretrained.return_value = mock_tok
-
             tok, eos_id = get_tokenizer("gpt-neo-125m")
-
             assert eos_id == 50256
 
 
 def test_tokenize_batch():
     from scripts.prepare_data import _tokenize_batch
-
     import scripts.prepare_data as pd_mod
 
     mock_tok = MagicMock()
@@ -108,9 +99,7 @@ def test_tokenize_batch():
         with patch.object(pd_mod, "_worker_tok_name", None):
             with patch("transformers.AutoTokenizer") as MockTok:
                 MockTok.from_pretrained.return_value = mock_tok
-
                 result = _tokenize_batch((["hello world", "  "], "gpt-neo-125m", 50256))
-
                 assert len(result) == 1
 
 
@@ -131,7 +120,6 @@ def test_main_prepare_data(tmp_path):
     ):
         with patch("scripts.prepare_data.tokenize_and_pack") as mock_pack:
             main()
-
             mock_pack.assert_called_once()
 
 
@@ -160,5 +148,4 @@ def test_main_prepare_data_with_dataset_override(tmp_path):
     ):
         with patch("scripts.prepare_data.tokenize_and_pack") as mock_pack:
             main()
-
             mock_pack.assert_called_once()

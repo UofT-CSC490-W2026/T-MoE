@@ -21,7 +21,6 @@ def test_frozen_mlp_forward():
 
 def test_routing_spread():
     from scripts.check_routing_signal import routing_spread
-
     import torch.nn.functional as F
 
     x_flat = F.normalize(torch.randn(16, 768), dim=-1)

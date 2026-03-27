@@ -1,7 +1,5 @@
 import sys
-
 from omegaconf import OmegaConf
-
 from scripts.train import init_wandb
 
 
@@ -15,7 +13,6 @@ def test_init_wandb_defaults_to_online_when_env_is_disabled(monkeypatch):
 
         def init(self, **kwargs):
             self.init_kwargs = kwargs
-
             return _FakeRun()
 
     fake_wandb = _FakeWandb()

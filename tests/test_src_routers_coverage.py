@@ -1,7 +1,5 @@
 import pytest
-
 import torch
-
 from unittest.mock import MagicMock
 
 
@@ -101,7 +99,6 @@ def test_base_router_get_state():
 
 def _make_standard_router(hidden=64, num_experts=4, top_k=2, use_aux=False):
     from src.routers.standard import StandardRouter
-
     from src.configs.router import StandardRouterConfig
 
     cfg = StandardRouterConfig(
@@ -207,7 +204,6 @@ def test_standard_router_compute_aux_loss_full():
 
 def _make_deepseek_router(hidden=64, num_experts=4, top_k=2, use_sigmoid=False):
     from src.routers.deepseek import DeepSeekRouter
-
     from src.configs.router import DeepSeekRouterConfig
 
     cfg = DeepSeekRouterConfig(
@@ -337,7 +333,6 @@ def test_deepseek_router_sync_usage_not_distributed():
 
 def _make_metabolic_router(hidden=64, num_experts=4, top_k=2):
     from src.routers.metabolic import MetabolicRouter
-
     from src.configs.router import MetabolicRouterConfig
 
     cfg = MetabolicRouterConfig(hidden_dim=hidden, num_experts=num_experts, top_k=top_k)
@@ -347,7 +342,6 @@ def _make_metabolic_router(hidden=64, num_experts=4, top_k=2):
 
 def test_metabolic_router_top_k_exceeds_experts():
     from src.routers.metabolic import MetabolicRouter
-
     from src.configs.router import MetabolicRouterConfig
 
     with pytest.raises(ValueError, match="top_k"):
@@ -515,7 +509,6 @@ def test_metabolic_router_compute_aux_loss():
 
 def _make_stress_router(hidden=64, num_experts=4, top_k=2):
     from src.routers.stress_corrected import StressCorrectedRouter
-
     from src.configs.router import StressCorrectedRouterConfig
 
     cfg = StressCorrectedRouterConfig(
@@ -527,7 +520,6 @@ def _make_stress_router(hidden=64, num_experts=4, top_k=2):
 
 def test_stress_router_top_k_exceeds_experts():
     from src.routers.stress_corrected import StressCorrectedRouter
-
     from src.configs.router import StressCorrectedRouterConfig
 
     with pytest.raises(ValueError, match="top_k"):
@@ -987,7 +979,6 @@ def test_deepseek_router_record_usage_accumulate():
 
 def test_expert_choice_router_nan_guard():
     from src.routers.expert_choice import ExpertChoiceRouter
-
     from src.configs.router import ExpertChoiceRouterConfig
 
     cfg = ExpertChoiceRouterConfig(hidden_dim=4, num_experts=2, top_k=1)
@@ -996,7 +987,6 @@ def test_expert_choice_router_nan_guard():
 
     with torch.no_grad():
         router.gate.weight.fill_(float("nan"))
-
     x = torch.randn(2, 4, 4)
 
     weights, _, _ = router(x)
@@ -1006,7 +996,6 @@ def test_expert_choice_router_nan_guard():
 
 def test_expert_choice_router_compute_aux_loss():
     from src.routers.expert_choice import ExpertChoiceRouter
-
     from src.configs.router import ExpertChoiceRouterConfig
 
     cfg = ExpertChoiceRouterConfig(hidden_dim=4, num_experts=2, top_k=1)
@@ -1020,7 +1009,6 @@ def test_expert_choice_router_compute_aux_loss():
 
 def test_standard_router_clear_aux_state_explicit():
     from src.routers.standard import StandardRouter
-
     from src.configs.router import StandardRouterConfig
 
     cfg = StandardRouterConfig(hidden_dim=64, num_experts=4, top_k=2, use_aux_loss=True)
@@ -1046,7 +1034,6 @@ def test_standard_router_clear_aux_state_explicit():
 
 def test_stress_router_get_custom_metrics_none_both():
     from src.routers.stress_corrected import StressCorrectedRouter
-
     from src.configs.router import StressCorrectedRouterConfig
 
     cfg = StressCorrectedRouterConfig(hidden_dim=64, num_experts=4, top_k=2)
@@ -1060,7 +1047,6 @@ def test_stress_router_get_custom_metrics_none_both():
 
 def test_stress_router_update_welford_no_active():
     from src.routers.stress_corrected import StressCorrectedRouter
-
     from src.configs.router import StressCorrectedRouterConfig
 
     cfg = StressCorrectedRouterConfig(hidden_dim=4, num_experts=2, top_k=1)

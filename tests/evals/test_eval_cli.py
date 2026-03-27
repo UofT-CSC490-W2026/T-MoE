@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from scripts.eval import main, run_task
 
 
@@ -15,14 +14,11 @@ def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
 
     def fake_load_experiment_config(config_path_or_name, overrides=None):
         captured["config_arg"] = config_path_or_name
-
         captured["overrides"] = overrides
-
         return {"experiment_name": "demo"}
 
     def fake_run_perplexity_eval(**kwargs):
         captured["kwargs"] = kwargs
-
         return {"task": "perplexity", "results": {}}
 
     monkeypatch.setattr(
@@ -75,6 +71,7 @@ def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
 
 
 def test_run_task_uses_default_eval_dir(monkeypatch):
+
     def fake_load_experiment_config(config_path_or_name, overrides=None):
         return {"experiment_name": "demo_exp"}
 
@@ -82,7 +79,6 @@ def test_run_task_uses_default_eval_dir(monkeypatch):
 
     def fake_run_perplexity_eval(**kwargs):
         captured["output_path"] = kwargs["output_path"]
-
         return {"ok": True}
 
     monkeypatch.setattr(
@@ -166,7 +162,6 @@ def test_run_task_dispatches_lm_harness(monkeypatch, tmp_path):
 
     def fake_run_lm_harness_eval(**kwargs):
         captured.update(kwargs)
-
         return {"task": "lm_harness"}
 
     monkeypatch.setattr("scripts.eval.run_lm_harness_eval", fake_run_lm_harness_eval)
@@ -215,7 +210,6 @@ def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
 
     def fake_run_efficiency_eval(**kwargs):
         captured.update(kwargs)
-
         return {"task": "efficiency"}
 
     monkeypatch.setattr("scripts.eval.run_efficiency_eval", fake_run_efficiency_eval)
@@ -282,9 +276,7 @@ def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
 
     def fake_log_results_to_wandb(payload, config):
         captured["payload"] = payload
-
         captured["config"] = config
-
         return True
 
     monkeypatch.setattr("scripts.eval.log_results_to_wandb", fake_log_results_to_wandb)
@@ -331,7 +323,6 @@ def test_run_task_sweeps_all_checkpoints_into_history_outputs(monkeypatch, tmp_p
 
     def fake_run_perplexity_eval(**kwargs):
         captured.append(kwargs)
-
         return {
             "task": "perplexity",
             "experiment_name": "demo",

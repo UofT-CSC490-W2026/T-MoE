@@ -1,11 +1,7 @@
 import struct
-
 import numpy as np
-
 import torch
-
 import pytest
-
 from unittest.mock import patch, MagicMock
 
 
@@ -18,9 +14,7 @@ def test_shard_dataset(tmp_path):
 
     with open(shard_path, "wb") as f:
         f.write(struct.pack("<Q", len(tokens)))
-
         f.write(tokens.tobytes())
-
     ds = ShardDataset(tmp_path, "train", seq_len=10)
 
     assert len(ds) > 0
@@ -41,9 +35,7 @@ def test_shard_dataset_versioned(tmp_path):
 
     with open(shard_path, "wb") as f:
         f.write(struct.pack("<QH", len(tokens), 1))
-
         f.write(tokens.tobytes())
-
     ds = ShardDataset(tmp_path, "train", seq_len=10)
 
     assert len(ds) > 0
@@ -69,9 +61,7 @@ def test_shard_dataset_unknown_dtype(tmp_path):
 
     with open(shard_path, "wb") as f:
         f.write(struct.pack("<QH", len(tokens), 99))
-
         f.write(tokens.tobytes())
-
     with pytest.raises(ValueError, match="Unknown dtype_flag"):
         ShardDataset(tmp_path, "train", seq_len=10)
 
@@ -85,9 +75,7 @@ def test_shard_dataset_wraparound(tmp_path):
 
     with open(shard_path, "wb") as f:
         f.write(struct.pack("<Q", len(tokens)))
-
         f.write(tokens.tobytes())
-
     ds = ShardDataset(tmp_path, "train", seq_len=10)
 
     ids, labels = ds[len(ds) - 1]
@@ -124,9 +112,7 @@ def test_parse_args():
 
     with patch("sys.argv", ["train.py", "--config", "test.yaml"]):
         args, overrides = parse_args()
-
         assert args.config == "test.yaml"
-
         assert args.resume is None
 
 
@@ -137,7 +123,6 @@ def test_parse_args_with_resume():
         "sys.argv", ["train.py", "--config", "test.yaml", "--resume", "ckpt.pt"]
     ):
         args, overrides = parse_args()
-
         assert args.resume == "ckpt.pt"
 
 

@@ -1,7 +1,5 @@
 import torch
-
 from src.configs.router import SwitchRouterConfig
-
 from src.routers.standard import SwitchRouter
 
 

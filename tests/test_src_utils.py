@@ -1,5 +1,4 @@
 import pytest
-
 from unittest.mock import patch, MagicMock
 
 
@@ -29,14 +28,12 @@ def test_load_experiment_config_with_overrides(tmp_path):
 
 def test_load_experiment_config_bare_name(tmp_path):
     from src.utils.config_loader import load_experiment_config
-
     from src.project_types import EXPERIMENTS_DIR
 
     exp_files = list(EXPERIMENTS_DIR.glob("*.yaml"))
 
     if not exp_files:
         pytest.skip("No experiment files found")
-
     stem = exp_files[0].stem
 
     cfg = load_experiment_config(stem)
@@ -73,7 +70,6 @@ def test_read_last_checkpoint_metrics_no_checkpoints(tmp_path):
 
 def test_read_last_checkpoint_metrics_with_checkpoint(tmp_path):
     import json
-
     from src.utils.training_workflow import _read_last_checkpoint_metrics
 
     ckpt_dir = tmp_path / "checkpoints"
@@ -91,7 +87,6 @@ def test_read_last_checkpoint_metrics_with_checkpoint(tmp_path):
 
 def test_execute_training_workflow_config_not_found(tmp_path):
     from src.utils.training_workflow import execute_training_workflow
-
     from omegaconf import OmegaConf
 
     cfg = OmegaConf.create({"experiment_name": "nonexistent_exp_xyz"})
@@ -102,16 +97,13 @@ def test_execute_training_workflow_config_not_found(tmp_path):
 
 def test_execute_training_workflow_runs(tmp_path):
     from src.utils.training_workflow import execute_training_workflow
-
     from omegaconf import OmegaConf
-
     from src.project_types import EXPERIMENTS_DIR
 
     exp_files = list(EXPERIMENTS_DIR.glob("*.yaml"))
 
     if not exp_files:
         pytest.skip("No experiment files found")
-
     cfg = OmegaConf.create({"experiment_name": exp_files[0].stem})
 
     mock_shard_path = MagicMock()
@@ -121,9 +113,7 @@ def test_execute_training_workflow_runs(tmp_path):
     with patch("src.configs.dataset.get_shard_dir", return_value=mock_shard_path):
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-
             with patch("torch.cuda.is_available", return_value=False):
                 with patch("torch.cuda.device_count", return_value=0):
                     output_dir, metrics = execute_training_workflow(cfg, str(tmp_path))
-
                     assert isinstance(output_dir, str)

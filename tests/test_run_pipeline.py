@@ -1,7 +1,5 @@
 import sys
-
 from unittest.mock import patch, MagicMock
-
 import pytest
 
 
@@ -37,7 +35,6 @@ def test_load_configuration_success():
         from run_pipeline import load_configuration
 
         result = load_configuration()
-
         assert result is mock_config
 
 
@@ -59,7 +56,6 @@ def test_main_keyboard_interrupt():
     with patch("run_pipeline.load_configuration", side_effect=KeyboardInterrupt):
         with pytest.raises(SystemExit) as exc_info:
             main()
-
         assert exc_info.value.code == 130
 
 
@@ -69,7 +65,6 @@ def test_main_value_error():
     with patch("run_pipeline.load_configuration", side_effect=ValueError("bad")):
         with pytest.raises(SystemExit) as exc_info:
             main()
-
         assert exc_info.value.code == 1
 
 
@@ -79,7 +74,6 @@ def test_main_import_error():
     with patch("run_pipeline.load_configuration", side_effect=ImportError("missing")):
         with pytest.raises(SystemExit) as exc_info:
             main()
-
         assert exc_info.value.code == 1
 
 
@@ -89,7 +83,6 @@ def test_main_generic_exception():
     with patch("run_pipeline.load_configuration", side_effect=RuntimeError("boom")):
         with pytest.raises(SystemExit) as exc_info:
             main()
-
         assert exc_info.value.code == 2
 
 
@@ -113,9 +106,7 @@ def test_main_sagemaker_path():
 
             with pytest.raises(SystemExit) as exc_info:
                 main()
-
             assert exc_info.value.code == 0
-
             mock_sm.assert_called_once()
 
 
@@ -142,7 +133,5 @@ def test_main_fallback_path():
 
             with pytest.raises(SystemExit) as exc_info:
                 main()
-
             assert exc_info.value.code == 0
-
             mock_fb.assert_called_once()

@@ -1,9 +1,6 @@
 import pytest
-
 import torch
-
 import torch.nn as nn
-
 from unittest.mock import patch, MagicMock
 
 
@@ -11,7 +8,6 @@ def test_detect_dtype_env_bf16(monkeypatch):
     monkeypatch.setenv("TMOE_DTYPE", "bfloat16")
 
     import importlib
-
     import src.training.precision as prec
 
     importlib.reload(prec)
@@ -27,7 +23,6 @@ def test_detect_dtype_env_fp32(monkeypatch):
     monkeypatch.setenv("TMOE_DTYPE", "fp32")
 
     import importlib
-
     import src.training.precision as prec
 
     importlib.reload(prec)
@@ -43,7 +38,6 @@ def test_detect_dtype_env_fp16(monkeypatch):
     monkeypatch.setenv("TMOE_DTYPE", "fp16")
 
     import importlib
-
     import src.training.precision as prec
 
     importlib.reload(prec)
@@ -59,7 +53,6 @@ def test_detect_dtype_env_bf16_alias(monkeypatch):
     monkeypatch.setenv("TMOE_DTYPE", "bf16")
 
     import importlib
-
     import src.training.precision as prec
 
     importlib.reload(prec)
@@ -75,12 +68,10 @@ def test_detect_dtype_invalid_env(monkeypatch):
     monkeypatch.setenv("TMOE_DTYPE", "invalid_dtype")
 
     import importlib
-
     import src.training.precision as prec
 
     with pytest.raises(ValueError, match="Unknown TMOE_DTYPE"):
         prec._detect_dtype()
-
     monkeypatch.delenv("TMOE_DTYPE")
 
     importlib.reload(prec)
@@ -95,7 +86,6 @@ def test_is_mixed_precision():
 
     if COMPUTE_DTYPE in (torch.bfloat16, torch.float16):
         assert result is True
-
     else:
         assert result is False
 
@@ -109,7 +99,6 @@ def test_needs_grad_scaler():
 
     if COMPUTE_DTYPE == torch.float16:
         assert result is True
-
     else:
         assert result is False
 
@@ -122,7 +111,6 @@ def test_cleanup_distributed_not_initialized():
 
 def test_get_model_for_attr_access_ddp():
     from src.training.fsdp_utils import get_model_for_attr_access
-
     from torch.nn.parallel import DistributedDataParallel as DDP
 
     model = nn.Linear(10, 10)
@@ -151,9 +139,7 @@ def test_wrap_model_for_distributed_ddp_strategy():
 
     with patch("src.training.fsdp_utils.wrap_model_with_ddp") as mock_ddp:
         mock_ddp.return_value = model
-
         wrap_model_for_distributed(model, cfg, 0, torch.device("cpu"))
-
         mock_ddp.assert_called_once()
 
 
@@ -172,9 +158,7 @@ def test_wrap_model_for_distributed_fsdp_strategy():
 
     with patch("src.training.fsdp_utils.wrap_model_with_fsdp") as mock_fsdp:
         mock_fsdp.return_value = model
-
         wrap_model_for_distributed(model, cfg, 0, torch.device("cpu"))
-
         mock_fsdp.assert_called_once()
 
 
@@ -189,9 +173,7 @@ def test_wrap_model_for_distributed_no_strategy():
 
     with patch("src.training.fsdp_utils.wrap_model_with_ddp") as mock_ddp:
         mock_ddp.return_value = model
-
         wrap_model_for_distributed(model, cfg, 0, torch.device("cpu"))
-
         mock_ddp.assert_called_once()
 
 
@@ -207,7 +189,6 @@ def test_init_distributed_no_cuda(monkeypatch):
     with patch("src.training.fsdp_utils.torch.cuda.is_available", return_value=False):
         with pytest.raises(RuntimeError, match="CUDA"):
             init_distributed()
-
     monkeypatch.delenv("RANK")
 
     monkeypatch.delenv("LOCAL_RANK")
@@ -228,7 +209,6 @@ def test_init_distributed_local_rank_too_high(monkeypatch):
         with patch("src.training.fsdp_utils.torch.cuda.device_count", return_value=1):
             with pytest.raises(RuntimeError, match="LOCAL_RANK"):
                 init_distributed()
-
     monkeypatch.delenv("RANK")
 
     monkeypatch.delenv("LOCAL_RANK")
@@ -372,14 +352,12 @@ def test_checkpoint_manager_save_load(tmp_path):
             path = manager.save_checkpoint(
                 model, optimizer, step=10, metrics={"loss": 0.5}, is_best=True
             )
-
     assert path.exists()
 
     model2 = nn.Linear(10, 10)
 
     with patch("src.training.checkpoint.is_main_process", return_value=True):
         info = manager.load_checkpoint(model2, checkpoint_path=path)
-
     assert info["step"] == 10
 
     assert info["metrics"]["loss"] == 0.5
@@ -397,7 +375,6 @@ def test_checkpoint_manager_save_non_main(tmp_path):
     with patch("src.training.checkpoint.is_main_process", return_value=False):
         with patch("torch.distributed.is_initialized", return_value=False):
             path = manager.save_checkpoint(model, optimizer, step=5)
-
     assert str(path) == "/dev/null"
 
 
@@ -415,12 +392,10 @@ def test_checkpoint_manager_load_best(tmp_path):
             manager.save_checkpoint(
                 model, optimizer, step=10, metrics={"loss": 0.3}, is_best=True
             )
-
     model2 = nn.Linear(10, 10)
 
     with patch("src.training.checkpoint.is_main_process", return_value=True):
         info = manager.load_checkpoint(model2, load_best=True)
-
     assert info["step"] == 10
 
 
@@ -450,7 +425,6 @@ def test_checkpoint_manager_cleanup(tmp_path):
                 manager.save_checkpoint(
                     model, optimizer, step=step, metrics={"loss": 0.5}
                 )
-
     remaining = list(tmp_path.glob("checkpoint_step_*.pt"))
 
     assert len(remaining) == 2
@@ -468,7 +442,6 @@ def test_checkpoint_manager_list(tmp_path):
     with patch("src.training.checkpoint.is_main_process", return_value=True):
         with patch("torch.distributed.is_initialized", return_value=False):
             manager.save_checkpoint(model, optimizer, step=5)
-
     listing = manager.list_checkpoints()
 
     assert len(listing) == 1
@@ -495,7 +468,6 @@ def test_checkpoint_manager_trainable_only(tmp_path):
         ):
             with patch("torch.distributed.is_initialized", return_value=False):
                 path = manager.save_checkpoint(model, optimizer, step=1)
-
     assert path.exists()
 
 
@@ -515,7 +487,6 @@ def test_checkpoint_manager_with_scheduler(tmp_path):
             path = manager.save_checkpoint(
                 model, optimizer, scheduler=scheduler, step=1
             )
-
     model2 = nn.Linear(10, 10)
 
     optimizer2 = torch.optim.Adam(model2.parameters(), lr=1e-3)
@@ -526,7 +497,6 @@ def test_checkpoint_manager_with_scheduler(tmp_path):
         info = manager.load_checkpoint(
             model2, optimizer2, scheduler2, checkpoint_path=path
         )
-
     assert info["step"] == 1
 
 
@@ -542,9 +512,7 @@ def test_checkpoint_manager_get_latest_from_dir(tmp_path):
     with patch("src.training.checkpoint.is_main_process", return_value=True):
         with patch("torch.distributed.is_initialized", return_value=False):
             manager.save_checkpoint(model, optimizer, step=100)
-
             manager.save_checkpoint(model, optimizer, step=200)
-
     manager2 = CheckpointManager(str(tmp_path))
 
     latest = manager2._get_latest_checkpoint()
@@ -567,7 +535,6 @@ def test_checkpoint_manager_keep_last_n_zero(tmp_path):
         with patch("torch.distributed.is_initialized", return_value=False):
             for step in [10, 20, 30]:
                 manager.save_checkpoint(model, optimizer, step=step)
-
     remaining = list(tmp_path.glob("checkpoint_step_*.pt"))
 
     assert len(remaining) == 3
@@ -585,7 +552,6 @@ def test_get_state_dict_plain():
 
 def test_get_state_dict_ddp():
     from src.training.checkpoint import _get_state_dict
-
     from torch.nn.parallel import DistributedDataParallel as DDP
 
     model = nn.Linear(10, 10)
@@ -603,13 +569,11 @@ def test_detect_dtype_cuda_sm8(monkeypatch):
     monkeypatch.delenv("TMOE_DTYPE", raising=False)
 
     import importlib
-
     import src.training.precision as prec
 
     with patch("torch.cuda.is_available", return_value=True):
         with patch("torch.cuda.get_device_capability", return_value=(8, 0)):
             dtype = prec._detect_dtype()
-
     assert dtype == torch.bfloat16
 
     importlib.reload(prec)
@@ -619,13 +583,11 @@ def test_detect_dtype_cuda_sm7(monkeypatch):
     monkeypatch.delenv("TMOE_DTYPE", raising=False)
 
     import importlib
-
     import src.training.precision as prec
 
     with patch("torch.cuda.is_available", return_value=True):
         with patch("torch.cuda.get_device_capability", return_value=(7, 0)):
             dtype = prec._detect_dtype()
-
     assert dtype == torch.float16
 
     importlib.reload(prec)
@@ -663,7 +625,6 @@ def test_checkpoint_load_with_legacy_keys(tmp_path):
     with patch("src.training.checkpoint.is_main_process", return_value=True):
         with patch("torch.distributed.is_initialized", return_value=False):
             path = manager.save_checkpoint(model, optimizer, step=1)
-
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
 
     ckpt["model_state_dict"]["moe_layers.0.router.gate.weight"] = torch.randn(4, 10)
@@ -674,7 +635,6 @@ def test_checkpoint_load_with_legacy_keys(tmp_path):
 
     with patch("src.training.checkpoint.is_main_process", return_value=True):
         info = manager.load_checkpoint(model2, checkpoint_path=path)
-
     assert info["step"] == 1
 
 
@@ -692,7 +652,6 @@ def test_remap_legacy_moe_key_short_suffix():
 
 def test_checkpoint_manager_get_latest_from_memory():
     from src.training.checkpoint import CheckpointManager
-
     import torch.nn as nn
 
     model = nn.Linear(10, 10)
@@ -703,21 +662,16 @@ def test_checkpoint_manager_get_latest_from_memory():
 
     with tempfile.TemporaryDirectory() as tmp:
         manager = CheckpointManager(tmp)
-
         with patch("src.training.checkpoint.is_main_process", return_value=True):
             with patch("torch.distributed.is_initialized", return_value=False):
                 manager.save_checkpoint(model, optimizer, step=42)
-
         latest = manager._get_latest_checkpoint()
-
         assert latest is not None
-
         assert "42" in str(latest)
 
 
 def test_switch_router_forces_top_k_1():
     from src.routers.standard import SwitchRouter
-
     from src.configs.router import SwitchRouterConfig
 
     cfg = SwitchRouterConfig(hidden_dim=64, num_experts=4, top_k=2)

@@ -1,9 +1,6 @@
 from __future__ import annotations
-
 import struct
-
 from unittest.mock import patch, MagicMock
-
 import numpy as np
 
 
@@ -33,7 +30,6 @@ def test_iter_token_arrays_streaming_basic():
 
     with patch("transformers.AutoTokenizer") as MockTok:
         MockTok.from_pretrained.return_value = mock_tok
-
         results = list(
             _iter_token_arrays(
                 dataset,
@@ -45,7 +41,6 @@ def test_iter_token_arrays_streaming_basic():
                 batch_size=2,
             )
         )
-
     assert len(results) > 0
 
     assert all(isinstance(r, np.ndarray) for r in results)
@@ -64,7 +59,6 @@ def test_iter_token_arrays_streaming_flush_remainder():
 
     with patch("transformers.AutoTokenizer") as MockTok:
         MockTok.from_pretrained.return_value = mock_tok
-
         results = list(
             _iter_token_arrays(
                 dataset,
@@ -76,7 +70,6 @@ def test_iter_token_arrays_streaming_flush_remainder():
                 batch_size=2048,
             )
         )
-
     assert len(results) == 1
 
 
@@ -93,7 +86,6 @@ def test_iter_token_arrays_streaming_uint32_vocab():
 
     with patch("transformers.AutoTokenizer") as MockTok:
         MockTok.from_pretrained.return_value = mock_tok
-
         results = list(
             _iter_token_arrays(
                 dataset,
@@ -105,7 +97,6 @@ def test_iter_token_arrays_streaming_uint32_vocab():
                 batch_size=2048,
             )
         )
-
     assert results[0].dtype == np.uint32
 
 
@@ -115,7 +106,6 @@ def test_iter_token_arrays_non_streaming():
     class _FakeDataset:
         def __iter__(self):
             yield {"text": "hello world"}
-
             yield {"text": "foo bar baz"}
 
     mock_pool = MagicMock()
@@ -138,7 +128,6 @@ def test_iter_token_arrays_non_streaming():
                 batch_size=1,
             )
         )
-
     assert len(results) == 2
 
 
@@ -184,7 +173,6 @@ def test_tokenize_and_pack_basic(tmp_path):
         patch("datasets.load_dataset", return_value=MagicMock()),
     ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
-
     shards = list(tmp_path.glob("*.bin"))
 
     assert len(shards) >= 1
@@ -222,7 +210,6 @@ def test_tokenize_and_pack_skips_none_split(tmp_path):
         patch("datasets.load_dataset", return_value=MagicMock()),
     ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
-
     shards = list(tmp_path.glob("train_*.bin"))
 
     assert len(shards) >= 1
@@ -264,7 +251,6 @@ def test_tokenize_and_pack_multiple_shards(tmp_path):
         patch("datasets.load_dataset", return_value=MagicMock()),
     ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
-
     shards = sorted(tmp_path.glob("train_*.bin"))
 
     assert len(shards) == 2
@@ -302,16 +288,13 @@ def test_tokenize_and_pack_uint32_vocab(tmp_path):
         patch("datasets.load_dataset", return_value=MagicMock()),
     ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
-
     shards = list(tmp_path.glob("train_*.bin"))
 
     assert len(shards) == 1
 
     with open(shards[0], "rb") as f:
         f.read(8)
-
         dtype_flag = struct.unpack("<H", f.read(2))[0]
-
     assert dtype_flag == 1
 
 
@@ -331,9 +314,7 @@ def test_main_uses_cpu_count_when_num_proc_none(tmp_path):
         with patch("scripts.prepare_data.tokenize_and_pack") as mock_pack:
             with patch("multiprocessing.cpu_count", return_value=4):
                 main()
-
                 _, _, kwargs = mock_pack.mock_calls[0]
-
                 assert (
                     mock_pack.call_args[1]["num_proc"] == 4
                     or mock_pack.call_args[0][2] == 4

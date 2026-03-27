@@ -1,34 +1,21 @@
 import pytest
-
 import torch
-
 import torch.nn as nn
-
 from src.experts.lora import LoRALayer, LoRAConfig, SharedLoRALayer
-
 from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
-
 from src.experts.pool import ExpertPool
-
 from src.layers.lora_moe import LoRAMoELayer
-
 from src.routers.base import BaseRouter
-
 from src.project_types import ExpertType
 
 
 class MockRouter(BaseRouter):
     def forward(self, x, return_metrics=False, record_usage=True):
         B, S, _ = x.shape
-
         N = B * S
-
         weights = torch.zeros(N, 2)
-
         weights[:, 0] = 0.5
-
         weights[:, 1] = 0.5
-
         return weights, None, {}
 
     def compute_aux_loss(self):
@@ -46,11 +33,8 @@ class _RouterCfg:
 class MockMLP(nn.Module):
     def __init__(self):
         super().__init__()
-
         self.c_fc = nn.Linear(32, 128)
-
         self.act = nn.GELU(approximate="tanh")
-
         self.c_proj = nn.Linear(128, 32)
 
     def forward(self, x):
@@ -274,7 +258,6 @@ def test_consolidate_shared_weights_aliases_buffers(lora_config):
 
 def test_gptneo_lora_forward_raises_before_load():
     from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
-
     from src.experts.lora import LoRAConfig
 
     expert = GPTNeoLoRAMLP(LoRAConfig(hidden_dim=32, rank=4, alpha=8))
@@ -292,11 +275,8 @@ def test_b_init_scale_breaks_expert_symmetry():
 
     for _ in range(4):
         e = GPTNeoLoRAMLP(config)
-
         e.load_from_mlp(base_mlp)
-
         experts.append(e)
-
     x = torch.randn(1, 5, 32)
 
     outputs = [e(x) for e in experts]
@@ -307,9 +287,7 @@ def test_b_init_scale_breaks_expert_symmetry():
         for j in range(i + 1, len(outputs)):
             if not torch.allclose(outputs[i], outputs[j], atol=1e-7):
                 any_different = True
-
                 break
-
     assert any_different, (
         "With b_init_scale > 0, at least two experts should produce different outputs at init"
     )

@@ -1,26 +1,17 @@
 import torch
-
 import torch.nn as nn
-
 import torch.optim as optim
-
 from src.experts.lora import LoRAConfig
-
 from src.layers.lora_moe import LoRAMoELayer
-
 from src.routers.metabolic import MetabolicRouter
-
 from src.configs.router import MetabolicRouterConfig
 
 
 class MockMLP(nn.Module):
     def __init__(self, hidden_dim, intermediate_dim):
         super().__init__()
-
         self.c_fc = nn.Linear(hidden_dim, intermediate_dim)
-
         self.act = nn.GELU(approximate="tanh")
-
         self.c_proj = nn.Linear(intermediate_dim, hidden_dim)
 
     def forward(self, x):

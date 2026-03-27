@@ -1,7 +1,5 @@
 import sys
-
 import pytest
-
 from unittest.mock import patch, MagicMock
 
 
@@ -16,7 +14,6 @@ def test_load_configuration_import_error_raises():
 
             with pytest.raises((ImportError, TypeError)):
                 load_configuration()
-
     finally:
         sys.modules.update(saved)
 
@@ -75,7 +72,6 @@ def test_run_sagemaker_pipeline_success():
         sys.modules, {"infra.data_ingestion.run_processing": mock_run_proc}
     ):
         result = run_sagemaker_pipeline(mock_config)
-
     assert result["mode"] == "sagemaker"
 
     assert "job_arn" in result
@@ -102,7 +98,6 @@ def test_run_sagemaker_pipeline_with_tf_outputs():
         sys.modules, {"infra.data_ingestion.run_processing": mock_run_proc}
     ):
         run_sagemaker_pipeline(mock_config)
-
     mock_run_proc.apply_terraform_outputs.assert_called_once()
 
 
@@ -151,7 +146,6 @@ def test_run_fallback_pipeline_success():
         sys.modules, {"infra.data_ingestion.fallback_ingestion": mock_fallback_mod}
     ):
         result = run_fallback_pipeline(mock_config)
-
     assert result["mode"] == "fallback"
 
     assert result["total_records"] == 50

@@ -27,18 +27,12 @@ def test_log_results_to_wandb_no_checkpoint_step_with_mmlu():
 
     try:
         results_schema.WANDB_AVAILABLE = True
-
         results_schema.wandb = mock_wandb
-
         result = results_schema.log_results_to_wandb(payload, config={})
-
         assert result is True
-
         mock_run.log.assert_called()
-
     finally:
         results_schema.WANDB_AVAILABLE = orig
-
         results_schema.wandb = orig_wandb
 
 
@@ -68,26 +62,18 @@ def test_log_results_to_wandb_with_checkpoint_step_and_mmlu():
 
     try:
         results_schema.WANDB_AVAILABLE = True
-
         results_schema.wandb = mock_wandb
-
         result = results_schema.log_results_to_wandb(payload, config={})
-
         assert result is True
-
         calls = mock_run.log.call_args_list
-
         step_calls = [
             c
             for c in calls
             if c.kwargs.get("step") == 1000 or (len(c.args) > 1 and c.args[1] == 1000)
         ]
-
         assert len(step_calls) > 0
-
     finally:
         results_schema.WANDB_AVAILABLE = orig
-
         results_schema.wandb = orig_wandb
 
 
@@ -116,16 +102,10 @@ def test_log_results_to_wandb_run_finish_not_callable():
 
     try:
         results_schema.WANDB_AVAILABLE = True
-
         results_schema.wandb = mock_wandb
-
         result = results_schema.log_results_to_wandb(payload, config={})
-
         assert result is True
-
         mock_wandb.finish.assert_called_once()
-
     finally:
         results_schema.WANDB_AVAILABLE = orig
-
         results_schema.wandb = orig_wandb

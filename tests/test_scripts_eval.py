@@ -1,7 +1,5 @@
 import pytest
-
 from unittest.mock import patch, MagicMock
-
 from pathlib import Path
 
 
@@ -25,7 +23,6 @@ def test_get_eval_param_cli_priority():
 
 def test_get_eval_param_yaml_fallback():
     from scripts.eval import _get_eval_param
-
     from omegaconf import OmegaConf
 
     config = OmegaConf.create({"eval": {"stride": 1024}})
@@ -37,7 +34,6 @@ def test_get_eval_param_yaml_fallback():
 
 def test_get_eval_param_default_fallback():
     from scripts.eval import _get_eval_param
-
     from omegaconf import OmegaConf
 
     config = OmegaConf.create({})
@@ -191,7 +187,6 @@ def test_load_experiment_config(tmp_path):
 
 def _run_eval_main(tmp_path, task, extra_args=None, mock_payload=None):
     from scripts.eval import main
-
     from omegaconf import OmegaConf
 
     ckpt = tmp_path / "checkpoint_step_100.pt"
@@ -204,14 +199,12 @@ def _run_eval_main(tmp_path, task, extra_args=None, mock_payload=None):
 
     if mock_payload is None:
         mock_payload = {"task": task, "results": {}}
-
     real_cfg = OmegaConf.create({"experiment_name": "test"})
 
     argv = ["--task", task, "--checkpoint", str(ckpt), "--config", str(cfg_path)]
 
     if extra_args:
         argv.extend(extra_args)
-
     patches = {
         "perplexity": "scripts.eval.run_perplexity_eval",
         "lm_harness": "scripts.eval.run_lm_harness_eval",
@@ -223,7 +216,6 @@ def _run_eval_main(tmp_path, task, extra_args=None, mock_payload=None):
             with patch(patches[task], return_value=mock_payload) as mock_fn:
                 with patch("scripts.eval.log_results_to_wandb"):
                     result = main(argv)
-
     return result, mock_fn
 
 
@@ -247,7 +239,6 @@ def test_main_efficiency(tmp_path):
 
 def test_main_multiple_checkpoints(tmp_path):
     from scripts.eval import main
-
     from omegaconf import OmegaConf
 
     (tmp_path / "checkpoint_step_100.pt").touch()
@@ -276,7 +267,6 @@ def test_main_multiple_checkpoints(tmp_path):
                             str(cfg_path),
                         ]
                     )
-
     assert isinstance(result, list)
 
     assert len(result) == 2
@@ -284,7 +274,6 @@ def test_main_multiple_checkpoints(tmp_path):
 
 def test_main_with_reference_config(tmp_path):
     from scripts.eval import main
-
     from omegaconf import OmegaConf
 
     ckpt = tmp_path / "checkpoint_step_100.pt"
@@ -323,7 +312,6 @@ def test_main_with_reference_config(tmp_path):
 
 def test_main_lm_harness_batch_size_fallback(tmp_path):
     from scripts.eval import main
-
     from omegaconf import OmegaConf
 
     ckpt = tmp_path / "checkpoint_step_100.pt"
@@ -356,7 +344,6 @@ def test_main_lm_harness_batch_size_fallback(tmp_path):
                             "8",
                         ]
                     )
-
     call_kwargs = mock_lm.call_args[1]
 
     assert call_kwargs["batch_size"] == "8"

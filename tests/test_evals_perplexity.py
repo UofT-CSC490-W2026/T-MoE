@@ -1,9 +1,6 @@
 import math
-
 import pytest
-
 import torch
-
 from unittest.mock import MagicMock, patch
 
 VOCAB = 256
@@ -179,7 +176,6 @@ def test_document_windows_single_window():
 
 def test_tokenize_worker_basic():
     import queue
-
     from evals.perplexity import _tokenize_worker
 
     tokenizer = MagicMock()
@@ -194,18 +190,14 @@ def test_tokenize_worker_basic():
 
     while True:
         item = q.get()
-
         if item is None:
             break
-
         items.append(item)
-
     assert len(items) == 2
 
 
 def test_tokenize_worker_max_documents():
     import queue
-
     from evals.perplexity import _tokenize_worker
 
     tokenizer = MagicMock()
@@ -220,18 +212,14 @@ def test_tokenize_worker_max_documents():
 
     while True:
         item = q.get()
-
         if item is None:
             break
-
         items.append(item)
-
     assert len(items) == 2
 
 
 def test_tokenize_worker_skips_empty():
     import queue
-
     from evals.perplexity import _tokenize_worker
 
     tokenizer = MagicMock()
@@ -246,28 +234,22 @@ def test_tokenize_worker_skips_empty():
 
     while True:
         item = q.get()
-
         if item is None:
             break
-
         items.append(item)
-
     assert len(items) == 1
 
 
 def test_tokenize_worker_type_error_fallback():
     import queue
-
     from evals.perplexity import _tokenize_worker
 
     call_count = [0]
 
     def tokenizer(text, **kwargs):
         call_count[0] += 1
-
         if "verbose" in kwargs:
             raise TypeError("no verbose")
-
         return {"input_ids": torch.zeros(1, 3, dtype=torch.long)}
 
     q = queue.Queue()
@@ -278,12 +260,9 @@ def test_tokenize_worker_type_error_fallback():
 
     while True:
         item = q.get()
-
         if item is None:
             break
-
         items.append(item)
-
     assert len(items) == 1
 
 
@@ -459,13 +438,9 @@ def test_evaluate_text_documents_basic():
 
     def model_fn(input_ids, **kwargs):
         B, S = input_ids.shape
-
         logits = torch.randn(B, S, 50)
-
         out = MagicMock()
-
         out.logits = logits
-
         return out
 
     result = evaluate_text_documents(
@@ -524,9 +499,7 @@ def test_load_dataset_texts_streaming():
 
     with patch.dict("sys.modules", {"datasets": mock_datasets}):
         gen, hint = _load_dataset_texts(spec, max_documents=1)
-
         texts = list(gen)
-
     assert texts == ["hello"]
 
 
@@ -552,9 +525,7 @@ def test_load_dataset_texts_non_streaming():
 
     with patch.dict("sys.modules", {"datasets": mock_datasets}):
         gen, hint = _load_dataset_texts(spec)
-
         texts = list(gen)
-
     assert len(texts) == 2
 
     assert hint == 2
@@ -578,9 +549,7 @@ def test_load_dataset_texts_missing_column():
 
     with patch.dict("sys.modules", {"datasets": mock_datasets}):
         gen, _ = _load_dataset_texts(spec)
-
         texts = list(gen)
-
     assert texts == []
 
 
@@ -598,22 +567,18 @@ def test_load_tokenizer_for_model():
     with patch.dict("sys.modules", {"transformers": mock_transformers}):
         with patch("evals.perplexity.model_lookup", mock_model_lookup):
             tok = _load_tokenizer_for_model({"model": {"model_key": "gpt-neo-125m"}})
-
     assert tok is mock_tok
 
 
 def _write_val_shard(path, tokens):
     import struct
-
     import numpy as np
 
     arr = np.array(tokens, dtype=np.uint16)
 
     with open(path, "wb") as f:
         f.write(struct.pack("<Q", len(tokens)))
-
         f.write(struct.pack("<H", 0))
-
         f.write(arr.tobytes())
 
 
@@ -643,11 +608,8 @@ def test_evaluate_token_shards_basic(tmp_path):
 
     def model_fn(input_ids, **kwargs):
         B, S = input_ids.shape
-
         out = MagicMock()
-
         out.logits = torch.randn(B, S, VOCAB)
-
         return out
 
     result = evaluate_token_shards(
@@ -674,11 +636,8 @@ def test_evaluate_token_shards_max_tokens(tmp_path):
 
     def model_fn(input_ids, **kwargs):
         B, S = input_ids.shape
-
         out = MagicMock()
-
         out.logits = torch.randn(B, S, VOCAB)
-
         return out
 
     result = evaluate_token_shards(
@@ -697,9 +656,7 @@ def test_evaluate_token_shards_max_tokens(tmp_path):
 
 def test_evaluate_token_shards_uint32(tmp_path):
     import struct
-
     import numpy as np
-
     from evals.perplexity import evaluate_token_shards
 
     tokens = [i % VOCAB for i in range(100)]
@@ -708,18 +665,13 @@ def test_evaluate_token_shards_uint32(tmp_path):
 
     with open(tmp_path / "val_shard_0000.bin", "wb") as f:
         f.write(struct.pack("<Q", len(tokens)))
-
         f.write(struct.pack("<H", 1))
-
         f.write(arr.tobytes())
 
     def model_fn(input_ids, **kwargs):
         B, S = input_ids.shape
-
         out = MagicMock()
-
         out.logits = torch.randn(B, S, VOCAB)
-
         return out
 
     result = evaluate_token_shards(
@@ -737,9 +689,7 @@ def test_evaluate_token_shards_uint32(tmp_path):
 
 def test_evaluate_token_shards_legacy_shard(tmp_path):
     import struct
-
     import numpy as np
-
     from evals.perplexity import evaluate_token_shards
 
     tokens = [i % VOCAB for i in range(100)]
@@ -748,16 +698,12 @@ def test_evaluate_token_shards_legacy_shard(tmp_path):
 
     with open(tmp_path / "val_shard_0000.bin", "wb") as f:
         f.write(struct.pack("<Q", len(tokens)))
-
         f.write(arr.tobytes())
 
     def model_fn(input_ids, **kwargs):
         B, S = input_ids.shape
-
         out = MagicMock()
-
         out.logits = torch.randn(B, S, VOCAB)
-
         return out
 
     result = evaluate_token_shards(
@@ -775,20 +721,15 @@ def test_evaluate_token_shards_legacy_shard(tmp_path):
 
 def test_evaluate_token_shards_no_tokens_scored(tmp_path):
     from evals.perplexity import evaluate_token_shards
-
     import struct
-
     import numpy as np
 
     arr = np.array([42], dtype=np.uint16)
 
     with open(tmp_path / "val_shard_0000.bin", "wb") as f:
         f.write(struct.pack("<Q", 1))
-
         f.write(struct.pack("<H", 0))
-
         f.write(arr.tobytes())
-
     model = MagicMock()
 
     with pytest.raises(ValueError, match="No tokens scored"):
@@ -825,7 +766,6 @@ def test_load_dataset_texts_len_type_error():
 
     with patch.dict("sys.modules", {"datasets": mock_datasets}):
         gen, hint = _load_dataset_texts(spec)
-
     assert hint is None
 
 
@@ -838,11 +778,8 @@ def test_evaluate_text_documents_multiple_docs():
 
     def model_fn(input_ids, **kwargs):
         B, S = input_ids.shape
-
         out = MagicMock()
-
         out.logits = torch.randn(B, S, VOCAB)
-
         return out
 
     result = evaluate_text_documents(

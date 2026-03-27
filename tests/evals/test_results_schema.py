@@ -1,5 +1,4 @@
 import json
-
 from evals.results_schema import (
     build_results_payload,
     flatten_scalars,
@@ -81,7 +80,6 @@ def test_write_results_json_creates_parent_dirs(tmp_path):
 
     with output_path.open(encoding="utf-8") as handle:
         saved = json.load(handle)
-
     assert saved["results"]["wikitext103_bpb"] == 1.23
 
 
@@ -103,6 +101,7 @@ def test_flatten_scalars_keeps_only_scalar_entries():
 
 
 def test_get_git_commit_returns_unknown_when_git_fails(monkeypatch):
+
     def fake_run(*args, **kwargs):
         raise FileNotFoundError
 
@@ -134,7 +133,6 @@ def test_write_results_json_stringifies_unknown_leaf_types(tmp_path):
 
     with output_path.open(encoding="utf-8") as handle:
         saved = json.load(handle)
-
     assert saved["metadata"]["raw_results"]["dtype"] == "float32"
 
 
@@ -142,7 +140,6 @@ def test_log_results_to_wandb_logs_scalars_and_mmlu_table(monkeypatch):
     class _FakeTable:
         def __init__(self, columns):
             self.columns = columns
-
             self.rows = []
 
         def add_data(self, *row):
@@ -151,9 +148,7 @@ def test_log_results_to_wandb_logs_scalars_and_mmlu_table(monkeypatch):
     class _FakeRun:
         def __init__(self):
             self.logged = []
-
             self.finished = False
-
             self.summary = {}
 
         def log(self, data, step=None):
@@ -167,12 +162,10 @@ def test_log_results_to_wandb_logs_scalars_and_mmlu_table(monkeypatch):
 
         def __init__(self):
             self.init_kwargs = None
-
             self.run = _FakeRun()
 
         def init(self, **kwargs):
             self.init_kwargs = kwargs
-
             return self.run
 
     fake_wandb = _FakeWandb()
@@ -256,7 +249,6 @@ def test_log_results_to_wandb_uses_wandb_env_defaults(monkeypatch):
 
         def init(self, **kwargs):
             self.init_kwargs = kwargs
-
             return _FakeRun()
 
     fake_wandb = _FakeWandb()
@@ -308,7 +300,6 @@ def test_log_results_to_wandb_overrides_disabled_env_to_online(monkeypatch):
 
         def init(self, **kwargs):
             self.init_kwargs = kwargs
-
             return _FakeRun()
 
     fake_wandb = _FakeWandb()

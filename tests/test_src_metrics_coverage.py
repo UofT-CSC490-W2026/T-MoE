@@ -1,7 +1,5 @@
 import torch
-
 import numpy as np
-
 from unittest.mock import patch, MagicMock
 
 
@@ -216,7 +214,6 @@ def test_log_to_wandb_no_run():
     with patch("src.metrics.router_metrics.WANDB_AVAILABLE", True):
         with patch("src.metrics.router_metrics.wandb") as mock_wandb:
             mock_wandb.run = None
-
             tracker.log_to_wandb({"loss": 1.0}, step=0)
 
 
@@ -226,11 +223,8 @@ def test_log_to_wandb_with_run():
     with patch("src.metrics.router_metrics.WANDB_AVAILABLE", True):
         with patch("src.metrics.router_metrics.wandb") as mock_wandb:
             mock_run = MagicMock()
-
             mock_wandb.run = mock_run
-
             mock_wandb.Histogram = MagicMock(return_value=MagicMock())
-
             metrics = {
                 "expert_entropy": 1.5,
                 "fatigue_per_expert": np.array([0.1, 0.2, 0.3, 0.4]),
@@ -238,9 +232,7 @@ def test_log_to_wandb_with_run():
                 "stress_per_expert": np.array([0.1, 0.2, 0.3, 0.4]),
                 "ema_load_per_expert": np.array([0.25, 0.25, 0.25, 0.25]),
             }
-
             tracker.log_to_wandb(metrics, step=10, prefix="router")
-
             mock_wandb.log.assert_called()
 
 

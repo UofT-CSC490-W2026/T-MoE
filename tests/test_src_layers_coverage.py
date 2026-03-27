@@ -1,9 +1,6 @@
 import pytest
-
 import torch
-
 import torch.nn as nn
-
 from unittest.mock import MagicMock
 
 
@@ -38,7 +35,6 @@ def test_base_moe_layer_invalid_top_k():
 
     with pytest.raises(ValueError, match="top_k"):
         ConcreteMoE(hidden_dim=64, num_experts=4, top_k=0)
-
     with pytest.raises(ValueError, match="top_k"):
         ConcreteMoE(hidden_dim=64, num_experts=4, top_k=5)
 
@@ -177,11 +173,8 @@ def test_base_moe_layer_extra_repr():
 
 def _make_gptneo_moe(hidden=64, num_experts=4, top_k=2):
     from src.experts.lora import LoRAConfig
-
     from src.layers.lora_moe import LoRAMoELayer
-
     from src.routers.metabolic import MetabolicRouter
-
     from src.configs.router import MetabolicRouterConfig
 
     mlp = nn.Module()
@@ -285,11 +278,8 @@ def test_lora_moe_layer_forced_record_usage():
 
 def test_lora_moe_layer_with_shared_base_lora():
     from src.experts.lora import LoRAConfig
-
     from src.layers.lora_moe import LoRAMoELayer
-
     from src.routers.metabolic import MetabolicRouter
-
     from src.configs.router import MetabolicRouterConfig
 
     hidden = 64
@@ -321,11 +311,8 @@ def test_lora_moe_layer_with_shared_base_lora():
 
 def test_lora_moe_layer_router_no_record_usage_param():
     from src.experts.lora import LoRAConfig
-
     from src.layers.lora_moe import LoRAMoELayer
-
     from src.routers.standard import StandardRouter
-
     from src.configs.router import StandardRouterConfig
 
     hidden = 64
@@ -355,13 +342,9 @@ def test_lora_moe_layer_router_no_record_usage_param():
 
 def test_lora_moe_layer_with_qwen2_shared_base():
     from src.experts.lora import LoRAConfig
-
     from src.layers.lora_moe import LoRAMoELayer
-
     from src.routers.metabolic import MetabolicRouter
-
     from src.configs.router import MetabolicRouterConfig
-
     from src.project_types import ExpertType
 
     hidden = 64
@@ -420,13 +403,9 @@ def test_lora_moe_layer_get_cached_metrics_with_lora_norms():
 
 def test_lora_moe_layer_init_shared_base_lora_out_proj_none():
     from src.experts.lora import LoRAConfig
-
     from src.layers.lora_moe import LoRAMoELayer
-
     from src.routers.metabolic import MetabolicRouter
-
     from src.configs.router import MetabolicRouterConfig
-
     from src.experts.lora import LoRAMLPExpert
 
     class NoOutProjExpert(LoRAMLPExpert):
@@ -500,21 +479,15 @@ def test_lora_moe_layer_forward_metrics_none_indices():
 
 def test_lora_moe_layer_forward_all_experts_zero_weight():
     from src.experts.lora import LoRAConfig
-
     from src.layers.lora_moe import LoRAMoELayer
-
     from src.routers.base import BaseRouter
 
     class ZeroWeightRouter(BaseRouter):
         def forward(self, x, return_metrics=False, **kw):
             B, S, _ = x.shape
-
             N = B * S
-
             weights = torch.zeros(N, 4)
-
             weights[:, 0] = 1.0
-
             return weights, None, {} if return_metrics else None
 
         def compute_aux_loss(self):
@@ -522,9 +495,7 @@ def test_lora_moe_layer_forward_all_experts_zero_weight():
 
     class _Cfg:
         hidden_dim = 64
-
         num_experts = 4
-
         top_k = 1
 
     mlp = nn.Module()
@@ -550,11 +521,8 @@ def test_lora_moe_layer_forward_all_experts_zero_weight():
 
 def test_lora_moe_layer_shared_proj_lora_gptneo():
     from src.experts.lora import LoRAConfig
-
     from src.layers.lora_moe import LoRAMoELayer
-
     from src.routers.metabolic import MetabolicRouter
-
     from src.configs.router import MetabolicRouterConfig
 
     mlp = nn.Module()
@@ -586,23 +554,16 @@ def test_lora_moe_layer_shared_proj_lora_gptneo():
 
 def test_lora_moe_layer_forward_return_metrics_with_indices():
     from src.experts.lora import LoRAConfig
-
     from src.layers.lora_moe import LoRAMoELayer
-
     from src.routers.base import BaseRouter
 
     class IndexRouter(BaseRouter):
         def forward(self, x, return_metrics=False, **kw):
             B, S, _ = x.shape
-
             N = B * S
-
             weights = torch.zeros(N, 2)
-
             weights[:, 0] = 1.0
-
             indices = torch.zeros(N, 1, dtype=torch.long)
-
             return weights, indices, {} if return_metrics else None
 
         def compute_aux_loss(self):
@@ -610,9 +571,7 @@ def test_lora_moe_layer_forward_return_metrics_with_indices():
 
     class _Cfg:
         hidden_dim = 64
-
         num_experts = 2
-
         top_k = 1
 
     mlp = nn.Module()

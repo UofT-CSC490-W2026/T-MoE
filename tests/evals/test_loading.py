@@ -1,31 +1,22 @@
 import torch
-
 import evals.loading as loading
-
 from evals.loading import build_model_from_config, load_model_for_eval
-
 from src.layers.lora_moe import LoRAMoELayer
-
 from src.training import CheckpointManager
 
 
 class _FakeBlock(torch.nn.Module):
     def __init__(self, hidden_dim: int):
         super().__init__()
-
         self.mlp = torch.nn.Module()
-
         self.mlp.c_fc = torch.nn.Linear(hidden_dim, 4 * hidden_dim)
-
         self.mlp.c_proj = torch.nn.Linear(4 * hidden_dim, hidden_dim)
 
 
 class _FakeBackbone(torch.nn.Module):
     def __init__(self, hidden_dim: int, num_layers: int):
         super().__init__()
-
         self.transformer = torch.nn.Module()
-
         self.transformer.h = torch.nn.ModuleList(
             [_FakeBlock(hidden_dim) for _ in range(num_layers)]
         )
@@ -34,23 +25,14 @@ class _FakeBackbone(torch.nn.Module):
 class _FakeModel(torch.nn.Module):
     def __init__(self, variant, freeze_backbone, moe_layer_indices, device):
         super().__init__()
-
         self.variant = variant
-
         self.freeze_backbone = freeze_backbone
-
         self.moe_layer_indices = list(moe_layer_indices)
-
         self.device = device
-
         self.hidden_dim = 768
-
         self.num_layers = 12
-
         self.backbone = _FakeBackbone(hidden_dim=768, num_layers=12)
-
         self.moe_layers = {}
-
         self.to_calls = []
 
     def get_mlp_at(self, idx):
@@ -59,7 +41,6 @@ class _FakeModel(torch.nn.Module):
     def inject_moe_layers(self, moe_layers):
         for idx, moe_layer in moe_layers.items():
             self.backbone.transformer.h[idx].mlp = moe_layer
-
             self.moe_layers[str(idx)] = moe_layer
 
     def to(self, device=None, dtype=None, **kwargs):
@@ -69,7 +50,6 @@ class _FakeModel(torch.nn.Module):
                 "dtype": None if dtype is None else str(dtype),
             }
         )
-
         return self
 
 
@@ -133,6 +113,7 @@ def test_build_model_from_config_injects_requested_moe_layers(monkeypatch):
 
 
 def test_load_model_for_eval_returns_checkpoint_info(monkeypatch, tmp_path):
+
     def fake_load_checkpoint(
         self,
         model,
@@ -142,9 +123,7 @@ def test_load_model_for_eval_returns_checkpoint_info(monkeypatch, tmp_path):
         load_best=False,
     ):
         assert checkpoint_path is not None
-
         model.loaded_checkpoint_path = checkpoint_path
-
         return {"step": 42, "metrics": {"loss": 1.23}, "metadata": {"source": "test"}}
 
     _patch_model_registry(monkeypatch)
@@ -175,6 +154,7 @@ def test_load_model_for_eval_returns_checkpoint_info(monkeypatch, tmp_path):
 
 
 def test_load_model_for_eval_applies_explicit_dtype(monkeypatch, tmp_path):
+
     def fake_load_checkpoint(
         self,
         model,

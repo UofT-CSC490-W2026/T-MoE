@@ -1,7 +1,5 @@
 from unittest.mock import patch, MagicMock
-
 import pytest
-
 import sys
 
 
@@ -60,7 +58,6 @@ def test_experiment_output_dir():
 
 def test_checkpoint_sort_key():
     import run_modal_training
-
     from pathlib import Path
 
     p1 = Path("checkpoint_step_100.pt")
@@ -151,7 +148,6 @@ def test_resolve_eval_checkpoint_best(tmp_path):
         run_modal_training, "_experiment_output_dir", return_value=str(tmp_path)
     ):
         result = run_modal_training._resolve_eval_checkpoint(cfg, "best", False)
-
         assert "best_model" in result
 
 
@@ -174,7 +170,6 @@ def test_resolve_eval_checkpoint_latest(tmp_path):
         run_modal_training, "_experiment_output_dir", return_value=str(tmp_path)
     ):
         result = run_modal_training._resolve_eval_checkpoint(cfg, "latest", False)
-
         assert "200" in result
 
 
@@ -203,37 +198,28 @@ def test_resolve_eval_checkpoint_all(tmp_path):
         run_modal_training, "_experiment_output_dir", return_value=str(tmp_path)
     ):
         result = run_modal_training._resolve_eval_checkpoint(cfg, "", True)
-
         assert "checkpoints" in result
 
 
 def test_load_cfg():
     import run_modal_training
-
     from omegaconf import OmegaConf
 
     with patch.object(run_modal_training, "OmegaConf", OmegaConf):
         with patch("omegaconf.OmegaConf.load") as mock_load:
             mock_cfg = MagicMock()
-
             mock_load.return_value = mock_cfg
-
             result = run_modal_training._load_cfg("/app/config.yaml", "")
-
             assert result is mock_cfg
 
 
 def test_load_cfg_no_overrides():
     import run_modal_training
-
     from omegaconf import OmegaConf
 
     with patch.object(run_modal_training, "OmegaConf", OmegaConf):
         with patch("omegaconf.OmegaConf.load") as mock_load:
             mock_cfg = MagicMock()
-
             mock_load.return_value = mock_cfg
-
             result = run_modal_training._load_cfg("/app/config.yaml", "")
-
             assert result is mock_cfg

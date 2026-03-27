@@ -1,21 +1,12 @@
 from __future__ import annotations
-
 import queue
-
 import struct
-
 import tempfile
-
 from pathlib import Path
-
 from unittest.mock import MagicMock, patch
-
 import numpy as np
-
 import pytest
-
 import torch
-
 from evals.perplexity import (
     _autocast_context,
     _cfg_select,
@@ -32,12 +23,10 @@ from evals.perplexity import (
 class _SimpleModel(torch.nn.Module):
     def __init__(self, vocab_size: int = 16):
         super().__init__()
-
         self.vocab_size = vocab_size
 
     def forward(self, input_ids):
         b, s = input_ids.shape
-
         return torch.zeros(b, s, self.vocab_size), None
 
 
@@ -46,7 +35,6 @@ class _SimpleTokenizer:
 
     def __call__(self, text, add_special_tokens=False, return_tensors="pt", **kwargs):
         ids = [ord(c) % 16 for c in text.split()]
-
         return {"input_ids": torch.tensor([ids], dtype=torch.long)}
 
 
@@ -56,15 +44,11 @@ def _make_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
     if uint32:
         with open(path, "wb") as f:
             f.write(struct.pack("<Q", n))
-
             f.write(struct.pack("<H", 1))
-
             f.write(np.array(tokens, dtype=np.uint32).tobytes())
-
     else:
         with open(path, "wb") as f:
             f.write(struct.pack("<Q", n))
-
             f.write(np.array(tokens, dtype=np.uint16).tobytes())
 
 
@@ -146,12 +130,11 @@ def test_summarize_metrics_zero_bytes_raises():
 
 
 def test_tokenize_worker_typeerror_fallback():
+
     def _tok(text, add_special_tokens=False, return_tensors="pt", **kwargs):
         if "verbose" in kwargs:
             raise TypeError("unexpected kwarg")
-
         ids = [0, 1, 2]
-
         return {"input_ids": torch.tensor([ids], dtype=torch.long)}
 
     out_q: queue.Queue = queue.Queue()
@@ -170,7 +153,6 @@ def test_run_batched_forward_mixed_lengths():
 
     def _forward(input_ids):
         b, s = input_ids.shape
-
         return (torch.zeros(b, s, 16),)
 
     model.forward = _forward
@@ -211,7 +193,6 @@ def test_evaluate_text_documents_empty_raises():
 def test_evaluate_token_shards_no_files_raises():
     with tempfile.TemporaryDirectory() as tmpdir:
         model = _SimpleModel()
-
         with pytest.raises(FileNotFoundError):
             evaluate_token_shards(
                 model,
@@ -227,11 +208,8 @@ def test_evaluate_token_shards_no_files_raises():
 def test_evaluate_token_shards_world_size_gt1():
     with tempfile.TemporaryDirectory() as tmpdir:
         shard = Path(tmpdir) / "val_shard_0000.bin"
-
         _make_shard(shard, [i % 16 for i in range(20)])
-
         model = _SimpleModel(vocab_size=16)
-
         import torch.distributed as dist_mod
 
         with (
@@ -239,7 +217,6 @@ def test_evaluate_token_shards_world_size_gt1():
             patch.object(dist_mod, "ReduceOp") as mock_op,
         ):
             mock_op.SUM = 0
-
             result = evaluate_token_shards(
                 model,
                 tmpdir,
@@ -251,7 +228,6 @@ def test_evaluate_token_shards_world_size_gt1():
                 world_size=2,
                 rank=0,
             )
-
         assert "ppl" in result
 
 
@@ -271,11 +247,8 @@ def test_load_dataset_texts_len_typeerror():
 
     with patch("datasets.load_dataset", return_value=mock_ds):
         gen, hint = _load_dataset_texts(spec)
-
         assert hint is None
-
         texts = list(gen)
-
         assert texts == ["hello world"]
 
 
@@ -283,18 +256,13 @@ def _make_mock_model(vocab_size=16):
     class _M(torch.nn.Module):
         def __init__(self):
             super().__init__()
-
             self.backbone = MagicMock()
-
             self.backbone.config = MagicMock()
-
             self.backbone.config.max_position_embeddings = 64
-
             self.backbone.config.n_positions = None
 
         def forward(self, input_ids):
             b, s = input_ids.shape
-
             return (torch.zeros(b, s, vocab_size),)
 
     return _M()
@@ -344,5 +312,4 @@ def test_run_perplexity_eval_with_shard_source(tmp_path):
             autocast_dtype=torch.float32,
             batch_size=4,
         )
-
         assert result is not None

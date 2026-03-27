@@ -1,7 +1,5 @@
 import argparse
-
 from unittest.mock import patch, MagicMock
-
 import pytest
 
 
@@ -115,7 +113,6 @@ def test_check_dataset_in_s3_not_found():
 
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3client_mod}):
         result = check_dataset_in_s3(mock_config)
-
         assert result is False
 
 
@@ -148,7 +145,6 @@ def test_check_dataset_in_s3_found():
 
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3client_mod}):
         result = check_dataset_in_s3(mock_config)
-
         assert result is True
 
 
@@ -187,7 +183,6 @@ def test_run_data_ingestion():
         "sys.modules", {"infra.data_ingestion.fallback_ingestion": mock_ingestion_mod}
     ):
         result = run_data_ingestion(mock_config)
-
         assert result["total_records"] == 100
 
 
@@ -285,7 +280,6 @@ def test_upload_outputs_to_s3():
         "infra.s3client.s3_sync.upload_experiment_dir", create=True
     ) as mock_upload:
         mock_upload.return_value = {"uploaded": ["f1", "f2"], "failed": []}
-
         with patch.dict(
             "sys.modules",
             {"infra.s3client.s3_sync": MagicMock(upload_experiment_dir=mock_upload)},
@@ -349,7 +343,6 @@ def test_run_training():
 
     with patch.dict("sys.modules", {"src.utils.training_workflow": mock_wf}):
         output_dir, metrics = run_training(mock_config, "/tmp/cache")
-
         assert output_dir == "/tmp/out"
 
 
@@ -370,7 +363,6 @@ def test_submit_batch_job():
 
     with patch.dict("sys.modules", {"boto3": mock_boto3}):
         job_id = submit_batch_job("test_config", mock_config, [])
-
         assert job_id == "job-123"
 
 
@@ -391,7 +383,6 @@ def test_wait_for_batch_job_succeeded():
         result = wait_for_batch_job(
             "job-123", "us-east-1", poll_interval=0, stream_logs=False
         )
-
         assert result == "SUCCEEDED"
 
 
@@ -412,7 +403,6 @@ def test_wait_for_batch_job_failed():
         result = wait_for_batch_job(
             "job-123", "us-east-1", poll_interval=0, stream_logs=False
         )
-
         assert result == "FAILED"
 
 
@@ -431,7 +421,6 @@ def test_wait_for_batch_job_not_found():
         result = wait_for_batch_job(
             "job-123", "us-east-1", poll_interval=0, stream_logs=False
         )
-
         assert result == "FAILED"
 
 
@@ -462,7 +451,6 @@ def test_wait_for_batch_job_with_log_streaming():
     def client_factory(svc, **kw):
         if svc == "batch":
             return mock_batch
-
         return mock_logs
 
     mock_boto3.client.side_effect = client_factory
@@ -471,7 +459,6 @@ def test_wait_for_batch_job_with_log_streaming():
         result = wait_for_batch_job(
             "job-123", "us-east-1", poll_interval=0, stream_logs=True
         )
-
         assert result == "SUCCEEDED"
 
 
@@ -616,7 +603,6 @@ def test_run_batch_mode_full():
             with patch("run_aws_training.wait_for_batch_job", return_value="SUCCEEDED"):
                 with pytest.raises(SystemExit) as exc_info:
                     run_batch_mode(args, mock_pc, mock_ec)
-
                 assert exc_info.value.code == 0
 
 
@@ -636,7 +622,6 @@ def test_run_batch_mode_failed():
             with patch("run_aws_training.wait_for_batch_job", return_value="FAILED"):
                 with pytest.raises(SystemExit) as exc_info:
                     run_batch_mode(args, mock_pc, mock_ec)
-
                 assert exc_info.value.code == 1
 
 
@@ -695,7 +680,6 @@ def test_main_keyboard_interrupt():
         ):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-
             assert exc_info.value.code == 130
 
 
@@ -708,7 +692,6 @@ def test_main_value_error():
         ):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-
             assert exc_info.value.code == 1
 
 
@@ -721,7 +704,6 @@ def test_main_import_error():
         ):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-
             assert exc_info.value.code == 1
 
 
@@ -734,7 +716,6 @@ def test_main_generic_exception():
         ):
             with pytest.raises(SystemExit) as exc_info:
                 main()
-
             assert exc_info.value.code == 2
 
 
@@ -753,7 +734,6 @@ def test_main_success():
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
-
                 assert exc_info.value.code == 0
 
 
@@ -795,13 +775,11 @@ def test_load_configs():
         ):
             with patch("omegaconf.OmegaConf.update"):
                 pc, ec = load_configs(args)
-
                 assert pc is mock_pc
 
 
 def test_run_batch_mode_ingest_needed():
     from run_aws_training import run_batch_mode
-
     import argparse
 
     args = argparse.Namespace(dry_run=False, mode="batch", config="test", overrides=[])
@@ -820,7 +798,5 @@ def test_run_batch_mode_ingest_needed():
                 ):
                     with pytest.raises(SystemExit) as exc_info:
                         run_batch_mode(args, mock_pc, mock_ec)
-
                     assert exc_info.value.code == 0
-
                     mock_ingest.assert_called_once()

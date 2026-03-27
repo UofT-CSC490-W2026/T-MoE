@@ -1,7 +1,5 @@
 import torch
-
 from src.configs.router import StandardRouterConfig
-
 from src.routers.standard import StandardRouter
 
 
@@ -92,9 +90,7 @@ def test_standard_router_topk_matches_known_logits(device):
 
     with torch.no_grad():
         router.gate.weight.zero_()
-
         router.gate.weight.copy_(torch.eye(4, device=device))
-
     x = torch.tensor([[[0.1, 2.0, -1.0, 3.0]]], device=device)
 
     weights, indices, _ = router(x, return_metrics=False)
@@ -119,9 +115,7 @@ def test_standard_router_aux_loss_reflects_imbalance(device):
 
     with torch.no_grad():
         router.gate.weight.zero_()
-
         router.gate.weight[0, 0] = 5.0
-
     x = torch.zeros(2, 3, config.hidden_dim, device=device)
 
     x[..., 0] = 10.0
@@ -132,7 +126,6 @@ def test_standard_router_aux_loss_reflects_imbalance(device):
 
     with torch.no_grad():
         router.gate.weight.zero_()
-
     router(x, return_metrics=False)
 
     aux_uniform = router.compute_aux_loss()
@@ -145,7 +138,6 @@ def test_standard_router_aux_loss_reflects_imbalance(device):
 def test_standard_router_accepts_bfloat16_inputs(device):
     if device == "cpu":
         return
-
     config = StandardRouterConfig(hidden_dim=32, num_experts=4, top_k=2)
 
     router = StandardRouter(config).to(device)

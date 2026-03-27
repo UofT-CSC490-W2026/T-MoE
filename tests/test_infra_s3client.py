@@ -1,7 +1,5 @@
 import pytest
-
 from pathlib import Path
-
 from unittest.mock import patch, MagicMock
 
 
@@ -28,7 +26,6 @@ def _fresh_client():
         with patch.object(mod, "BotoConfig", MagicMock()):
             with patch.object(mod, "TransferConfig", MagicMock()):
                 client = mod.S3Client(region="us-east-1")
-
     client._client = mock_s3
 
     return client, mock_s3
@@ -385,11 +382,9 @@ def test_upload_experiment_dir_bucket_inaccessible(tmp_path):
 
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
-
         import importlib
 
         importlib.reload(s3_sync)
-
         with pytest.raises(RuntimeError, match="inaccessible"):
             s3_sync.upload_experiment_dir(str(tmp_path), "bucket", "prefix/")
 
@@ -411,13 +406,10 @@ def test_upload_experiment_dir_success(tmp_path):
 
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
-
         import importlib
 
         importlib.reload(s3_sync)
-
         result = s3_sync.upload_experiment_dir(str(tmp_path), "bucket", "prefix/")
-
     assert len(result["uploaded"]) == 2
 
     assert result["failed"] == []
@@ -438,13 +430,10 @@ def test_upload_experiment_dir_partial_failure(tmp_path):
 
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
-
         import importlib
 
         importlib.reload(s3_sync)
-
         result = s3_sync.upload_experiment_dir(str(tmp_path), "bucket", "prefix/")
-
     assert len(result["failed"]) == 1
 
 
@@ -459,13 +448,10 @@ def test_download_s3_prefix_no_objects(tmp_path):
 
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
-
         import importlib
 
         importlib.reload(s3_sync)
-
         result = s3_sync.download_s3_prefix("bucket", "prefix/", str(tmp_path))
-
     assert result == []
 
 
@@ -485,13 +471,10 @@ def test_download_s3_prefix_success(tmp_path):
 
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
-
         import importlib
 
         importlib.reload(s3_sync)
-
         result = s3_sync.download_s3_prefix("bucket", "prefix/", str(tmp_path))
-
     assert len(result) == 1
 
 
@@ -508,13 +491,10 @@ def test_download_s3_prefix_download_failure(tmp_path):
 
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
-
         import importlib
 
         importlib.reload(s3_sync)
-
         result = s3_sync.download_s3_prefix("bucket", "prefix/", str(tmp_path))
-
     assert result == []
 
 
@@ -613,5 +593,4 @@ def test_s3client_init_with_endpoint_url():
                 client = mod.S3Client(
                     region="us-east-1", endpoint_url="http://localhost:9000"
                 )
-
     assert client.endpoint_url == "http://localhost:9000"

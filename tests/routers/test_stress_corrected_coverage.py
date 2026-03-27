@@ -1,11 +1,7 @@
 from __future__ import annotations
-
 from unittest.mock import patch
-
 import torch
-
 from src.configs.router import StressCorrectedRouterConfig
-
 from src.routers.stress_corrected import StressCorrectedRouter
 
 
@@ -50,7 +46,6 @@ def test_sync_pending_counts_distributed():
         with patch("torch.distributed.get_world_size", return_value=2):
             with patch("torch.distributed.all_reduce") as mock_ar:
                 router._sync_pending_counts_distributed()
-
     assert mock_ar.call_count == 2
 
 
@@ -83,7 +78,6 @@ def test_sync_ema_load_distributed():
         with patch("torch.distributed.get_world_size", return_value=2):
             with patch("torch.distributed.all_reduce") as mock_ar:
                 router._sync_ema_load_distributed()
-
     mock_ar.assert_called_once()
 
 
@@ -116,7 +110,6 @@ def test_sync_lambda_distributed():
         with patch("torch.distributed.get_world_size", return_value=2):
             with patch("torch.distributed.broadcast") as mock_bc:
                 router._sync_lambda_distributed()
-
     assert mock_bc.call_count == 2
 
 
@@ -161,5 +154,4 @@ def test_sync_welford_distributed():
         with patch("torch.distributed.get_world_size", return_value=2):
             with patch("torch.distributed.all_gather", side_effect=_fake_all_gather):
                 router._sync_welford_distributed()
-
     assert torch.all(router.welford_n >= 10.0)

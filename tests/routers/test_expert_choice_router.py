@@ -1,7 +1,5 @@
 import torch
-
 from src.configs.router import ExpertChoiceRouterConfig
-
 from src.routers.expert_choice import ExpertChoiceRouter
 
 

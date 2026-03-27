@@ -1,11 +1,7 @@
 import pytest
-
 import torch
-
 import torch.nn as nn
-
 from unittest.mock import patch, MagicMock
-
 from pathlib import Path
 
 
@@ -124,7 +120,6 @@ def test_build_model_from_config():
 
     with patch("evals.loading.ModelRegistry") as MockReg:
         MockReg.get.return_value = MagicMock(return_value=mock_model)
-
         with patch(
             "evals.loading.model_lookup",
             return_value={
@@ -329,7 +324,6 @@ def test_compute_document_nll_normal():
 
     def fake_model(input_ids):
         B, L = input_ids.shape
-
         return (torch.randn(B, L, 100),)
 
     input_ids = torch.randint(0, 100, (1, 20))
@@ -501,7 +495,6 @@ def test_run_efficiency_eval():
             benchmark_iters=2,
             autocast_dtype=torch.float32,
         )
-
     assert result == mock_payload
 
 
@@ -531,7 +524,6 @@ def test_run_efficiency_eval_with_output(tmp_path):
                 benchmark_iters=2,
                 autocast_dtype=torch.float32,
             )
-
             mock_write.assert_called_once()
 
 
@@ -663,7 +655,6 @@ def test_run_lm_harness_eval():
                         checkpoint_info={},
                         device="cpu",
                     )
-
     assert result["task"] == "lm_harness"
 
 
@@ -770,13 +761,11 @@ def test_run_lm_harness_eval_with_output(tmp_path):
                     zero_shot_tasks=[],
                     five_shot_tasks=[],
                 )
-
                 mock_write.assert_called_once()
 
 
 def test_to_plain_python_various_types():
     from evals.results_schema import _to_plain_python
-
     import numpy as np
 
     assert _to_plain_python(None) is None
@@ -811,7 +800,6 @@ def test_get_git_commit_failure():
 
     with patch("subprocess.run", side_effect=FileNotFoundError):
         result = get_git_commit()
-
     assert result == "unknown"
 
 
@@ -876,7 +864,6 @@ def test_eval_wandb_project_default():
 
     with patch.dict("os.environ", {}, clear=True):
         result = _eval_wandb_project({})
-
     assert result == "tmoe"
 
 
@@ -893,7 +880,6 @@ def test_eval_wandb_entity_none():
 
     with patch.dict("os.environ", {}, clear=True):
         result = _eval_wandb_entity({})
-
     assert result is None
 
 
@@ -918,7 +904,6 @@ def test_eval_wandb_mode_default():
 
     with patch.dict("os.environ", {}, clear=True):
         result = _eval_wandb_mode({})
-
     assert result == "online"
 
 
@@ -995,13 +980,9 @@ def test_build_mmlu_table_with_data():
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
         with patch("evals.results_schema.wandb") as mock_wandb:
             mock_table = MagicMock()
-
             mock_wandb.Table.return_value = mock_table
-
             payload = {"metadata": {"mmlu_subjects": {"math": 0.6, "history": 0.7}}}
-
             result = _build_mmlu_table(payload)
-
             assert result is mock_table
 
 
@@ -1010,7 +991,6 @@ def test_log_results_to_wandb_not_available():
 
     with patch("evals.results_schema.WANDB_AVAILABLE", False):
         result = log_results_to_wandb({})
-
     assert result is False
 
 
@@ -1019,7 +999,6 @@ def test_log_results_to_wandb_disabled_config():
 
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
         result = log_results_to_wandb({}, config={"logging": {"enabled": False}})
-
     assert result is False
 
 
@@ -1029,7 +1008,6 @@ def test_log_results_to_wandb_disabled_mode():
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
         with patch("evals.results_schema._eval_wandb_mode", return_value="disabled"):
             result = log_results_to_wandb({})
-
     assert result is False
 
 
@@ -1039,11 +1017,8 @@ def test_log_results_to_wandb_init_fails():
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
         with patch("evals.results_schema.wandb") as mock_wandb:
             mock_wandb.run = None
-
             mock_wandb.init.side_effect = Exception("wandb error")
-
             result = log_results_to_wandb({"task": "perplexity", "results": {}})
-
     assert result is False
 
 
@@ -1053,13 +1028,9 @@ def test_log_results_to_wandb_success():
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
         with patch("evals.results_schema.wandb") as mock_wandb:
             mock_run = MagicMock()
-
             mock_wandb.init.return_value = mock_run
-
             mock_wandb.run = mock_run
-
             mock_wandb.Settings = None
-
             payload = {
                 "task": "perplexity",
                 "results": {"ppl": 15.2},
@@ -1067,9 +1038,7 @@ def test_log_results_to_wandb_success():
                 "checkpoint_step": 100,
                 "metadata": {},
             }
-
             result = log_results_to_wandb(payload)
-
     assert result is True
 
 
@@ -1121,7 +1090,6 @@ def test_run_efficiency_eval_with_reference(tmp_path):
                     reference_checkpoint_path="ref_ckpt.pt",
                     reference_config={},
                 )
-
     assert result == mock_payload
 
 
@@ -1147,13 +1115,11 @@ def test_simple_evaluate_wrapper():
                     limit=None,
                     log_samples=False,
                 )
-
     assert result == {"results": {}}
 
 
 def test_cfg_select_omegaconf_path():
     from evals.loading import _cfg_select
-
     from omegaconf import OmegaConf
 
     config = OmegaConf.create({"model": {"model_key": "gpt-neo-125m"}})
@@ -1165,7 +1131,6 @@ def test_cfg_select_omegaconf_path():
 
 def test_as_list_omegaconf():
     from evals.loading import _as_list
-
     from omegaconf import OmegaConf
 
     value = OmegaConf.create([1, 2, 3])
@@ -1229,7 +1194,6 @@ def test_build_moe_layers_invalid_layer_index():
 
 def test_to_plain_python_omegaconf():
     from evals.results_schema import _to_plain_python
-
     from omegaconf import OmegaConf
 
     config = OmegaConf.create({"key": "value", "num": 42})
@@ -1241,7 +1205,6 @@ def test_to_plain_python_omegaconf():
 
 def test_to_plain_python_path():
     from evals.results_schema import _to_plain_python
-
     from pathlib import Path
 
     result = _to_plain_python(Path("/some/path"))
@@ -1251,7 +1214,6 @@ def test_to_plain_python_path():
 
 def test_to_plain_python_tensor_tolist():
     import torch
-
     from evals.results_schema import _to_plain_python
 
     t = torch.tensor([1.0, 2.0, 3.0])
@@ -1263,7 +1225,6 @@ def test_to_plain_python_tensor_tolist():
 
 def test_to_plain_python_scalar_item():
     import torch
-
     from evals.results_schema import _to_plain_python
 
     t = torch.tensor(42.0)
@@ -1311,7 +1272,6 @@ def test_infer_checkpoint_step_best_model():
 
 def test_cfg_select_results_schema_omegaconf():
     from evals.results_schema import _cfg_select
-
     from omegaconf import OmegaConf
 
     config = OmegaConf.create({"logging": {"project": "my_project"}})
@@ -1334,7 +1294,6 @@ def test_log_results_to_wandb_not_available_v2():
 
     with patch("evals.results_schema.WANDB_AVAILABLE", False):
         result = log_results_to_wandb({"task": "perplexity"})
-
     assert result is False
 
 
@@ -1345,7 +1304,6 @@ def test_log_results_to_wandb_logging_disabled():
         result = log_results_to_wandb(
             {"task": "perplexity"}, config={"logging": {"enabled": False}}
         )
-
     assert result is False
 
 
@@ -1356,7 +1314,6 @@ def test_log_results_to_wandb_mode_disabled():
         result = log_results_to_wandb(
             {"task": "perplexity"}, config={"logging": {"mode": "disabled"}}
         )
-
     assert result is False
 
 
@@ -1408,7 +1365,6 @@ def test_log_results_to_wandb_logging_enabled_false_v2():
         result = log_results_to_wandb(
             {"task": "perplexity"}, config={"logging": {"enabled": False}}
         )
-
     assert result is False
 
 
@@ -1418,13 +1374,9 @@ def test_log_results_to_wandb_with_checkpoint_step():
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
         with patch("evals.results_schema.wandb") as mock_wandb:
             mock_run = MagicMock()
-
             mock_wandb.init.return_value = mock_run
-
             mock_wandb.run = mock_run
-
             mock_wandb.Settings = None
-
             payload = {
                 "task": "perplexity",
                 "checkpoint_step": 100,
@@ -1432,9 +1384,7 @@ def test_log_results_to_wandb_with_checkpoint_step():
                 "metadata": {},
                 "experiment_name": "test_exp",
             }
-
             result = log_results_to_wandb(payload, config={})
-
     assert result is True
 
 
@@ -1444,11 +1394,8 @@ def test_log_results_to_wandb_wandb_init_fails():
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
         with patch("evals.results_schema.wandb") as mock_wandb:
             mock_wandb.init.side_effect = Exception("wandb error")
-
             mock_wandb.Settings = None
-
             result = log_results_to_wandb({"task": "perplexity"}, config={})
-
     assert result is False
 
 
@@ -1458,17 +1405,13 @@ def test_log_results_to_wandb_run_none():
     with patch("evals.results_schema.WANDB_AVAILABLE", True):
         with patch("evals.results_schema.wandb") as mock_wandb:
             mock_wandb.init.return_value = None
-
             mock_wandb.Settings = None
-
             result = log_results_to_wandb({"task": "perplexity"}, config={})
-
     assert result is False
 
 
 def test_router_kwargs_omegaconf():
     from evals.loading import _router_kwargs
-
     from omegaconf import OmegaConf
 
     config = OmegaConf.create(

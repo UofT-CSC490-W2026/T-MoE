@@ -1,19 +1,11 @@
 from __future__ import annotations
-
 import math
-
 import struct
-
 from pathlib import Path
-
 from unittest.mock import patch, MagicMock
-
 import numpy as np
-
 import pytest
-
 import torch
-
 from omegaconf import OmegaConf
 
 
@@ -23,14 +15,10 @@ def _write_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
     with open(path, "wb") as f:
         if uint32:
             f.write(struct.pack("<Q", n))
-
             f.write(struct.pack("<H", 1))
-
             f.write(np.array(tokens, dtype=np.uint32).tobytes())
-
         else:
             f.write(struct.pack("<Q", n))
-
             f.write(np.array(tokens, dtype=np.uint16).tobytes())
 
 
@@ -41,9 +29,7 @@ def _write_versioned_shard(path: Path, tokens: list[int], dtype_flag: int = 0) -
 
     with open(path, "wb") as f:
         f.write(struct.pack("<Q", n))
-
         f.write(struct.pack("<H", dtype_flag))
-
         f.write(np.array(tokens, dtype=dtype).tobytes())
 
 
@@ -98,11 +84,8 @@ def test_shard_dataset_unknown_dtype_flag(tmp_path):
 
     with open(shard, "wb") as f:
         f.write(struct.pack("<Q", n))
-
         f.write(struct.pack("<H", 2))
-
         f.write(np.zeros(n, dtype=np.uint16).tobytes())
-
     with pytest.raises(ValueError, match="Unknown dtype_flag"):
         ShardDataset(tmp_path, "train", seq_len=8)
 
@@ -133,9 +116,7 @@ def test_shard_dataset_multi_shard(tmp_path):
 
     for i in range(3):
         shard = tmp_path / f"train_shard_{i:04d}.bin"
-
         _write_shard(shard, list(range(50)))
-
     ds = ShardDataset(tmp_path, "train", seq_len=8)
 
     assert len(ds) > 0
@@ -174,7 +155,6 @@ def test_parse_args_basic():
 
     with patch("sys.argv", ["train.py", "--config", "exp.yaml"]):
         args, overrides = parse_args()
-
     assert args.config == "exp.yaml"
 
     assert args.resume is None
@@ -201,7 +181,6 @@ def test_parse_args_with_all_flags():
         ],
     ):
         args, overrides = parse_args()
-
     assert args.resume == "ckpt.pt"
 
     assert args.output_dir == "/tmp/out"
@@ -269,9 +248,7 @@ def test_build_optimizer_with_lr_base():
     class _ModelWithBase(torch.nn.Module):
         def __init__(self):
             super().__init__()
-
             self.shared_fc_weight = torch.nn.Parameter(torch.randn(4, 4))
-
             self.other = torch.nn.Linear(4, 4)
 
     model = _ModelWithBase()
@@ -291,7 +268,6 @@ def test_evaluate_basic():
     class _M(torch.nn.Module):
         def forward(self, input_ids, labels, return_metrics, record_usage):
             loss = torch.tensor(1.5)
-
             return None, loss, {}
 
     model = _M()
@@ -321,9 +297,7 @@ def test_evaluate_respects_max_batches():
     class _M(torch.nn.Module):
         def forward(self, input_ids, labels, return_metrics, record_usage):
             nonlocal call_count
-
             call_count += 1
-
             return None, torch.tensor(1.0), {}
 
     model = _M()
@@ -412,7 +386,6 @@ def test_init_wandb_success_with_url():
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             with patch("scripts.train.OmegaConf.to_container", return_value={}):
                 init_wandb(cfg)
-
     mock_wandb.init.assert_called_once()
 
 
@@ -469,7 +442,6 @@ def test_init_wandb_exception():
 
 def test_init_wandb_env_mode_fallback():
     from scripts.train import init_wandb
-
     import os
 
     cfg = MagicMock()
@@ -493,7 +465,6 @@ def test_init_wandb_env_mode_fallback():
             with patch("scripts.train.OmegaConf.to_container", return_value={}):
                 with patch.dict(os.environ, {"WANDB_MODE": "offline"}):
                     init_wandb(cfg)
-
     _, kwargs = mock_wandb.init.call_args
 
     assert kwargs.get("mode") == "offline" or mock_wandb.init.call_args[0]
@@ -516,7 +487,6 @@ def test_log_wandb_no_run():
     with patch("scripts.train.is_main_process", return_value=True):
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             log_wandb({"loss": 1.0})
-
     mock_wandb.log.assert_not_called()
 
 
@@ -530,7 +500,6 @@ def test_log_wandb_with_run():
     with patch("scripts.train.is_main_process", return_value=True):
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             log_wandb({"loss": 1.0, "step": 10})
-
     mock_wandb.log.assert_called_once_with({"loss": 1.0, "step": 10})
 
 
@@ -557,9 +526,7 @@ def _make_full_cfg(tmp_path):
 
     for split in ("train", "val"):
         shard = shard_dir / f"{split}_shard_0000.bin"
-
         _write_shard(shard, list(range(200)))
-
     cfg_dict = {
         "experiment_name": "test_run",
         "seed": 42,
@@ -613,18 +580,13 @@ class _TinyModel(torch.nn.Module):
 
     def __init__(self):
         super().__init__()
-
         self.embed = torch.nn.Embedding(16, 8)
-
         self.fc = torch.nn.Linear(8, 16)
 
     def forward(self, input_ids, labels=None, return_metrics=True, record_usage=True):
         x = self.embed(input_ids % 16)
-
         logits = self.fc(x)
-
         loss = torch.tensor(1.0, requires_grad=True)
-
         return logits, loss, {}
 
     def eval(self):
@@ -801,7 +763,6 @@ def test_main_with_resume(tmp_path):
         patch("src.training.precision.is_mixed_precision", return_value=False),
     ):
         main()
-
     mock_ckpt_mgr.load_checkpoint.assert_called_once()
 
 
@@ -888,21 +849,13 @@ def test_main_steps_from_config(tmp_path):
 class _MoELayer(torch.nn.Module):
     def __init__(self):
         super().__init__()
-
         self._last_routing_weights = None
-
         self._last_routing_indices = None
-
         self.router = MagicMock(spec=["clear_aux_state", "parameters"])
-
         self.router.clear_aux_state = MagicMock()
-
         self.router.parameters = lambda: iter([])
-
         self.expert_pool = MagicMock()
-
         self.expert_pool.experts = []
-
         self.expert_pool.consolidate_shared_weights = MagicMock()
 
     def step(self):
@@ -914,22 +867,15 @@ class _TinyModelWithMoE(torch.nn.Module):
 
     def __init__(self):
         super().__init__()
-
         self.embed = torch.nn.Embedding(16, 8)
-
         self.fc = torch.nn.Linear(8, 16)
-
         moe = _MoELayer()
-
         self.moe_layers = {0: moe}
 
     def forward(self, input_ids, labels=None, return_metrics=True, record_usage=True):
         x = self.embed(input_ids % 16)
-
         logits = self.fc(x)
-
         loss = torch.tensor(1.0, requires_grad=True)
-
         moe_metrics = (
             {
                 "layer_0": {
@@ -948,7 +894,6 @@ class _TinyModelWithMoE(torch.nn.Module):
             if return_metrics
             else {}
         )
-
         return logits, loss, moe_metrics
 
     def eval(self):
@@ -1017,7 +962,6 @@ def test_main_early_stopping(tmp_path):
 
     def _fake_evaluate(model, val_loader, device, max_batches=20):
         call_count[0] += 1
-
         return 2.0 + call_count[0]
 
     with (
@@ -1051,11 +995,9 @@ def test_main_early_stopping(tmp_path):
 
         def _patched_load(path, overrides):
             c = original_load(path, overrides)
-
             from omegaconf import OmegaConf
 
             OmegaConf.update(c, "training.early_stopping_patience", 1)
-
             return c
 
         with patch("scripts.train.load_config", side_effect=_patched_load):
@@ -1109,7 +1051,6 @@ def test_main_periodic_save(tmp_path):
         patch("src.training.precision.is_mixed_precision", return_value=False),
     ):
         main()
-
     assert mock_ckpt_mgr.save_checkpoint.call_count >= 1
 
 
@@ -1211,7 +1152,6 @@ def test_main_compile_path(tmp_path):
     class _ModelWithBackbone(_TinyModel):
         def __init__(self):
             super().__init__()
-
             self.backbone = torch.nn.Linear(4, 4)
 
     model = _ModelWithBackbone()
@@ -1300,9 +1240,7 @@ def test_main_chinchilla_steps_none(tmp_path):
 
     def _no_steps_load(path, overrides):
         c = original_load(path, overrides)
-
         OmegaConf.update(c, "training.steps", OmegaConf.MISSING)
-
         return c
 
     with (
@@ -1344,27 +1282,20 @@ def test_main_moe_layer_with_expert_pool_grads(tmp_path):
     class _ExpertWithGrad(torch.nn.Module):
         def __init__(self):
             super().__init__()
-
             self.w = torch.nn.Parameter(torch.randn(4, 4))
 
     class _MoELayerWithPool(_MoELayer):
         def __init__(self):
             super().__init__()
-
             expert = _ExpertWithGrad()
-
             expert.w.grad = torch.randn(4, 4)
-
             self.expert_pool = MagicMock(spec=["experts", "consolidate_shared_weights"])
-
             self.expert_pool.experts = [expert]
-
             self.expert_pool.consolidate_shared_weights = MagicMock()
 
     class _ModelWithPool(_TinyModelWithMoE):
         def __init__(self):
             super().__init__()
-
             self.moe_layers = {0: _MoELayerWithPool()}
 
     model = _ModelWithPool()
@@ -1408,23 +1339,18 @@ def test_main_moe_layer_with_router_grads(tmp_path):
     class _RouterWithGrad(torch.nn.Module):
         def __init__(self):
             super().__init__()
-
             self.w = torch.nn.Parameter(torch.randn(4, 4))
-
             self.w.grad = torch.randn(4, 4)
-
             self.clear_aux_state = MagicMock()
 
     class _MoELayerWithRouterGrad(_MoELayer):
         def __init__(self):
             super().__init__()
-
             self.router = _RouterWithGrad()
 
     class _ModelWithRouterGrad(_TinyModelWithMoE):
         def __init__(self):
             super().__init__()
-
             self.moe_layers = {0: _MoELayerWithRouterGrad()}
 
     model = _ModelWithRouterGrad()
@@ -1468,11 +1394,8 @@ def test_main_moe_router_with_lambda_val(tmp_path):
     class _RouterWithLambda(torch.nn.Module):
         def __init__(self):
             super().__init__()
-
             self.lambda_val = torch.tensor(0.5)
-
             self.welford_n = torch.tensor([10.0, 10.0])
-
             self.clear_aux_state = MagicMock()
 
         def _welford_variance(self):
@@ -1481,13 +1404,11 @@ def test_main_moe_router_with_lambda_val(tmp_path):
     class _MoELayerWithLambda(_MoELayer):
         def __init__(self):
             super().__init__()
-
             self.router = _RouterWithLambda()
 
     class _ModelWithLambda(_TinyModelWithMoE):
         def __init__(self):
             super().__init__()
-
             self.moe_layers = {0: _MoELayerWithLambda()}
 
     model = _ModelWithLambda()
@@ -1531,7 +1452,6 @@ def test_main_moe_router_with_get_state(tmp_path):
     class _RouterWithState(torch.nn.Module):
         def __init__(self):
             super().__init__()
-
             self.clear_aux_state = MagicMock()
 
         def get_state(self):
@@ -1545,24 +1465,19 @@ def test_main_moe_router_with_get_state(tmp_path):
     class _MoELayerWithState(_MoELayer):
         def __init__(self):
             super().__init__()
-
             self.router = _RouterWithState()
 
     class _ModelWithState(_TinyModelWithMoE):
         def __init__(self):
             super().__init__()
-
             self.moe_layers = {0: _MoELayerWithState()}
 
         def forward(
             self, input_ids, labels=None, return_metrics=True, record_usage=True
         ):
             x = self.embed(input_ids % 16)
-
             logits = self.fc(x)
-
             loss = torch.tensor(1.0, requires_grad=True)
-
             moe_metrics = (
                 {
                     "layer_0": {
@@ -1579,7 +1494,6 @@ def test_main_moe_router_with_get_state(tmp_path):
                 if return_metrics
                 else {}
             )
-
             return logits, loss, moe_metrics
 
     model = _ModelWithState()
@@ -1623,7 +1537,6 @@ def test_main_moe_router_with_fatigue(tmp_path):
     class _RouterWithWelford(torch.nn.Module):
         def __init__(self):
             super().__init__()
-
             self.clear_aux_state = MagicMock()
 
         def reset_welford(self):
@@ -1632,13 +1545,11 @@ def test_main_moe_router_with_fatigue(tmp_path):
     class _MoELayerWithWelford(_MoELayer):
         def __init__(self):
             super().__init__()
-
             self.router = _RouterWithWelford()
 
     class _ModelWithWelford(_TinyModelWithMoE):
         def __init__(self):
             super().__init__()
-
             self.moe_layers = {0: _MoELayerWithWelford()}
 
     model = _ModelWithWelford()
@@ -1686,13 +1597,9 @@ def test_main_spec_trackers_with_moe(tmp_path):
             self, input_ids, labels=None, return_metrics=True, record_usage=True
         ):
             x = self.embed(input_ids % 16)
-
             logits = self.fc(x)
-
             loss = torch.tensor(1.0, requires_grad=True)
-
             b, s = input_ids.shape
-
             moe_metrics = (
                 {
                     "layer_0": {
@@ -1702,7 +1609,6 @@ def test_main_spec_trackers_with_moe(tmp_path):
                 if return_metrics
                 else {}
             )
-
             return logits, loss, moe_metrics
 
     model = _ModelWithVocabAndMoE()
@@ -1979,21 +1885,16 @@ def test_main_moe_trainable_base(tmp_path):
     class _MoELayerWithBase(_MoELayer):
         def __init__(self):
             super().__init__()
-
             self.expert_pool = MagicMock(
                 spec=["experts", "consolidate_shared_weights", "make_base_trainable"]
             )
-
             self.expert_pool.experts = []
-
             self.expert_pool.consolidate_shared_weights = MagicMock()
-
             self.expert_pool.make_base_trainable = MagicMock()
 
     class _ModelWithBase(_TinyModelWithMoE):
         def __init__(self):
             super().__init__()
-
             self.moe_layers = {0: _MoELayerWithBase()}
 
     model = _ModelWithBase()
@@ -2023,7 +1924,6 @@ def test_main_moe_trainable_base(tmp_path):
         patch("src.training.precision.is_mixed_precision", return_value=False),
     ):
         main()
-
     model.moe_layers[0].expert_pool.make_base_trainable.assert_called_once()
 
 
@@ -2039,5 +1939,4 @@ def test_broadcast_scalar_distributed():
 
     with patch.dict("sys.modules", {"torch.distributed": mock_dist}):
         result = _broadcast_scalar(2.71, "cpu", is_distributed=False)
-
     assert result == pytest.approx(2.71)

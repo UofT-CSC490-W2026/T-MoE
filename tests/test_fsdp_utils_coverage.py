@@ -1,13 +1,8 @@
 from __future__ import annotations
-
 import os
-
 from unittest.mock import patch, MagicMock
-
 import pytest
-
 import torch
-
 import torch.nn as nn
 
 
@@ -16,7 +11,6 @@ def test_init_distributed_no_rank_env():
 
     with patch.dict(os.environ, {}, clear=True):
         result = init_distributed()
-
     assert result == (False, 0, 0, 1)
 
 
@@ -55,7 +49,6 @@ def test_init_distributed_success(monkeypatch):
                     with patch("torch.cuda.set_device"):
                         with patch("torch.distributed.barrier"):
                             result = init_distributed()
-
     assert result == (True, 0, 0, 2)
 
 
@@ -74,7 +67,6 @@ def test_cleanup_distributed_initialized():
         with patch("torch.distributed.is_initialized", return_value=True):
             with patch("torch.distributed.destroy_process_group") as mock_destroy:
                 cleanup_distributed()
-
     mock_destroy.assert_called_once()
 
 
@@ -113,7 +105,6 @@ def test_get_model_for_attr_access_plain():
 
 def test_get_model_for_attr_access_ddp():
     from src.training.fsdp_utils import get_model_for_attr_access
-
     from torch.nn.parallel import DistributedDataParallel as DDP
 
     inner = nn.Linear(4, 4)
@@ -144,7 +135,6 @@ def test_wrap_model_for_distributed_ddp():
         result = wrap_model_for_distributed(
             model, cfg, local_rank=0, device=torch.device("cpu")
         )
-
     mock_ddp.assert_called_once()
 
     assert result is mock_wrapped
@@ -169,7 +159,6 @@ def test_wrap_model_for_distributed_fsdp():
         result = wrap_model_for_distributed(
             model, cfg, local_rank=0, device=torch.device("cpu")
         )
-
     mock_fsdp.assert_called_once()
 
     assert result is mock_wrapped
@@ -190,7 +179,6 @@ def test_wrap_model_for_distributed_no_dist_cfg():
         result = wrap_model_for_distributed(
             model, cfg, local_rank=0, device=torch.device("cpu")
         )
-
     assert result is mock_wrapped
 
 
@@ -211,7 +199,6 @@ def test_wrap_model_with_ddp():
         with patch("torch.distributed.is_initialized", return_value=False):
             with patch("src.training.fsdp_utils.is_main_process", return_value=True):
                 result = wrap_model_with_ddp(model, local_rank=0, cfg=cfg)
-
     assert result is mock_ddp
 
 
@@ -235,7 +222,6 @@ def test_wrap_model_with_ddp_with_barrier():
                     "src.training.fsdp_utils.is_main_process", return_value=False
                 ):
                     wrap_model_with_ddp(model, local_rank=0, cfg=cfg)
-
     mock_barrier.assert_called_once()
 
 
@@ -250,7 +236,6 @@ def test_get_fsdp_wrap_targets_gpt_neo():
         "src.configs.model.model_lookup", return_value={"model_type": "gpt_neo"}
     ):
         targets = _get_fsdp_wrap_targets(cfg)
-
     assert len(targets) == 1
 
 
@@ -263,7 +248,6 @@ def test_get_fsdp_wrap_targets_qwen2():
 
     with patch("src.configs.model.model_lookup", return_value={"model_type": "qwen2"}):
         targets = _get_fsdp_wrap_targets(cfg)
-
     assert len(targets) == 1
 
 
@@ -307,7 +291,6 @@ def test_wrap_model_with_fsdp():
 
         with patch.object(fsdp_mod, "FullyShardedDataParallel", _FakeFSDP):
             result = wrap_model_with_fsdp(model, cfg, device=torch.device("cpu"))
-
     assert isinstance(result, _FakeFSDP)
 
 
@@ -351,7 +334,6 @@ def test_wrap_model_with_fsdp_with_mixed_precision_and_checkpointing():
 
         with patch.object(fsdp_mod, "FullyShardedDataParallel", _FakeFSDP):
             wrap_model_with_fsdp(model, cfg, device=torch.device("cpu"))
-
     mock_ckpt.assert_called_once()
 
 
@@ -393,7 +375,6 @@ def test_wrap_model_with_fsdp_no_shard_strategy():
 
         with patch.object(fsdp_mod, "FullyShardedDataParallel", _FakeFSDP):
             result = wrap_model_with_fsdp(model, cfg, device=torch.device("cpu"))
-
     assert isinstance(result, _FakeFSDP)
 
 
@@ -413,5 +394,4 @@ def test_apply_activation_checkpointing():
         patch("src.training.fsdp_utils.is_main_process", return_value=True),
     ):
         _apply_activation_checkpointing(model, nn.Linear)
-
     mock_apply.assert_called_once()

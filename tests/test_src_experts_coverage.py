@@ -1,7 +1,5 @@
 import pytest
-
 import torch
-
 import torch.nn as nn
 
 
@@ -11,7 +9,6 @@ def test_base_expert_get_param_count():
     class ConcreteExpert(BaseExpert):
         def __init__(self):
             super().__init__(config=None)
-
             self.linear = nn.Linear(10, 10)
 
         def forward(self, x):
@@ -30,7 +27,6 @@ def test_base_expert_get_flops():
     class ConcreteExpert(BaseExpert):
         def __init__(self):
             super().__init__(config=None)
-
             self.linear = nn.Linear(10, 10)
 
         def forward(self, x):
@@ -51,7 +47,6 @@ def test_base_expert_clone_from_parent():
     class ConcreteExpert(BaseExpert):
         def __init__(self):
             super().__init__(config=None)
-
             self.linear = nn.Linear(10, 10)
 
         def forward(self, x):
@@ -63,9 +58,7 @@ def test_base_expert_clone_from_parent():
 
     with torch.no_grad():
         parent.linear.weight.fill_(1.0)
-
         child.linear.weight.fill_(0.0)
-
     child.clone_from_parent(parent)
 
     assert torch.allclose(child.linear.weight, parent.linear.weight)
@@ -272,7 +265,6 @@ def test_shared_base_lora_forward():
 
 def test_lora_mlp_expert_freeze_base_weights():
     from src.experts.lora import LoRAConfig
-
     from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -292,9 +284,7 @@ def test_lora_mlp_expert_freeze_base_weights():
 
 def test_expert_pool_consolidate_shared_weights():
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig
-
     from src.project_types import ExpertType
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -320,9 +310,7 @@ def test_expert_pool_consolidate_shared_weights():
 
 def test_expert_pool_consolidate_single_expert():
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig
-
     from src.project_types import ExpertType
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -334,9 +322,7 @@ def test_expert_pool_consolidate_single_expert():
 
 def test_expert_pool_make_base_trainable():
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig
-
     from src.project_types import ExpertType
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -362,9 +348,7 @@ def test_expert_pool_make_base_trainable():
 
 def test_expert_pool_make_base_trainable_empty():
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig
-
     from src.project_types import ExpertType
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -376,9 +360,7 @@ def test_expert_pool_make_base_trainable_empty():
 
 def test_expert_pool_save_load_expert(tmp_path):
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig
-
     from src.project_types import ExpertType
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -402,9 +384,7 @@ def test_expert_pool_save_load_expert(tmp_path):
 
 def test_expert_pool_save_load_all(tmp_path):
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig
-
     from src.project_types import ExpertType
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -426,9 +406,7 @@ def test_expert_pool_save_load_all(tmp_path):
 
 def test_expert_pool_freeze_base_weights():
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig
-
     from src.project_types import ExpertType
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -440,7 +418,6 @@ def test_expert_pool_freeze_base_weights():
 
 def test_qwen2_lora_mlp_load_from_mlp():
     from src.experts.qwen2_lora import Qwen2LoRAMLP
-
     from src.experts.lora import LoRAConfig
 
     cfg = LoRAConfig(hidden_dim=64, intermediate_dim=256, rank=4, alpha=8)
@@ -466,7 +443,6 @@ def test_qwen2_lora_mlp_load_from_mlp():
 
 def test_qwen2_lora_mlp_missing_attr():
     from src.experts.qwen2_lora import Qwen2LoRAMLP
-
     from src.experts.lora import LoRAConfig
 
     cfg = LoRAConfig(hidden_dim=64, intermediate_dim=256, rank=4, alpha=8)
@@ -481,7 +457,6 @@ def test_qwen2_lora_mlp_missing_attr():
 
 def test_qwen2_lora_mlp_forward_not_loaded():
     from src.experts.qwen2_lora import Qwen2LoRAMLP
-
     from src.experts.lora import LoRAConfig
 
     cfg = LoRAConfig(hidden_dim=64, intermediate_dim=256, rank=4, alpha=8)
@@ -494,7 +469,6 @@ def test_qwen2_lora_mlp_forward_not_loaded():
 
 def test_qwen2_lora_mlp_get_lora_layer_names():
     from src.experts.qwen2_lora import Qwen2LoRAMLP
-
     from src.experts.lora import LoRAConfig
 
     cfg = LoRAConfig(hidden_dim=64, intermediate_dim=256, rank=4, alpha=8)
@@ -510,9 +484,7 @@ def test_qwen2_lora_mlp_get_lora_layer_names():
 
 def test_expert_pool_consolidate_no_lora_layer_names():
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig
-
     from src.project_types import ExpertType
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -530,19 +502,15 @@ def test_expert_pool_consolidate_no_lora_layer_names():
     for e in pool.experts:
         if hasattr(e, "get_lora_layer_names"):
             del e.__class__.get_lora_layer_names
-
     try:
         pool.consolidate_shared_weights()
-
     except Exception:
         pass
 
 
 def test_expert_pool_load_all_missing_file(tmp_path):
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig
-
     from src.project_types import ExpertType
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
@@ -588,9 +556,7 @@ def test_shared_lora_layer_dtype_mismatch_weight_and_bias():
 
 def test_expert_pool_consolidate_no_c_fc():
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig, LoRAMLPExpert
-
     import torch.nn as nn
 
     class BareExpert(LoRAMLPExpert):
@@ -606,7 +572,6 @@ def test_expert_pool_consolidate_no_c_fc():
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
 
     from src.core.registry import ExpertRegistry
-
     from src.project_types import ExpertType
 
     ExpertRegistry._registries["experts"]["bare_test_consolidate"] = BareExpert
@@ -632,9 +597,7 @@ def test_expert_pool_consolidate_no_c_fc():
 
 def test_expert_pool_make_base_trainable_no_c_fc():
     from src.experts.pool import ExpertPool
-
     from src.experts.lora import LoRAConfig, LoRAMLPExpert
-
     import torch.nn as nn
 
     class BareExpert(LoRAMLPExpert):
@@ -668,9 +631,7 @@ def test_expert_pool_make_base_trainable_no_c_fc():
 
 def test_lora_mlp_expert_freeze_base_weights_sets_no_grad():
     from src.experts.lora import LoRAConfig
-
     from src.experts.gpt_neo_lora import GPTNeoLoRAMLP
-
     import torch.nn as nn
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8, trainable_base=True)

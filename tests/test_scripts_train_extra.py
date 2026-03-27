@@ -1,13 +1,8 @@
 import struct
-
 import numpy as np
-
 import pytest
-
 import torch
-
 from pathlib import Path
-
 from unittest.mock import patch, MagicMock
 
 
@@ -40,7 +35,6 @@ def test_parse_args_basic():
 
     with patch("sys.argv", ["train.py", "--config", "experiments/test.yaml"]):
         args, overrides = parse_args()
-
     assert args.config == "experiments/test.yaml"
 
     assert args.resume is None
@@ -66,7 +60,6 @@ def test_parse_args_with_resume_and_output():
         ],
     ):
         args, overrides = parse_args()
-
     assert args.resume == "/tmp/ckpt.pt"
 
     assert args.output_dir == "/tmp/out"
@@ -79,9 +72,7 @@ def _write_shard(path: Path, tokens: list, dtype_flag: int = 0):
 
     with open(path, "wb") as f:
         f.write(struct.pack("<Q", len(tokens)))
-
         f.write(struct.pack("<H", dtype_flag))
-
         f.write(arr.tobytes())
 
 
@@ -90,7 +81,6 @@ def _write_legacy_shard(path: Path, tokens: list):
 
     with open(path, "wb") as f:
         f.write(struct.pack("<Q", len(tokens)))
-
         f.write(arr.tobytes())
 
 
@@ -150,11 +140,8 @@ def test_shard_dataset_unknown_dtype_flag(tmp_path):
 
     with open(tmp_path / "train_shard_0000.bin", "wb") as f:
         f.write(struct.pack("<Q", len(tokens)))
-
         f.write(struct.pack("<H", 99))
-
         f.write(arr.tobytes())
-
     with pytest.raises(ValueError, match="Unknown dtype_flag"):
         ShardDataset(tmp_path, "train", seq_len=10)
 
@@ -176,7 +163,6 @@ def test_shard_dataset_getitem_wrap(tmp_path):
 
     if len(ds3) > 0:
         ids, _ = ds3[0]
-
         assert ids.shape[0] == 31
 
 
@@ -185,7 +171,6 @@ def test_shard_dataset_multiple_shards(tmp_path):
 
     for i in range(3):
         _write_shard(tmp_path / f"train_shard_{i:04d}.bin", list(range(100)))
-
     ds = ShardDataset(tmp_path, "train", seq_len=10)
 
     assert len(ds) > 0
@@ -259,11 +244,8 @@ def test_build_optimizer_with_lr_base():
     class ModelWithMixed(torch.nn.Module):
         def __init__(self):
             super().__init__()
-
             self.shared_fc_weight = torch.nn.Parameter(torch.randn(4, 4))
-
             self.frozen = torch.nn.Parameter(torch.randn(4, 4), requires_grad=False)
-
             self.other = torch.nn.Linear(4, 4)
 
     model = ModelWithMixed()
@@ -350,7 +332,6 @@ def test_init_wandb_import_error():
 
 def test_init_wandb_success():
     from scripts.train import init_wandb
-
     from omegaconf import OmegaConf
 
     mock_wandb = MagicMock()
@@ -478,7 +459,6 @@ def test_build_model_mocked(tmp_path):
                             import src.models
 
                             model = build_model(cfg)
-
     assert model is not None
 
 
@@ -517,22 +497,17 @@ def test_main_keyboard_interrupt(tmp_path):
 
 def _patch_wandb(mock_wandb):
     import sys
-
     from contextlib import contextmanager
 
     @contextmanager
     def _ctx():
         orig = sys.modules.get("wandb")
-
         sys.modules["wandb"] = mock_wandb
-
         try:
             yield
-
         finally:
             if orig is None:
                 sys.modules.pop("wandb", None)
-
             else:
                 sys.modules["wandb"] = orig
 
@@ -541,7 +516,6 @@ def _patch_wandb(mock_wandb):
 
 def test_init_wandb_with_entity():
     from scripts.train import init_wandb
-
     from omegaconf import OmegaConf
 
     mock_wandb = MagicMock()
@@ -567,7 +541,6 @@ def test_init_wandb_with_entity():
     with patch("scripts.train.is_main_process", return_value=True):
         with _patch_wandb(mock_wandb):
             init_wandb(cfg)
-
     mock_wandb.init.assert_called_once()
 
     assert "entity" in mock_wandb.init.call_args.kwargs
@@ -575,7 +548,6 @@ def test_init_wandb_with_entity():
 
 def test_init_wandb_exception():
     from scripts.train import init_wandb
-
     from omegaconf import OmegaConf
 
     mock_wandb = MagicMock()
@@ -620,30 +592,23 @@ def test_shard_dataset_cross_shard_boundary(tmp_path):
 
     for i in range(len(ds)):
         ids, _ = ds[i]
-
         assert ids.shape[0] == 11
 
 
 def test_log_wandb_import_error():
     from scripts.train import log_wandb
-
     import sys
 
     with patch("scripts.train.is_main_process", return_value=True):
         orig = sys.modules.get("wandb")
-
         sys.modules["wandb"] = None
-
         try:
             log_wandb({"loss": 1.0})
-
         finally:
             if orig is None:
                 sys.modules.pop("wandb", None)
-
             else:
                 sys.modules["wandb"] = orig
-
         assert sys.modules.get("wandb") is orig
 
 

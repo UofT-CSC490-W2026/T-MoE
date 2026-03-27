@@ -1,5 +1,4 @@
 import math
-
 from evals.efficiency import run_efficiency_eval, summarize_timing_measurements
 
 
@@ -11,7 +10,6 @@ class _DummyBackbone:
 class _DummyModel:
     def __init__(self):
         self.backbone = _DummyBackbone()
-
         self.vocab_size = 32
 
 
@@ -41,7 +39,6 @@ def test_run_efficiency_eval_adds_reference_ratio(monkeypatch, tmp_path):
 
     def fake_profile(model, **kwargs):
         call_log.append(kwargs)
-
         if len(call_log) == 1:
             return {
                 "batch_1": {
@@ -58,7 +55,6 @@ def test_run_efficiency_eval_adds_reference_ratio(monkeypatch, tmp_path):
                 },
                 "peak_memory_bytes": 123456,
             }
-
         return {
             "batch_1": {
                 "throughput_tokens_per_sec_mean": 110.0,

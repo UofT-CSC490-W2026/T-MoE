@@ -1,9 +1,6 @@
 import pytest
-
 import torch
-
 import torch.nn as nn
-
 from unittest.mock import patch, MagicMock
 
 
@@ -104,7 +101,6 @@ def _make_mock_gptneo():
 
     for block in blocks:
         block.mlp = nn.Linear(768, 768)
-
     mock_backbone.transformer.h = blocks
 
     mock_backbone.parameters.return_value = iter([torch.randn(10, 10)])
@@ -119,10 +115,8 @@ def test_gptneo_invalid_variant():
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = _make_mock_gptneo()
-
         with patch("src.models.gpt_neo.AutoConfig") as MockCfg:
             MockCfg.from_pretrained.return_value = MagicMock(vocab_size=50257)
-
             with pytest.raises(ValueError, match="Invalid variant"):
                 GPTNeoBackbone(variant="999b")
 
@@ -157,12 +151,9 @@ def test_gptneo_backbone_init():
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         with patch("src.models.gpt_neo.AutoConfig") as MockCfg:
             MockCfg.from_pretrained.return_value = MagicMock(vocab_size=50257)
-
             model = GPTNeoBackbone(variant="125m", freeze_backbone=True, device="cpu")
-
     assert model.vocab_size == 50257
 
     assert model.num_layers == 12
@@ -175,12 +166,9 @@ def test_gptneo_get_mlp_at():
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         with patch("src.models.gpt_neo.AutoConfig") as MockCfg:
             MockCfg.from_pretrained.return_value = MagicMock(vocab_size=50257)
-
             model = GPTNeoBackbone(variant="125m", device="cpu")
-
     mlp = model.get_mlp_at(0)
 
     assert mlp is not None
@@ -193,12 +181,9 @@ def test_gptneo_inject_moe_layers():
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         with patch("src.models.gpt_neo.AutoConfig") as MockCfg:
             MockCfg.from_pretrained.return_value = MagicMock(vocab_size=50257)
-
             model = GPTNeoBackbone(variant="125m", device="cpu")
-
     mock_moe = MagicMock()
 
     model.inject_moe_layers({0: mock_moe})
@@ -213,12 +198,9 @@ def test_gptneo_inject_moe_layers_invalid_idx():
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         with patch("src.models.gpt_neo.AutoConfig") as MockCfg:
             MockCfg.from_pretrained.return_value = MagicMock(vocab_size=50257)
-
             model = GPTNeoBackbone(variant="125m", device="cpu")
-
     with pytest.raises(ValueError, match="Invalid layer index"):
         model.inject_moe_layers({99: MagicMock()})
 
@@ -230,12 +212,9 @@ def test_gptneo_inject_moe_layers_empty():
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         with patch("src.models.gpt_neo.AutoConfig") as MockCfg:
             MockCfg.from_pretrained.return_value = MagicMock(vocab_size=50257)
-
             model = GPTNeoBackbone(variant="125m", device="cpu")
-
     model.inject_moe_layers({})
 
 
@@ -254,12 +233,9 @@ def test_gptneo_forward():
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         with patch("src.models.gpt_neo.AutoConfig") as MockCfg:
             MockCfg.from_pretrained.return_value = MagicMock(vocab_size=50257)
-
             model = GPTNeoBackbone(variant="125m", device="cpu")
-
     model.backbone.return_value = mock_outputs
 
     input_ids = torch.randint(0, 50257, (2, 10))
@@ -286,12 +262,9 @@ def test_gptneo_forward_with_labels():
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         with patch("src.models.gpt_neo.AutoConfig") as MockCfg:
             MockCfg.from_pretrained.return_value = MagicMock(vocab_size=50257)
-
             model = GPTNeoBackbone(variant="125m", device="cpu")
-
     model.backbone.return_value = mock_outputs
 
     input_ids = torch.randint(0, 50257, (2, 10))
@@ -316,12 +289,9 @@ def test_gptneo_forward_with_moe_and_metrics():
 
     with patch("src.models.gpt_neo.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         with patch("src.models.gpt_neo.AutoConfig") as MockCfg:
             MockCfg.from_pretrained.return_value = MagicMock(vocab_size=50257)
-
             model = GPTNeoBackbone(variant="125m", device="cpu")
-
     model.backbone.return_value = mock_outputs
 
     mock_moe = MagicMock()
@@ -350,7 +320,6 @@ def _make_mock_qwen2():
 
     for block in layers:
         block.mlp = nn.Linear(1536, 1536)
-
     mock_backbone.model.layers = layers
 
     mock_backbone.to.return_value = mock_backbone
@@ -363,7 +332,6 @@ def test_qwen2_invalid_variant():
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = _make_mock_qwen2()
-
         with pytest.raises(ValueError, match="Invalid variant"):
             Qwen2Backbone(variant="invalid")
 
@@ -375,9 +343,7 @@ def test_qwen2_backbone_init():
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         model = Qwen2Backbone(variant="1.5b", freeze_backbone=True, device="cpu")
-
     assert model.num_layers == 28
 
 
@@ -388,9 +354,7 @@ def test_qwen2_get_mlp_at():
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         model = Qwen2Backbone(variant="1.5b", device="cpu")
-
     mlp = model.get_mlp_at(0)
 
     assert mlp is not None
@@ -403,9 +367,7 @@ def test_qwen2_inject_moe_layers():
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         model = Qwen2Backbone(variant="1.5b", device="cpu")
-
     mock_moe = MagicMock()
 
     model.inject_moe_layers({0: mock_moe})
@@ -420,9 +382,7 @@ def test_qwen2_inject_moe_layers_invalid():
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         model = Qwen2Backbone(variant="1.5b", device="cpu")
-
     with pytest.raises(ValueError, match="Invalid layer index"):
         model.inject_moe_layers({99: MagicMock()})
 
@@ -434,9 +394,7 @@ def test_qwen2_inject_moe_layers_empty():
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         model = Qwen2Backbone(variant="1.5b", device="cpu")
-
     model.inject_moe_layers({})
 
 
@@ -453,9 +411,7 @@ def test_qwen2_forward():
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         model = Qwen2Backbone(variant="1.5b", device="cpu")
-
     model.backbone.return_value = mock_outputs
 
     input_ids = torch.randint(0, 151936, (2, 10))
@@ -478,9 +434,7 @@ def test_qwen2_forward_with_labels_and_moe():
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         model = Qwen2Backbone(variant="1.5b", device="cpu")
-
     model.backbone.return_value = mock_outputs
 
     mock_moe = MagicMock()
@@ -509,9 +463,7 @@ def test_qwen2_load_pretrained_flash_attn():
 
     with patch("src.models.qwen2.AutoModelForCausalLM") as MockModel:
         MockModel.from_pretrained.return_value = mock_backbone
-
         with patch.dict("sys.modules", {"flash_attn": MagicMock()}):
             with patch("src.models.qwen2.torch.cuda.is_available", return_value=False):
                 model = Qwen2Backbone(variant="1.5b", device="cpu")
-
     assert model is not None

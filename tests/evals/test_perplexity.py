@@ -1,7 +1,5 @@
 import math
-
 import torch
-
 from evals.perplexity import (
     compute_document_nll,
     evaluate_text_documents,
@@ -12,47 +10,36 @@ from evals.perplexity import (
 class _PerfectNextTokenModel(torch.nn.Module):
     def __init__(self, vocab_size: int):
         super().__init__()
-
         self.vocab_size = vocab_size
 
     def forward(self, input_ids):
         batch, seq_len = input_ids.shape
-
         logits = torch.zeros(batch, seq_len, self.vocab_size, dtype=torch.float32)
-
         for pos in range(seq_len - 1):
             next_tokens = input_ids[:, pos + 1]
-
             logits[:, pos, :] = -20.0
-
             logits[:, pos, next_tokens] = 20.0
-
         return logits, None, None
 
 
 class _UniformModel(torch.nn.Module):
     def __init__(self, vocab_size: int):
         super().__init__()
-
         self.vocab_size = vocab_size
 
     def forward(self, input_ids):
         batch, seq_len = input_ids.shape
-
         logits = torch.zeros(batch, seq_len, self.vocab_size, dtype=torch.float32)
-
         return logits, None, None
 
 
 class _WhitespaceTokenizer:
     def __init__(self, token_map):
         self.token_map = token_map
-
         self.model_max_length = 128
 
     def __call__(self, text, add_special_tokens=False, return_tensors="pt"):
         tokens = [self.token_map[token] for token in text.split()]
-
         return {"input_ids": torch.tensor([tokens], dtype=torch.long)}
 
 

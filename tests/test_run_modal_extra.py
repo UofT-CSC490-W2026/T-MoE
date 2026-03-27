@@ -1,9 +1,6 @@
 import sys
-
 import pytest
-
 from pathlib import Path
-
 from unittest.mock import patch, MagicMock
 
 
@@ -27,19 +24,15 @@ def mock_modal():
 
 def test_load_cfg_with_overrides():
     import run_modal_training
-
     from omegaconf import OmegaConf
 
     with patch.object(run_modal_training, "OmegaConf", OmegaConf):
         with patch("omegaconf.OmegaConf.load") as mock_load:
             base_cfg = OmegaConf.create({"training": {"lr": 1e-4}})
-
             mock_load.return_value = base_cfg
-
             result = run_modal_training._load_cfg(
                 "/app/config.yaml", "training.lr=5e-5"
             )
-
     assert abs(result.training.lr - 5e-5) < 1e-10
 
 
@@ -70,7 +63,6 @@ def test_resolve_eval_checkpoint_no_best_fallback_to_latest(tmp_path):
         run_modal_training, "_experiment_output_dir", return_value=str(tmp_path)
     ):
         result = run_modal_training._resolve_eval_checkpoint(cfg, "", False)
-
     assert "100" in result
 
 

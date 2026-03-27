@@ -1,9 +1,6 @@
 import pytest
-
 import torch
-
 from typing import Tuple
-
 from src.configs.router import MetabolicRouterConfig
 
 
@@ -11,10 +8,8 @@ from src.configs.router import MetabolicRouterConfig
 def device() -> torch.device:
     if torch.cuda.is_available():
         return torch.device("cuda")
-
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return torch.device("mps")
-
     return torch.device("cpu")
 
 

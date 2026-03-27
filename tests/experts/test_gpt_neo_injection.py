@@ -1,24 +1,16 @@
 import pytest
-
 import torch
-
 from torch import nn
-
 from unittest.mock import MagicMock, patch
-
 from src.models.gpt_neo import GPTNeoBackbone
 
 
 class MockGPTNeo(nn.Module):
     def __init__(self, config):
         super().__init__()
-
         self.config = config
-
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-
         self.num_layers = config.num_layers
-
         self.hidden_size = config.hidden_size
 
     def forward(
@@ -30,27 +22,18 @@ class MockGPTNeo(nn.Module):
         **kwargs,
     ):
         batch, seq = input_ids.shape
-
         hidden_states = [
             torch.randn(batch, seq, self.hidden_size)
             for _ in range(self.num_layers + 1)
         ]
-
         logits = torch.randn(batch, seq, self.config.vocab_size)
-
         loss = None
-
         if labels is not None:
             loss = torch.tensor(2.5)
-
         output = MagicMock()
-
         output.hidden_states = tuple(hidden_states) if output_hidden_states else None
-
         output.logits = logits
-
         output.loss = loss
-
         return output
 
 
@@ -61,19 +44,12 @@ def mock_gpt_neo_components():
         patch("src.models.gpt_neo.AutoModelForCausalLM") as mock_model_cls,
     ):
         mock_config = MagicMock()
-
         mock_config.hidden_size = 64
-
         mock_config.vocab_size = 1000
-
         mock_config.num_layers = 4
-
         mock_config_cls.from_pretrained.return_value = mock_config
-
         mock_model = MockGPTNeo(mock_config)
-
         mock_model_cls.from_pretrained.return_value = mock_model
-
         yield mock_config, mock_model
 
 
@@ -97,7 +73,6 @@ def gpt_neo_backbone(mock_gpt_neo_components):
             moe_layer_indices=[-1],
             device="cpu",
         )
-
         return backbone
 
 
@@ -122,15 +97,10 @@ def test_initialization(mock_gpt_neo_components):
             moe_layer_indices=[-1],
             device="cpu",
         )
-
         assert backbone.hidden_dim == 64
-
         assert backbone.vocab_size == 1000
-
         assert backbone.num_layers == 4
-
         assert backbone.moe_layer_indices == [-1]
-
         assert backbone.backbone is not None
 
 
