@@ -2,6 +2,9 @@ name: Test
 
 on: [push, pull_request]
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,6 +18,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-      - name: Run tests
+      - name: Run tests with coverage
         run: |
-          pytest
+          pytest --cov=. --cov-report=term --cov-report=xml | tee coverage.txt
+      - name: Extract coverage percentage
+        run: |
+          COVERAGE=$(grep '^TOTAL' coverage.txt | awk '{print $NF}')
+          echo "COVERAGE=$COVERAGE" >> "$GITHUB_ENV"
+      - name: Update README.md with coverage
+        run: |
+          sed -i "s/^Coverage: .*$/Coverage: $COVERAGE/" README.md
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet README.md || {
+            git add README.md
+            git commit -m "Update coverage to $COVERAGE"
+            git push
+          }
