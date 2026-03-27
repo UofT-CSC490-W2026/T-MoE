@@ -35,6 +35,7 @@ jobs:
           sed -i "s|!\[Coverage\](https://img.shields.io/badge/coverage-.*)|![Coverage](https://img.shields.io/badge/coverage-${COVERAGE}25-${COLOR})|" README.md
       - name: Post coverage comment on PR
         if: github.event_name == 'pull_request'
+        
         uses: MishaKav/pytest-coverage-comment@main
         with:
           pytest-coverage-path: coverage.txt
