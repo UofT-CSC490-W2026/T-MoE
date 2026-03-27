@@ -113,3 +113,7 @@ pre-commit install
 
 2. **Cloud Infrastructure**
 See [infra/README.md](infra/README.md) for environment setup instructions for Modal, AWS, WandB, and HuggingFace.
+
+## Coverage
+
+![Coverage](https://img.shields.io/badge/coverage-62%25-yellow)
