@@ -116,4 +116,4 @@ See [infra/README.md](infra/README.md) for environment setup instructions for Mo
 
 ## Coverage
 
-![Coverage](https://img.shields.io/badge/coverage---25-lightgrey)
+![Coverage](https://img.shields.io/badge/coverage-62%25-yellow)
