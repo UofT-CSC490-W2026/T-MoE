@@ -48,7 +48,6 @@ def router(standard_config, device):
     from src.routers.metabolic import MetabolicRouter
 
     router = MetabolicRouter(standard_config)
-
     return router.to(device)
 
 
@@ -66,7 +65,6 @@ def test_input(device) -> torch.Tensor:
 )
 def parametric_input(request, device) -> Tuple[torch.Tensor, Tuple[int, int, int]]:
     batch, seq, hidden = request.param
-
     return torch.randn(batch, seq, hidden, device=device), (batch, seq, hidden)
 
 
@@ -75,7 +73,5 @@ def zero_fatigue_router(standard_config, device):
     from src.routers.metabolic import MetabolicRouter
 
     router = MetabolicRouter(standard_config).to(device)
-
     router.reset_state()
-
     return router

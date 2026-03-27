@@ -16,7 +16,6 @@ def test_init_wandb_defaults_to_online_when_env_is_disabled(monkeypatch):
             return _FakeRun()
 
     fake_wandb = _FakeWandb()
-
     cfg = OmegaConf.create(
         {
             "experiment_name": "demo-train",
@@ -25,19 +24,12 @@ def test_init_wandb_defaults_to_online_when_env_is_disabled(monkeypatch):
             },
         }
     )
-
     monkeypatch.setenv("WANDB_MODE", "disabled")
-
     monkeypatch.setattr("scripts.train.is_main_process", lambda: True)
-
     monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
-
     init_wandb(cfg)
-
     assert fake_wandb.init_kwargs["project"] == "tmoe"
-
     assert fake_wandb.init_kwargs["name"] == "demo-train"
-
     assert fake_wandb.init_kwargs["mode"] == "online"
 
 
@@ -51,9 +43,6 @@ def test_init_wandb_respects_explicit_disabled_mode(monkeypatch):
             },
         }
     )
-
     monkeypatch.setattr("scripts.train.is_main_process", lambda: True)
-
     monkeypatch.delitem(sys.modules, "wandb", raising=False)
-
     init_wandb(cfg)

@@ -18,7 +18,6 @@ def test_init_distributed_no_cuda(monkeypatch):
     from src.training.fsdp_utils import init_distributed
 
     env = {"RANK": "0", "LOCAL_RANK": "0", "WORLD_SIZE": "1"}
-
     with patch.dict(os.environ, env):
         with patch("torch.cuda.is_available", return_value=False):
             with pytest.raises(RuntimeError, match="CUDA"):
@@ -29,7 +28,6 @@ def test_init_distributed_local_rank_exceeds_devices(monkeypatch):
     from src.training.fsdp_utils import init_distributed
 
     env = {"RANK": "0", "LOCAL_RANK": "5", "WORLD_SIZE": "1"}
-
     with patch.dict(os.environ, env):
         with patch("torch.cuda.is_available", return_value=True):
             with patch("torch.cuda.device_count", return_value=1):
@@ -41,7 +39,6 @@ def test_init_distributed_success(monkeypatch):
     from src.training.fsdp_utils import init_distributed
 
     env = {"RANK": "0", "LOCAL_RANK": "0", "WORLD_SIZE": "2"}
-
     with patch.dict(os.environ, env):
         with patch("torch.cuda.is_available", return_value=True):
             with patch("torch.cuda.device_count", return_value=2):
@@ -99,7 +96,6 @@ def test_get_model_for_attr_access_plain():
     from src.training.fsdp_utils import get_model_for_attr_access
 
     model = nn.Linear(4, 4)
-
     assert get_model_for_attr_access(model) is model
 
 
@@ -108,11 +104,8 @@ def test_get_model_for_attr_access_ddp():
     from torch.nn.parallel import DistributedDataParallel as DDP
 
     inner = nn.Linear(4, 4)
-
     mock_ddp = MagicMock(spec=DDP)
-
     mock_ddp.module = inner
-
     assert get_model_for_attr_access(mock_ddp) is inner
 
 
@@ -120,15 +113,10 @@ def test_wrap_model_for_distributed_ddp():
     from src.training.fsdp_utils import wrap_model_for_distributed
 
     model = nn.Linear(4, 4)
-
     cfg = MagicMock()
-
     cfg.distributed = MagicMock()
-
     cfg.distributed.strategy = "ddp"
-
     mock_wrapped = MagicMock()
-
     with patch(
         "src.training.fsdp_utils.wrap_model_with_ddp", return_value=mock_wrapped
     ) as mock_ddp:
@@ -136,7 +124,6 @@ def test_wrap_model_for_distributed_ddp():
             model, cfg, local_rank=0, device=torch.device("cpu")
         )
     mock_ddp.assert_called_once()
-
     assert result is mock_wrapped
 
 
@@ -144,15 +131,10 @@ def test_wrap_model_for_distributed_fsdp():
     from src.training.fsdp_utils import wrap_model_for_distributed
 
     model = nn.Linear(4, 4)
-
     cfg = MagicMock()
-
     cfg.distributed = MagicMock()
-
     cfg.distributed.strategy = "fsdp"
-
     mock_wrapped = MagicMock()
-
     with patch(
         "src.training.fsdp_utils.wrap_model_with_fsdp", return_value=mock_wrapped
     ) as mock_fsdp:
@@ -160,7 +142,6 @@ def test_wrap_model_for_distributed_fsdp():
             model, cfg, local_rank=0, device=torch.device("cpu")
         )
     mock_fsdp.assert_called_once()
-
     assert result is mock_wrapped
 
 
@@ -168,11 +149,8 @@ def test_wrap_model_for_distributed_no_dist_cfg():
     from src.training.fsdp_utils import wrap_model_for_distributed
 
     model = nn.Linear(4, 4)
-
     cfg = MagicMock(spec=[])
-
     mock_wrapped = MagicMock()
-
     with patch(
         "src.training.fsdp_utils.wrap_model_with_ddp", return_value=mock_wrapped
     ):
@@ -186,15 +164,10 @@ def test_wrap_model_with_ddp():
     from src.training.fsdp_utils import wrap_model_with_ddp
 
     model = nn.Linear(4, 4)
-
     cfg = MagicMock()
-
     cfg.distributed = MagicMock()
-
     cfg.distributed.find_unused_parameters = False
-
     mock_ddp = MagicMock()
-
     with patch("torch.nn.parallel.DistributedDataParallel", return_value=mock_ddp):
         with patch("torch.distributed.is_initialized", return_value=False):
             with patch("src.training.fsdp_utils.is_main_process", return_value=True):
@@ -206,15 +179,10 @@ def test_wrap_model_with_ddp_with_barrier():
     from src.training.fsdp_utils import wrap_model_with_ddp
 
     model = nn.Linear(4, 4)
-
     cfg = MagicMock()
-
     cfg.distributed = MagicMock()
-
     cfg.distributed.find_unused_parameters = True
-
     mock_ddp = MagicMock()
-
     with patch("torch.nn.parallel.DistributedDataParallel", return_value=mock_ddp):
         with patch("torch.distributed.is_initialized", return_value=True):
             with patch("torch.distributed.barrier") as mock_barrier:
@@ -229,9 +197,7 @@ def test_get_fsdp_wrap_targets_gpt_neo():
     from src.training.fsdp_utils import _get_fsdp_wrap_targets
 
     cfg = MagicMock()
-
     cfg.model.model_key = "gpt-neo-125m"
-
     with patch(
         "src.configs.model.model_lookup", return_value={"model_type": "gpt_neo"}
     ):
@@ -243,9 +209,7 @@ def test_get_fsdp_wrap_targets_qwen2():
     from src.training.fsdp_utils import _get_fsdp_wrap_targets
 
     cfg = MagicMock()
-
     cfg.model.model_key = "qwen2-1.5b"
-
     with patch("src.configs.model.model_lookup", return_value={"model_type": "qwen2"}):
         targets = _get_fsdp_wrap_targets(cfg)
     assert len(targets) == 1
@@ -255,17 +219,11 @@ def test_wrap_model_with_fsdp():
     from src.training.fsdp_utils import wrap_model_with_fsdp
 
     model = nn.Linear(4, 4)
-
     cfg = MagicMock()
-
     cfg.distributed = MagicMock()
-
     cfg.distributed.mixed_precision = False
-
     cfg.distributed.cpu_offload = False
-
     cfg.distributed.activation_checkpointing = False
-
     cfg.distributed.sharding_strategy = "SHARD_GRAD_OP"
 
     class _FakeFSDP(nn.Module):
@@ -276,7 +234,6 @@ def test_wrap_model_with_fsdp():
             return iter([self])
 
     _FakeFSDP()
-
     with (
         patch(
             "src.training.fsdp_utils._get_fsdp_wrap_targets", return_value={nn.Linear}
@@ -298,17 +255,11 @@ def test_wrap_model_with_fsdp_with_mixed_precision_and_checkpointing():
     from src.training.fsdp_utils import wrap_model_with_fsdp
 
     model = nn.Linear(4, 4)
-
     cfg = MagicMock()
-
     cfg.distributed = MagicMock()
-
     cfg.distributed.mixed_precision = True
-
     cfg.distributed.cpu_offload = True
-
     cfg.distributed.activation_checkpointing = True
-
     cfg.distributed.sharding_strategy = "FULL_SHARD"
 
     class _FakeFSDP(nn.Module):
@@ -341,17 +292,11 @@ def test_wrap_model_with_fsdp_no_shard_strategy():
     from src.training.fsdp_utils import wrap_model_with_fsdp
 
     model = nn.Linear(4, 4)
-
     cfg = MagicMock()
-
     cfg.distributed = MagicMock()
-
     cfg.distributed.mixed_precision = False
-
     cfg.distributed.cpu_offload = False
-
     cfg.distributed.activation_checkpointing = False
-
     cfg.distributed.sharding_strategy = "UNKNOWN_STRATEGY"
 
     class _FakeFSDP(nn.Module):
@@ -382,7 +327,6 @@ def test_apply_activation_checkpointing():
     from src.training.fsdp_utils import _apply_activation_checkpointing
 
     model = nn.Linear(4, 4)
-
     with (
         patch(
             "torch.distributed.algorithms._checkpoint.checkpoint_wrapper.apply_activation_checkpointing"

@@ -78,7 +78,6 @@ def gpt_neo_backbone(mock_gpt_neo_components):
 
 def test_initialization(mock_gpt_neo_components):
     mock_config, _ = mock_gpt_neo_components
-
     with patch.dict(
         GPTNeoBackbone.VARIANTS,
         {
@@ -106,36 +105,25 @@ def test_initialization(mock_gpt_neo_components):
 
 def test_forward_pass_basic(gpt_neo_backbone):
     input_ids = torch.randint(0, 1000, (2, 8))
-
     logits, loss, metrics = gpt_neo_backbone(input_ids=input_ids, return_metrics=False)
-
     assert logits.shape == (2, 8, 1000)
-
     assert loss is None
-
     assert metrics is None or metrics == {}
 
 
 def test_forward_pass_with_labels(gpt_neo_backbone):
     input_ids = torch.randint(0, 1000, (2, 8))
-
     labels = torch.randint(0, 1000, (2, 8))
-
     logits, loss, metrics = gpt_neo_backbone(
         input_ids=input_ids, labels=labels, return_metrics=False
     )
-
     assert loss is not None
-
     assert isinstance(loss, torch.Tensor)
-
     assert not torch.isnan(loss)
 
 
 def test_freeze_parameters(mock_gpt_neo_components):
     _, mock_model = mock_gpt_neo_components
-
     backbone = GPTNeoBackbone(variant="125m", freeze_backbone=True, device="cpu")
-
     for param in backbone.backbone.parameters():
         assert param.requires_grad is False

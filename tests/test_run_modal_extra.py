@@ -7,17 +7,11 @@ from unittest.mock import patch, MagicMock
 @pytest.fixture(autouse=True)
 def mock_modal():
     mock_modal = MagicMock()
-
     mock_modal.App = MagicMock(return_value=MagicMock())
-
     mock_modal.Image = MagicMock()
-
     mock_modal.Secret = MagicMock()
-
     mock_modal.Volume = MagicMock()
-
     mock_modal.Volume.from_name = MagicMock(return_value=MagicMock())
-
     with patch.dict(sys.modules, {"modal": mock_modal}):
         yield
 
@@ -40,9 +34,7 @@ def test_resolve_runtime_path_outputs():
     import run_modal_training
 
     result = run_modal_training._resolve_runtime_path("outputs/my_experiment")
-
     assert result.startswith(run_modal_training.VOLUME_MOUNT)
-
     assert "outputs/my_experiment" in result
 
 
@@ -50,15 +42,10 @@ def test_resolve_eval_checkpoint_no_best_fallback_to_latest(tmp_path):
     import run_modal_training
 
     cfg = MagicMock()
-
     cfg.experiment_name = "test"
-
     checkpoints_dir = tmp_path / "checkpoints"
-
     checkpoints_dir.mkdir()
-
     (checkpoints_dir / "checkpoint_step_100.pt").touch()
-
     with patch.object(
         run_modal_training, "_experiment_output_dir", return_value=str(tmp_path)
     ):
@@ -70,7 +57,5 @@ def test_checkpoint_sort_key_invalid_step():
     import run_modal_training
 
     p = Path("checkpoint_step_notanumber.pt")
-
     key = run_modal_training._checkpoint_sort_key(p)
-
     assert key[0] == 10**18

@@ -11,7 +11,6 @@ from omegaconf import OmegaConf
 
 def _write_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
     n = len(tokens)
-
     with open(path, "wb") as f:
         if uint32:
             f.write(struct.pack("<Q", n))
@@ -24,9 +23,7 @@ def _write_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
 
 def _write_versioned_shard(path: Path, tokens: list[int], dtype_flag: int = 0) -> None:
     n = len(tokens)
-
     dtype = np.uint32 if dtype_flag == 1 else np.uint16
-
     with open(path, "wb") as f:
         f.write(struct.pack("<Q", n))
         f.write(struct.pack("<H", dtype_flag))
@@ -37,17 +34,11 @@ def test_shard_dataset_basic(tmp_path):
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
-
     _write_shard(shard, list(range(100)))
-
     ds = ShardDataset(tmp_path, "train", seq_len=8)
-
     assert len(ds) > 0
-
     ids, labels = ds[0]
-
     assert ids.shape == (9,)
-
     assert torch.equal(ids, labels)
 
 
@@ -55,11 +46,8 @@ def test_shard_dataset_versioned_uint16(tmp_path):
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
-
     _write_versioned_shard(shard, list(range(100)), dtype_flag=0)
-
     ds = ShardDataset(tmp_path, "train", seq_len=8)
-
     assert len(ds) > 0
 
 
@@ -67,11 +55,8 @@ def test_shard_dataset_versioned_uint32(tmp_path):
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
-
     _write_versioned_shard(shard, list(range(100)), dtype_flag=1)
-
     ds = ShardDataset(tmp_path, "train", seq_len=8)
-
     assert len(ds) > 0
 
 
@@ -79,9 +64,7 @@ def test_shard_dataset_unknown_dtype_flag(tmp_path):
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
-
     n = 100
-
     with open(shard, "wb") as f:
         f.write(struct.pack("<Q", n))
         f.write(struct.pack("<H", 2))
@@ -101,13 +84,9 @@ def test_shard_dataset_wrap_around(tmp_path):
     from scripts.train import ShardDataset
 
     shard = tmp_path / "train_shard_0000.bin"
-
     _write_shard(shard, list(range(20)))
-
     ds = ShardDataset(tmp_path, "train", seq_len=16)
-
     ids, _ = ds[0]
-
     assert ids.shape == (17,)
 
 
@@ -118,11 +97,8 @@ def test_shard_dataset_multi_shard(tmp_path):
         shard = tmp_path / f"train_shard_{i:04d}.bin"
         _write_shard(shard, list(range(50)))
     ds = ShardDataset(tmp_path, "train", seq_len=8)
-
     assert len(ds) > 0
-
     ids, _ = ds[len(ds) - 1]
-
     assert ids.shape == (9,)
 
 
@@ -130,11 +106,8 @@ def test_load_config_no_overrides(tmp_path):
     from scripts.train import load_config
 
     cfg_path = tmp_path / "cfg.yaml"
-
     cfg_path.write_text("training:\n  lr: 1e-4\n")
-
     cfg = load_config(str(cfg_path), [])
-
     assert cfg.training.lr == pytest.approx(1e-4)
 
 
@@ -142,11 +115,8 @@ def test_load_config_with_overrides(tmp_path):
     from scripts.train import load_config
 
     cfg_path = tmp_path / "cfg.yaml"
-
     cfg_path.write_text("training:\n  lr: 1e-4\n  batch_size: 8\n")
-
     cfg = load_config(str(cfg_path), ["training.lr=5e-5"])
-
     assert cfg.training.lr == pytest.approx(5e-5)
 
 
@@ -156,9 +126,7 @@ def test_parse_args_basic():
     with patch("sys.argv", ["train.py", "--config", "exp.yaml"]):
         args, overrides = parse_args()
     assert args.config == "exp.yaml"
-
     assert args.resume is None
-
     assert overrides == []
 
 
@@ -182,28 +150,21 @@ def test_parse_args_with_all_flags():
     ):
         args, overrides = parse_args()
     assert args.resume == "ckpt.pt"
-
     assert args.output_dir == "/tmp/out"
-
     assert args.shard_dir == "/tmp/shards"
-
     assert "training.lr=1e-4" in overrides
 
 
 def _make_opt_cfg(optimizer="adamw", lr=1e-4, lr_base=None):
     cfg = MagicMock()
-
     cfg.training.optimizer = optimizer
-
     cfg.training.lr = lr
-
     cfg.training.get = lambda k, d=None: {
         "lr_base": lr_base,
         "betas": [0.9, 0.95],
         "eps": 1e-8,
         "weight_decay": 0.1,
     }.get(k, d)
-
     return cfg
 
 
@@ -211,11 +172,8 @@ def test_build_optimizer_adamw():
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(4, 4)
-
     cfg = _make_opt_cfg("adamw")
-
     opt = build_optimizer(model, cfg)
-
     assert isinstance(opt, torch.optim.AdamW)
 
 
@@ -223,11 +181,8 @@ def test_build_optimizer_adam():
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(4, 4)
-
     cfg = _make_opt_cfg("adam")
-
     opt = build_optimizer(model, cfg)
-
     assert isinstance(opt, torch.optim.Adam)
 
 
@@ -235,9 +190,7 @@ def test_build_optimizer_unknown_raises():
     from scripts.train import build_optimizer
 
     model = torch.nn.Linear(4, 4)
-
     cfg = _make_opt_cfg("sgd")
-
     with pytest.raises(ValueError, match="Unknown optimizer"):
         build_optimizer(model, cfg)
 
@@ -252,13 +205,9 @@ def test_build_optimizer_with_lr_base():
             self.other = torch.nn.Linear(4, 4)
 
     model = _ModelWithBase()
-
     cfg = _make_opt_cfg("adamw", lr_base=1e-5)
-
     opt = build_optimizer(model, cfg)
-
     assert isinstance(opt, torch.optim.AdamW)
-
     assert len(opt.param_groups) == 2
 
 
@@ -271,11 +220,8 @@ def test_evaluate_basic():
             return None, loss, {}
 
     model = _M()
-
     data = [(torch.zeros(2, 8, dtype=torch.long), torch.zeros(2, 8, dtype=torch.long))]
-
     result = evaluate(model, data, "cpu", max_batches=5)
-
     assert math.isclose(result, 1.5)
 
 
@@ -283,9 +229,7 @@ def test_evaluate_empty_loader():
     from scripts.train import evaluate
 
     model = MagicMock()
-
     result = evaluate(model, [], "cpu")
-
     assert result == float("inf")
 
 
@@ -301,13 +245,10 @@ def test_evaluate_respects_max_batches():
             return None, torch.tensor(1.0), {}
 
     model = _M()
-
     data = [
         (torch.zeros(2, 4, dtype=torch.long), torch.zeros(2, 4, dtype=torch.long))
     ] * 10
-
     evaluate(model, data, "cpu", max_batches=3)
-
     assert call_count == 3
 
 
@@ -322,9 +263,7 @@ def test_init_wandb_disabled_by_config():
     from scripts.train import init_wandb
 
     cfg = MagicMock()
-
     cfg.get = lambda k, d=None: {"logging": {"enabled": False}}.get(k, d)
-
     with patch("scripts.train.is_main_process", return_value=True):
         init_wandb(cfg)
 
@@ -333,11 +272,9 @@ def test_init_wandb_mode_disabled():
     from scripts.train import init_wandb
 
     cfg = MagicMock()
-
     cfg.get = lambda k, d=None: {"logging": {"enabled": True, "mode": "disabled"}}.get(
         k, d
     )
-
     with patch("scripts.train.is_main_process", return_value=True):
         init_wandb(cfg)
 
@@ -346,13 +283,10 @@ def test_init_wandb_import_error():
     from scripts.train import init_wandb
 
     cfg = MagicMock()
-
     cfg.get = lambda k, d=None: {"logging": {"enabled": True, "mode": "online"}}.get(
         k, d
     )
-
     cfg.experiment_name = "test"
-
     with patch("scripts.train.is_main_process", return_value=True):
         with patch("builtins.__import__", side_effect=ImportError("no wandb")):
             init_wandb(cfg)
@@ -362,7 +296,6 @@ def test_init_wandb_success_with_url():
     from scripts.train import init_wandb
 
     cfg = MagicMock()
-
     cfg.get = lambda k, d=None: {
         "logging": {
             "enabled": True,
@@ -371,17 +304,11 @@ def test_init_wandb_success_with_url():
             "entity": None,
         }
     }.get(k, d)
-
     cfg.experiment_name = "test_run"
-
     mock_run = MagicMock()
-
     mock_run.url = "https://wandb.ai/test"
-
     mock_wandb = MagicMock()
-
     mock_wandb.init.return_value = mock_run
-
     with patch("scripts.train.is_main_process", return_value=True):
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             with patch("scripts.train.OmegaConf.to_container", return_value={}):
@@ -393,7 +320,6 @@ def test_init_wandb_success_no_url():
     from scripts.train import init_wandb
 
     cfg = MagicMock()
-
     cfg.get = lambda k, d=None: {
         "logging": {
             "enabled": True,
@@ -402,17 +328,11 @@ def test_init_wandb_success_no_url():
             "entity": "myentity",
         }
     }.get(k, d)
-
     cfg.experiment_name = "test_run"
-
     mock_run = MagicMock()
-
     mock_run.url = None
-
     mock_wandb = MagicMock()
-
     mock_wandb.init.return_value = mock_run
-
     with patch("scripts.train.is_main_process", return_value=True):
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             with patch("scripts.train.OmegaConf.to_container", return_value={}):
@@ -423,17 +343,12 @@ def test_init_wandb_exception():
     from scripts.train import init_wandb
 
     cfg = MagicMock()
-
     cfg.get = lambda k, d=None: {"logging": {"enabled": True, "mode": "online"}}.get(
         k, d
     )
-
     cfg.experiment_name = "test"
-
     mock_wandb = MagicMock()
-
     mock_wandb.init.side_effect = Exception("connection error")
-
     with patch("scripts.train.is_main_process", return_value=True):
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             with patch("scripts.train.OmegaConf.to_container", return_value={}):
@@ -445,28 +360,20 @@ def test_init_wandb_env_mode_fallback():
     import os
 
     cfg = MagicMock()
-
     cfg.get = lambda k, d=None: {
         "logging": {"enabled": True, "mode": "auto", "project": None, "entity": None}
     }.get(k, d)
-
     cfg.experiment_name = "test"
-
     mock_run = MagicMock()
-
     mock_run.url = None
-
     mock_wandb = MagicMock()
-
     mock_wandb.init.return_value = mock_run
-
     with patch("scripts.train.is_main_process", return_value=True):
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             with patch("scripts.train.OmegaConf.to_container", return_value={}):
                 with patch.dict(os.environ, {"WANDB_MODE": "offline"}):
                     init_wandb(cfg)
     _, kwargs = mock_wandb.init.call_args
-
     assert kwargs.get("mode") == "offline" or mock_wandb.init.call_args[0]
 
 
@@ -481,9 +388,7 @@ def test_log_wandb_no_run():
     from scripts.train import log_wandb
 
     mock_wandb = MagicMock()
-
     mock_wandb.run = None
-
     with patch("scripts.train.is_main_process", return_value=True):
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             log_wandb({"loss": 1.0})
@@ -494,9 +399,7 @@ def test_log_wandb_with_run():
     from scripts.train import log_wandb
 
     mock_wandb = MagicMock()
-
     mock_wandb.run = MagicMock()
-
     with patch("scripts.train.is_main_process", return_value=True):
         with patch.dict("sys.modules", {"wandb": mock_wandb}):
             log_wandb({"loss": 1.0, "step": 10})
@@ -515,15 +418,12 @@ def test_broadcast_scalar_not_distributed():
     from scripts.train import _broadcast_scalar
 
     result = _broadcast_scalar(3.14, "cpu", is_distributed=False)
-
     assert result == pytest.approx(3.14)
 
 
 def _make_full_cfg(tmp_path):
     shard_dir = tmp_path / "shards"
-
     shard_dir.mkdir()
-
     for split in ("train", "val"):
         shard = shard_dir / f"{split}_shard_0000.bin"
         _write_shard(shard, list(range(200)))
@@ -569,7 +469,6 @@ def _make_full_cfg(tmp_path):
         },
         "logging": {"enabled": False},
     }
-
     return OmegaConf.create(cfg_dict), shard_dir
 
 
@@ -600,13 +499,9 @@ def test_main_runs_minimal(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -642,11 +537,8 @@ def test_main_no_val_shards(tmp_path):
     from scripts.train import main
 
     shard_dir = tmp_path / "shards"
-
     shard_dir.mkdir()
-
     _write_shard(shard_dir / "train_shard_0000.bin", list(range(200)))
-
     cfg_dict = {
         "experiment_name": "test_no_val",
         "seed": 42,
@@ -677,15 +569,10 @@ def test_main_no_val_shards(tmp_path):
         },
         "logging": {"enabled": False},
     }
-
     cfg = OmegaConf.create(cfg_dict)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -717,24 +604,16 @@ def test_main_with_resume(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     ckpt_path = tmp_path / "ckpt.pt"
-
     ckpt_path.write_text("fake")
-
     mock_ckpt_mgr = MagicMock()
-
     mock_ckpt_mgr.load_checkpoint.return_value = {
         "step": 0,
         "metrics": {"val_loss": 2.0},
     }
-
     with (
         patch(
             "sys.argv",
@@ -770,15 +649,10 @@ def test_main_adam_optimizer(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     cfg.training.optimizer = "adam"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -810,15 +684,10 @@ def test_main_steps_from_config(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg.training.steps = 3
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -907,13 +776,9 @@ def test_main_with_moe_metrics_logging(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     model = _TinyModelWithMoE()
-
     with (
         patch(
             "sys.argv",
@@ -945,19 +810,12 @@ def test_main_early_stopping(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg.training.steps = 5
-
     cfg.training.eval_interval = 1
-
     cfg.training.log_interval = 1
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     call_count = [0]
 
     def _fake_evaluate(model, val_loader, device, max_batches=20):
@@ -1008,23 +866,14 @@ def test_main_periodic_save(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg.training.steps = 4
-
     cfg.training.eval_interval = 100
-
     cfg.training.log_interval = 100
-
     cfg.training.save_interval = 2
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     mock_ckpt_mgr = MagicMock()
-
     with (
         patch(
             "sys.argv",
@@ -1058,17 +907,11 @@ def test_main_grad_accum_gt1(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg.training.gradient_accumulation_steps = 2
-
     cfg.training.steps = 2
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -1100,17 +943,11 @@ def test_main_warmup_steps(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg.training.warmup_steps = 1
-
     cfg.training.steps = 3
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -1142,11 +979,8 @@ def test_main_compile_path(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg.compile = True
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
 
     class _ModelWithBackbone(_TinyModel):
@@ -1155,7 +989,6 @@ def test_main_compile_path(tmp_path):
             self.backbone = torch.nn.Linear(4, 4)
 
     model = _ModelWithBackbone()
-
     with (
         patch(
             "sys.argv",
@@ -1188,15 +1021,10 @@ def test_main_compile_no_backbone(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg.compile = True
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -1229,13 +1057,9 @@ def test_main_chinchilla_steps_none(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     original_load = __import__("scripts.train", fromlist=["load_config"]).load_config
 
     def _no_steps_load(path, overrides):
@@ -1274,9 +1098,7 @@ def test_main_moe_layer_with_expert_pool_grads(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
 
     class _ExpertWithGrad(torch.nn.Module):
@@ -1299,7 +1121,6 @@ def test_main_moe_layer_with_expert_pool_grads(tmp_path):
             self.moe_layers = {0: _MoELayerWithPool()}
 
     model = _ModelWithPool()
-
     with (
         patch(
             "sys.argv",
@@ -1331,9 +1152,7 @@ def test_main_moe_layer_with_router_grads(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
 
     class _RouterWithGrad(torch.nn.Module):
@@ -1354,7 +1173,6 @@ def test_main_moe_layer_with_router_grads(tmp_path):
             self.moe_layers = {0: _MoELayerWithRouterGrad()}
 
     model = _ModelWithRouterGrad()
-
     with (
         patch(
             "sys.argv",
@@ -1386,9 +1204,7 @@ def test_main_moe_router_with_lambda_val(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
 
     class _RouterWithLambda(torch.nn.Module):
@@ -1412,7 +1228,6 @@ def test_main_moe_router_with_lambda_val(tmp_path):
             self.moe_layers = {0: _MoELayerWithLambda()}
 
     model = _ModelWithLambda()
-
     with (
         patch(
             "sys.argv",
@@ -1444,9 +1259,7 @@ def test_main_moe_router_with_get_state(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
 
     class _RouterWithState(torch.nn.Module):
@@ -1497,7 +1310,6 @@ def test_main_moe_router_with_get_state(tmp_path):
             return logits, loss, moe_metrics
 
     model = _ModelWithState()
-
     with (
         patch(
             "sys.argv",
@@ -1529,9 +1341,7 @@ def test_main_moe_router_with_fatigue(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
 
     class _RouterWithWelford(torch.nn.Module):
@@ -1553,7 +1363,6 @@ def test_main_moe_router_with_fatigue(tmp_path):
             self.moe_layers = {0: _MoELayerWithWelford()}
 
     model = _ModelWithWelford()
-
     with (
         patch(
             "sys.argv",
@@ -1585,9 +1394,7 @@ def test_main_spec_trackers_with_moe(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
 
     class _ModelWithVocabAndMoE(_TinyModelWithMoE):
@@ -1612,11 +1419,8 @@ def test_main_spec_trackers_with_moe(tmp_path):
             return logits, loss, moe_metrics
 
     model = _ModelWithVocabAndMoE()
-
     mock_tracker = MagicMock()
-
     mock_tracker.sync_and_compute.return_value = {"specialization_score": 0.5}
-
     with (
         patch(
             "sys.argv",
@@ -1652,13 +1456,9 @@ def test_main_stopiteration_epoch_wrap(tmp_path):
     from scripts.train import main
 
     shard_dir = tmp_path / "shards"
-
     shard_dir.mkdir()
-
     _write_shard(shard_dir / "train_shard_0000.bin", list(range(20)))
-
     _write_shard(shard_dir / "val_shard_0000.bin", list(range(20)))
-
     cfg_dict = {
         "experiment_name": "stop_iter_test",
         "seed": 42,
@@ -1689,15 +1489,10 @@ def test_main_stopiteration_epoch_wrap(tmp_path):
         },
         "logging": {"enabled": False},
     }
-
     cfg = OmegaConf.create(cfg_dict)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -1729,15 +1524,10 @@ def test_main_clip_norm_zero(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg.training.clip_grad_norm = 0.0
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -1769,13 +1559,9 @@ def test_main_not_main_process(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -1807,13 +1593,9 @@ def test_main_shard_dir_override(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -1845,13 +1627,9 @@ def test_main_no_output_dir(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
-
     tiny_model = _TinyModel()
-
     with (
         patch(
             "sys.argv",
@@ -1875,11 +1653,8 @@ def test_main_moe_trainable_base(tmp_path):
     from scripts.train import main
 
     cfg, shard_dir = _make_full_cfg(tmp_path)
-
     cfg.expert.lora.trainable_base = True
-
     cfg_path = tmp_path / "cfg.yaml"
-
     OmegaConf.save(cfg, cfg_path)
 
     class _MoELayerWithBase(_MoELayer):
@@ -1898,7 +1673,6 @@ def test_main_moe_trainable_base(tmp_path):
             self.moe_layers = {0: _MoELayerWithBase()}
 
     model = _ModelWithBase()
-
     with (
         patch(
             "sys.argv",
@@ -1936,7 +1710,6 @@ def test_broadcast_scalar_distributed():
         pass
 
     mock_dist.broadcast = _fake_broadcast
-
     with patch.dict("sys.modules", {"torch.distributed": mock_dist}):
         result = _broadcast_scalar(2.71, "cpu", is_distributed=False)
     assert result == pytest.approx(2.71)

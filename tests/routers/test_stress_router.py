@@ -22,7 +22,6 @@ def make_router(hidden_dim=64, num_experts=4, top_k=2, temperature=1.0, device="
         temperature=temperature,
         noise_std=0.0,
     )
-
     return StressCorrectedRouter(cfg).to(device)
 
 
@@ -48,7 +47,6 @@ def make_router_calib(calib_step=CALIB_STEP, device="cpu", **kwargs):
         noise_std=0.0,
         lambda_calib_step=calib_step,
     )
-
     return StressCorrectedRouter(cfg).to(device)
 
 

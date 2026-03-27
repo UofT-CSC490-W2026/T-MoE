@@ -9,7 +9,6 @@ from src.metrics.router_metrics import RouterMetricsTracker, GlobalSpecializatio
 @pytest.fixture
 def router():
     cfg = MetabolicRouterConfig(hidden_dim=64, num_experts=4, top_k=2)
-
     return MetabolicRouter(cfg)
 
 
@@ -20,21 +19,17 @@ def tracker(router):
 
 def _uniform_routing(num_experts=4, top_k=2, batch=2, seq=8):
     indices = torch.zeros(batch, seq, top_k, dtype=torch.long)
-
     for i in range(batch * seq):
         b, s = divmod(i, seq)
         for k in range(top_k):
             indices[b, s, k] = (i * top_k + k) % num_experts
     weights = torch.full((batch, seq, top_k), 1.0 / top_k)
-
     return indices, weights
 
 
 def _collapsed_routing(num_experts=4, top_k=2, batch=2, seq=8):
     indices = torch.zeros(batch, seq, top_k, dtype=torch.long)
-
     weights = torch.full((batch, seq, top_k), 1.0 / top_k)
-
     return indices, weights
 
 

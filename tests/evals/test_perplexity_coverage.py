@@ -40,7 +40,6 @@ class _SimpleTokenizer:
 
 def _make_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
     n = len(tokens)
-
     if uint32:
         with open(path, "wb") as f:
             f.write(struct.pack("<Q", n))
@@ -54,7 +53,6 @@ def _make_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
 
 def test_cfg_select_non_dict_returns_default():
     result = _cfg_select(object(), "model.key", default="fallback")
-
     assert result == "fallback"
 
 
@@ -62,27 +60,21 @@ def test_autocast_context_cpu_returns_nullcontext():
     from contextlib import nullcontext
 
     ctx = _autocast_context("cpu", torch.float32)
-
     assert isinstance(ctx, type(nullcontext()))
 
 
 def test_compute_document_nll_short_sequence():
     model = _SimpleModel()
-
     input_ids = torch.tensor([[5]], dtype=torch.long)
-
     nll, tokens = compute_document_nll(
         model, input_ids, stride=1, max_length=4, device="cpu"
     )
-
     assert nll == 0.0
-
     assert tokens == 0
 
 
 def test_compute_document_nll_bad_shape_raises():
     model = _SimpleModel()
-
     with pytest.raises(ValueError, match="shape"):
         compute_document_nll(
             model,
@@ -95,7 +87,6 @@ def test_compute_document_nll_bad_shape_raises():
 
 def test_compute_document_nll_bad_stride_raises():
     model = _SimpleModel()
-
     with pytest.raises(ValueError, match="stride"):
         compute_document_nll(
             model,
@@ -108,7 +99,6 @@ def test_compute_document_nll_bad_stride_raises():
 
 def test_compute_document_nll_bad_max_length_raises():
     model = _SimpleModel()
-
     with pytest.raises(ValueError, match="max_length"):
         compute_document_nll(
             model,
@@ -130,7 +120,6 @@ def test_summarize_metrics_zero_bytes_raises():
 
 
 def test_tokenize_worker_typeerror_fallback():
-
     def _tok(text, add_special_tokens=False, return_tensors="pt", **kwargs):
         if "verbose" in kwargs:
             raise TypeError("unexpected kwarg")
@@ -138,13 +127,9 @@ def test_tokenize_worker_typeerror_fallback():
         return {"input_ids": torch.tensor([ids], dtype=torch.long)}
 
     out_q: queue.Queue = queue.Queue()
-
     _tokenize_worker(["hello world"], _tok, out_q, max_documents=None)
-
     item = out_q.get()
-
     assert item is not None
-
     out_q.get()
 
 
@@ -156,29 +141,22 @@ def test_run_batched_forward_mixed_lengths():
         return (torch.zeros(b, s, 16),)
 
     model.forward = _forward
-
     w1 = _Window(
         0, torch.zeros(1, 4, dtype=torch.long), torch.ones(3, dtype=torch.bool)
     )
-
     w2 = _Window(
         1, torch.zeros(1, 6, dtype=torch.long), torch.ones(5, dtype=torch.bool)
     )
-
     results = _run_batched_forward(model, [w1, w2], "cpu", torch.float32)
-
     assert len(results) == 2
 
 
 def test_evaluate_text_documents_empty_raises():
     tokenizer = MagicMock()
-
     tokenizer.side_effect = lambda text, **kw: {
         "input_ids": torch.zeros(1, 1, dtype=torch.long)
     }
-
     model = _SimpleModel()
-
     with pytest.raises(ValueError, match="No tokens scored"):
         evaluate_text_documents(
             model,
@@ -242,9 +220,7 @@ def test_load_dataset_texts_len_typeerror():
             yield {"text": "hello world"}
 
     mock_ds = _NoLen()
-
     spec = {"hf_path": "fake", "split": "test", "streaming": False}
-
     with patch("datasets.load_dataset", return_value=mock_ds):
         gen, hint = _load_dataset_texts(spec)
         assert hint is None
@@ -272,19 +248,12 @@ def test_run_perplexity_eval_with_shard_source(tmp_path):
     from evals.perplexity import run_perplexity_eval
 
     shard = tmp_path / "val_shard_0000.bin"
-
     _make_shard(shard, [i % 16 for i in range(30)])
-
     model = _make_mock_model()
-
     tokenizer = MagicMock()
-
     tokenizer.model_max_length = 64
-
     config = MagicMock()
-
     config.get = MagicMock(return_value=None)
-
     dataset_specs = [
         {
             "result_prefix": "shards_test",
@@ -293,7 +262,6 @@ def test_run_perplexity_eval_with_shard_source(tmp_path):
             "include_bpb": False,
         }
     ]
-
     with (
         patch("evals.perplexity._load_tokenizer_for_model", return_value=tokenizer),
         patch("evals.perplexity.get_shard_dir", return_value=tmp_path),

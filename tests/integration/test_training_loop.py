@@ -20,9 +20,7 @@ class MockMLP(nn.Module):
 
 def test_training_integration():
     hidden_dim, intermediate_dim = 64, 256
-
     backbone = MockMLP(hidden_dim, intermediate_dim)
-
     lora_cfg = LoRAConfig(
         hidden_dim=hidden_dim,
         intermediate_dim=intermediate_dim,
@@ -30,109 +28,70 @@ def test_training_integration():
         alpha=16,
         dropout=0.1,
     )
-
     router_cfg = MetabolicRouterConfig(
         hidden_dim=hidden_dim, num_experts=4, top_k=2, tau_specialization=0.5
     )
-
     moe = LoRAMoELayer.from_pretrained_mlp(
         mlp=backbone,
         router=MetabolicRouter(router_cfg),
         lora_config=lora_cfg,
         num_experts=4,
     )
-
     expert_0 = moe.expert_pool[0]
-
     assert not expert_0.c_fc.shared_weight.requires_grad, (
         "Expert base weights should be frozen (buffer)"
     )
-
     assert any(p.requires_grad for p in moe.router.parameters()), (
         "Router should be trainable"
     )
-
     assert any(p.requires_grad for p in moe.expert_pool.parameters()), (
         "Experts should be trainable"
     )
-
     opt = optim.AdamW((p for p in moe.parameters() if p.requires_grad), lr=1e-3)
-
     x = torch.randn(8, 16, hidden_dim)
-
     out, metrics = moe(x, return_metrics=True)
-
     loss = out.mean()
-
     opt.zero_grad()
-
     loss.backward()
-
     assert expert_0.c_fc.shared_weight.grad is None, (
         "Base weight buffer should receive no gradients"
     )
-
     assert any(
         p.grad is not None for p in moe.router.parameters() if p.requires_grad
     ), "Router should receive gradients"
-
     opt.step()
-
     fatigue_before = moe.router.fatigue.clone()
-
     moe.router.step()
-
     assert moe.router.num_steps.item() == 1
-
     assert not moe.router._usage_pending
-
     assert not torch.allclose(moe.router.fatigue, fatigue_before), (
         "Fatigue should update after router.step()"
     )
-
     moe.router.gamma_recovery = 0.0
-
     moe.router.beta_cost = 1.0
-
     fatigue_step1 = moe.router.fatigue.clone()
-
     out = moe(x)
-
     out.mean().backward()
-
     opt.step()
-
     moe.router.step()
-
     assert not torch.allclose(moe.router.fatigue, fatigue_step1)
 
 
 def test_gradient_accumulation_defers_fatigue():
     hidden_dim = 64
-
     cfg = MetabolicRouterConfig(hidden_dim=hidden_dim, num_experts=4, top_k=2)
-
     lora_cfg = LoRAConfig(hidden_dim=hidden_dim, rank=4, alpha=16)
-
     moe = LoRAMoELayer.from_pretrained_mlp(
         mlp=MockMLP(hidden_dim, 256),
         router=MetabolicRouter(cfg),
         lora_config=lora_cfg,
         num_experts=4,
     )
-
     moe.train()
-
     x = torch.randn(4, 8, hidden_dim)
-
     moe(x)
-
     moe(x)
-
     assert moe.router._usage_pending
-
     assert moe.router.num_steps.item() == 0
-
     moe.router.step()
-
     assert moe.router.num_steps.item() == 1

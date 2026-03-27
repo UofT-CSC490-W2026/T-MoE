@@ -17,11 +17,8 @@ def test_create_router_ignores_unknown_kwargs_for_standard_router():
         tau_final=1.0,
         tau_anneal_steps=0,
     )
-
     assert isinstance(router, StandardRouter)
-
     assert router.temperature == 0.7
-
     assert router.top_k == 2
 
 
@@ -37,13 +34,8 @@ def test_create_router_keeps_metabolic_specific_kwargs():
         warmup_steps=1200,
         eps=1e-3,
     )
-
     assert isinstance(router, MetabolicRouter)
-
     assert router.lambda_metabolic == 0.3
-
     assert router.gamma_recovery == 0.15
-
     assert router.beta_cost == 0.15
-
     assert router.warmup_steps == 1200

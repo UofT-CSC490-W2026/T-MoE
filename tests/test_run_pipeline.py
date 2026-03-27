@@ -11,19 +11,12 @@ def test_load_configuration_import_error():
 
 def test_load_configuration_success():
     mock_config = MagicMock()
-
     mock_config.use_sagemaker = False
-
     mock_config.dataset_name = "test"
-
     mock_config.raw_data_bucket = "bucket"
-
     mock_config.aws_region = "us-east-1"
-
     mock_infra = MagicMock()
-
     mock_infra.config.config.load_pipeline_config.return_value = mock_config
-
     with patch.dict(
         sys.modules,
         {
@@ -88,16 +81,13 @@ def test_main_generic_exception():
 
 def test_main_sagemaker_path():
     mock_config = MagicMock()
-
     mock_config.use_sagemaker = True
-
     mock_result = {
         "mode": "sagemaker",
         "job_arn": "arn:123",
         "dataset": "test",
         "s3_bucket": "b",
     }
-
     with patch("run_pipeline.load_configuration", return_value=mock_config):
         with patch(
             "run_pipeline.run_sagemaker_pipeline", return_value=mock_result
@@ -112,11 +102,8 @@ def test_main_sagemaker_path():
 
 def test_main_fallback_path():
     mock_config = MagicMock()
-
     mock_config.use_sagemaker = False
-
     mock_config.dataset_name = "test"
-
     mock_result = {
         "mode": "fallback",
         "dataset": "test",
@@ -124,7 +111,6 @@ def test_main_fallback_path():
         "elapsed_seconds": 5.0,
         "s3_paths": ["a"],
     }
-
     with patch("run_pipeline.load_configuration", return_value=mock_config):
         with patch(
             "run_pipeline.run_fallback_pipeline", return_value=mock_result

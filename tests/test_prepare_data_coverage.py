@@ -21,13 +21,9 @@ def test_iter_token_arrays_streaming_basic():
     from scripts.prepare_data import _iter_token_arrays
 
     examples = [{"text": "hello world"}, {"text": "  "}, {"text": "foo bar"}]
-
     dataset = _make_streaming_dataset(examples)
-
     mock_tok = MagicMock()
-
     mock_tok.return_value = {"input_ids": [[1, 2, 3], [4, 5]]}
-
     with patch("transformers.AutoTokenizer") as MockTok:
         MockTok.from_pretrained.return_value = mock_tok
         results = list(
@@ -42,7 +38,6 @@ def test_iter_token_arrays_streaming_basic():
             )
         )
     assert len(results) > 0
-
     assert all(isinstance(r, np.ndarray) for r in results)
 
 
@@ -50,13 +45,9 @@ def test_iter_token_arrays_streaming_flush_remainder():
     from scripts.prepare_data import _iter_token_arrays
 
     examples = [{"text": "hello world"}]
-
     dataset = _make_streaming_dataset(examples)
-
     mock_tok = MagicMock()
-
     mock_tok.return_value = {"input_ids": [[1, 2, 3]]}
-
     with patch("transformers.AutoTokenizer") as MockTok:
         MockTok.from_pretrained.return_value = mock_tok
         results = list(
@@ -77,13 +68,9 @@ def test_iter_token_arrays_streaming_uint32_vocab():
     from scripts.prepare_data import _iter_token_arrays
 
     examples = [{"text": "hello"}]
-
     dataset = _make_streaming_dataset(examples)
-
     mock_tok = MagicMock()
-
     mock_tok.return_value = {"input_ids": [[1, 2]]}
-
     with patch("transformers.AutoTokenizer") as MockTok:
         MockTok.from_pretrained.return_value = mock_tok
         results = list(
@@ -109,13 +96,9 @@ def test_iter_token_arrays_non_streaming():
             yield {"text": "foo bar baz"}
 
     mock_pool = MagicMock()
-
     mock_pool.__enter__ = MagicMock(return_value=mock_pool)
-
     mock_pool.__exit__ = MagicMock(return_value=False)
-
     mock_pool.imap.return_value = iter([[[1, 2, 3, 50256], [4, 5, 50256]]])
-
     with patch("multiprocessing.Pool", return_value=mock_pool):
         results = list(
             _iter_token_arrays(
@@ -133,11 +116,8 @@ def test_iter_token_arrays_non_streaming():
 
 def _make_cfg(dataset_key="wikitext-2", model_key="gpt-neo-125m"):
     cfg = MagicMock()
-
     cfg.dataset.dataset_key = dataset_key
-
     cfg.model.model_key = model_key
-
     return cfg
 
 
@@ -145,7 +125,6 @@ def test_tokenize_and_pack_basic(tmp_path):
     from scripts.prepare_data import tokenize_and_pack
 
     cfg = _make_cfg()
-
     dataset_info = {
         "hf_path": "wikitext",
         "hf_name": "wikitext-2-raw-v1",
@@ -153,17 +132,11 @@ def test_tokenize_and_pack_basic(tmp_path):
         "streaming": False,
         "splits": {"train": "train", "val": "validation"},
     }
-
     mock_tok = MagicMock()
-
     mock_tok.name_or_path = "gpt-neo-125m"
-
     mock_tok.vocab_size = 50257
-
     mock_tok.eos_token_id = 50256
-
     token_arrays = [np.array([1, 2, 3, 50256], dtype=np.uint16)]
-
     with (
         patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info),
         patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 50256)),
@@ -174,7 +147,6 @@ def test_tokenize_and_pack_basic(tmp_path):
     ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
     shards = list(tmp_path.glob("*.bin"))
-
     assert len(shards) >= 1
 
 
@@ -182,7 +154,6 @@ def test_tokenize_and_pack_skips_none_split(tmp_path):
     from scripts.prepare_data import tokenize_and_pack
 
     cfg = _make_cfg()
-
     dataset_info = {
         "hf_path": "wikitext",
         "hf_name": None,
@@ -190,17 +161,11 @@ def test_tokenize_and_pack_skips_none_split(tmp_path):
         "streaming": False,
         "splits": {"train": "train", "val": None},
     }
-
     mock_tok = MagicMock()
-
     mock_tok.name_or_path = "gpt-neo-125m"
-
     mock_tok.vocab_size = 50257
-
     mock_tok.eos_token_id = 50256
-
     token_arrays = [np.array([1, 2, 3], dtype=np.uint16)]
-
     with (
         patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info),
         patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 50256)),
@@ -211,11 +176,8 @@ def test_tokenize_and_pack_skips_none_split(tmp_path):
     ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
     shards = list(tmp_path.glob("train_*.bin"))
-
     assert len(shards) >= 1
-
     val_shards = list(tmp_path.glob("val_*.bin"))
-
     assert len(val_shards) == 0
 
 
@@ -223,7 +185,6 @@ def test_tokenize_and_pack_multiple_shards(tmp_path):
     from scripts.prepare_data import tokenize_and_pack, SHARD_SIZE
 
     cfg = _make_cfg()
-
     dataset_info = {
         "hf_path": "wikitext",
         "hf_name": None,
@@ -231,17 +192,11 @@ def test_tokenize_and_pack_multiple_shards(tmp_path):
         "streaming": False,
         "splits": {"train": "train"},
     }
-
     mock_tok = MagicMock()
-
     mock_tok.name_or_path = "gpt-neo-125m"
-
     mock_tok.vocab_size = 50257
-
     mock_tok.eos_token_id = 50256
-
     big_array = np.ones(SHARD_SIZE + 10, dtype=np.uint16)
-
     with (
         patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info),
         patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 50256)),
@@ -252,7 +207,6 @@ def test_tokenize_and_pack_multiple_shards(tmp_path):
     ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
     shards = sorted(tmp_path.glob("train_*.bin"))
-
     assert len(shards) == 2
 
 
@@ -260,7 +214,6 @@ def test_tokenize_and_pack_uint32_vocab(tmp_path):
     from scripts.prepare_data import tokenize_and_pack
 
     cfg = _make_cfg(model_key="qwen2-1.5b")
-
     dataset_info = {
         "hf_path": "wikitext",
         "hf_name": None,
@@ -268,17 +221,11 @@ def test_tokenize_and_pack_uint32_vocab(tmp_path):
         "streaming": False,
         "splits": {"train": "train"},
     }
-
     mock_tok = MagicMock()
-
     mock_tok.name_or_path = "qwen2-1.5b"
-
     mock_tok.vocab_size = 151936
-
     mock_tok.eos_token_id = 151643
-
     token_arrays = [np.array([1, 2, 3], dtype=np.uint32)]
-
     with (
         patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info),
         patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 151643)),
@@ -289,9 +236,7 @@ def test_tokenize_and_pack_uint32_vocab(tmp_path):
     ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
     shards = list(tmp_path.glob("train_*.bin"))
-
     assert len(shards) == 1
-
     with open(shards[0], "rb") as f:
         f.read(8)
         dtype_flag = struct.unpack("<H", f.read(2))[0]
@@ -302,11 +247,9 @@ def test_main_uses_cpu_count_when_num_proc_none(tmp_path):
     from scripts.prepare_data import main
 
     cfg_path = tmp_path / "test.yaml"
-
     cfg_path.write_text(
         "dataset:\n  dataset_key: wikitext-2\nmodel:\n  model_key: gpt-neo-125m\n"
     )
-
     with patch(
         "sys.argv",
         ["prepare_data.py", "--config", str(cfg_path), "--out-dir", str(tmp_path)],

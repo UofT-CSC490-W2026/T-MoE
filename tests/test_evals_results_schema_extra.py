@@ -5,13 +5,9 @@ def test_log_results_to_wandb_no_checkpoint_step_with_mmlu():
     from evals import results_schema
 
     mock_wandb = MagicMock()
-
     mock_run = MagicMock()
-
     mock_wandb.init.return_value = mock_run
-
     mock_wandb.Table = MagicMock(return_value=MagicMock())
-
     payload = {
         "task": "lm_harness",
         "results": {"acc": 0.5},
@@ -20,11 +16,8 @@ def test_log_results_to_wandb_no_checkpoint_step_with_mmlu():
         "experiment_name": "test_exp",
         "git_commit": "abc123",
     }
-
     orig = results_schema.WANDB_AVAILABLE
-
     orig_wandb = results_schema.wandb
-
     try:
         results_schema.WANDB_AVAILABLE = True
         results_schema.wandb = mock_wandb
@@ -40,13 +33,9 @@ def test_log_results_to_wandb_with_checkpoint_step_and_mmlu():
     from evals import results_schema
 
     mock_wandb = MagicMock()
-
     mock_run = MagicMock()
-
     mock_wandb.init.return_value = mock_run
-
     mock_wandb.Table = MagicMock(return_value=MagicMock())
-
     payload = {
         "task": "lm_harness",
         "results": {"acc": 0.5},
@@ -55,11 +44,8 @@ def test_log_results_to_wandb_with_checkpoint_step_and_mmlu():
         "experiment_name": "test_exp",
         "git_commit": "abc123",
     }
-
     orig = results_schema.WANDB_AVAILABLE
-
     orig_wandb = results_schema.wandb
-
     try:
         results_schema.WANDB_AVAILABLE = True
         results_schema.wandb = mock_wandb
@@ -81,13 +67,9 @@ def test_log_results_to_wandb_run_finish_not_callable():
     from evals import results_schema
 
     mock_wandb = MagicMock()
-
     mock_run = MagicMock()
-
     mock_run.finish = "not_callable"
-
     mock_wandb.init.return_value = mock_run
-
     payload = {
         "task": "perplexity",
         "results": {"ppl": 20.0},
@@ -95,11 +77,8 @@ def test_log_results_to_wandb_run_finish_not_callable():
         "checkpoint_step": None,
         "experiment_name": "test",
     }
-
     orig = results_schema.WANDB_AVAILABLE
-
     orig_wandb = results_schema.wandb
-
     try:
         results_schema.WANDB_AVAILABLE = True
         results_schema.wandb = mock_wandb
