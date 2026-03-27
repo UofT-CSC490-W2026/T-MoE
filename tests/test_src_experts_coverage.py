@@ -33,7 +33,7 @@ def test_base_expert_get_flops():
     e = ConcreteExpert()
     x = torch.randn(4, 10)
     flops = e.get_flops(x)
-    
+
     assert flops > 0
 
 
