@@ -1,4 +1,5 @@
 """Coverage tests for evals/perplexity.py — targeting uncovered lines."""
+
 from __future__ import annotations
 
 import queue
@@ -25,6 +26,7 @@ from evals.perplexity import (
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
+
 
 class _SimpleModel(torch.nn.Module):
     def __init__(self, vocab_size: int = 16):
@@ -60,6 +62,7 @@ def _make_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
 
 # ── line 46: _cfg_select else branch (no .get on plain object) ────────────────
 
+
 def test_cfg_select_non_dict_returns_default():
     # config is a plain object without .get → hits the else: return default branch
     result = _cfg_select(object(), "model.key", default="fallback")
@@ -68,43 +71,68 @@ def test_cfg_select_non_dict_returns_default():
 
 # ── line 118: _autocast_context non-cuda path ─────────────────────────────────
 
+
 def test_autocast_context_cpu_returns_nullcontext():
     from contextlib import nullcontext
+
     ctx = _autocast_context("cpu", torch.float32)
     assert isinstance(ctx, type(nullcontext()))
 
 
 # ── line 190: compute_document_nll seq_len < 2 ────────────────────────────────
 
+
 def test_compute_document_nll_short_sequence():
     model = _SimpleModel()
     input_ids = torch.tensor([[5]], dtype=torch.long)  # seq_len=1
-    nll, tokens = compute_document_nll(model, input_ids, stride=1, max_length=4, device="cpu")
+    nll, tokens = compute_document_nll(
+        model, input_ids, stride=1, max_length=4, device="cpu"
+    )
     assert nll == 0.0
     assert tokens == 0
 
 
 # ── line 245: compute_document_nll invalid input shape ────────────────────────
 
+
 def test_compute_document_nll_bad_shape_raises():
     model = _SimpleModel()
     with pytest.raises(ValueError, match="shape"):
-        compute_document_nll(model, torch.zeros(2, 5, dtype=torch.long), stride=1, max_length=4, device="cpu")
+        compute_document_nll(
+            model,
+            torch.zeros(2, 5, dtype=torch.long),
+            stride=1,
+            max_length=4,
+            device="cpu",
+        )
 
 
 def test_compute_document_nll_bad_stride_raises():
     model = _SimpleModel()
     with pytest.raises(ValueError, match="stride"):
-        compute_document_nll(model, torch.zeros(1, 5, dtype=torch.long), stride=0, max_length=4, device="cpu")
+        compute_document_nll(
+            model,
+            torch.zeros(1, 5, dtype=torch.long),
+            stride=0,
+            max_length=4,
+            device="cpu",
+        )
 
 
 def test_compute_document_nll_bad_max_length_raises():
     model = _SimpleModel()
     with pytest.raises(ValueError, match="max_length"):
-        compute_document_nll(model, torch.zeros(1, 5, dtype=torch.long), stride=1, max_length=1, device="cpu")
+        compute_document_nll(
+            model,
+            torch.zeros(1, 5, dtype=torch.long),
+            stride=1,
+            max_length=1,
+            device="cpu",
+        )
 
 
 # ── line 265: summarize_language_model_metrics total_bytes <= 0 ───────────────
+
 
 def test_summarize_metrics_zero_tokens_raises():
     with pytest.raises(ValueError, match="total_tokens"):
@@ -118,8 +146,10 @@ def test_summarize_metrics_zero_bytes_raises():
 
 # ── line 344: _tokenize_worker TypeError fallback ─────────────────────────────
 
+
 def test_tokenize_worker_typeerror_fallback():
     """Tokenizer that raises TypeError on verbose= kwarg → fallback branch."""
+
     def _tok(text, add_special_tokens=False, return_tensors="pt", **kwargs):
         if "verbose" in kwargs:
             raise TypeError("unexpected kwarg")
@@ -135,6 +165,7 @@ def test_tokenize_worker_typeerror_fallback():
 
 # ── lines 384-390: _run_batched_forward mixed-length padding path ─────────────
 
+
 def test_run_batched_forward_mixed_lengths():
     """Windows of different lengths trigger the padding branch."""
     model = _SimpleModel(vocab_size=16)
@@ -145,40 +176,57 @@ def test_run_batched_forward_mixed_lengths():
 
     model.forward = _forward
 
-    w1 = _Window(0, torch.zeros(1, 4, dtype=torch.long), torch.ones(3, dtype=torch.bool))
-    w2 = _Window(1, torch.zeros(1, 6, dtype=torch.long), torch.ones(5, dtype=torch.bool))
+    w1 = _Window(
+        0, torch.zeros(1, 4, dtype=torch.long), torch.ones(3, dtype=torch.bool)
+    )
+    w2 = _Window(
+        1, torch.zeros(1, 6, dtype=torch.long), torch.ones(5, dtype=torch.bool)
+    )
     results = _run_batched_forward(model, [w1, w2], "cpu", torch.float32)
     assert len(results) == 2
 
 
 # ── line 484: evaluate_text_documents no tokens scored ────────────────────────
 
+
 def test_evaluate_text_documents_empty_raises():
     """All docs too short → no tokens scored → ValueError."""
     tokenizer = MagicMock()
-    tokenizer.side_effect = lambda text, **kw: {"input_ids": torch.zeros(1, 1, dtype=torch.long)}
+    tokenizer.side_effect = lambda text, **kw: {
+        "input_ids": torch.zeros(1, 1, dtype=torch.long)
+    }
     model = _SimpleModel()
     with pytest.raises(ValueError, match="No tokens scored"):
         evaluate_text_documents(
-            model, tokenizer, ["x"],
-            stride=1, max_length=4, device="cpu",
+            model,
+            tokenizer,
+            ["x"],
+            stride=1,
+            max_length=4,
+            device="cpu",
         )
 
 
 # ── line 508: evaluate_token_shards no shard files ────────────────────────────
+
 
 def test_evaluate_token_shards_no_files_raises():
     with tempfile.TemporaryDirectory() as tmpdir:
         model = _SimpleModel()
         with pytest.raises(FileNotFoundError):
             evaluate_token_shards(
-                model, tmpdir,
-                stride=2, max_length=4, device="cpu",
-                autocast_dtype=torch.float32, batch_size=4,
+                model,
+                tmpdir,
+                stride=2,
+                max_length=4,
+                device="cpu",
+                autocast_dtype=torch.float32,
+                batch_size=4,
             )
 
 
 # ── lines 521-529: evaluate_token_shards distributed all-reduce ───────────────
+
 
 def test_evaluate_token_shards_world_size_gt1():
     """world_size > 1 triggers the dist.all_reduce branch (mocked)."""
@@ -190,19 +238,27 @@ def test_evaluate_token_shards_world_size_gt1():
 
         import torch.distributed as dist_mod
 
-        with patch.object(dist_mod, "all_reduce", return_value=None), \
-             patch.object(dist_mod, "ReduceOp") as mock_op:
+        with (
+            patch.object(dist_mod, "all_reduce", return_value=None),
+            patch.object(dist_mod, "ReduceOp") as mock_op,
+        ):
             mock_op.SUM = 0
             result = evaluate_token_shards(
-                model, tmpdir,
-                stride=2, max_length=4, device="cpu",
-                autocast_dtype=torch.float32, batch_size=4,
-                world_size=2, rank=0,
+                model,
+                tmpdir,
+                stride=2,
+                max_length=4,
+                device="cpu",
+                autocast_dtype=torch.float32,
+                batch_size=4,
+                world_size=2,
+                rank=0,
             )
         assert "ppl" in result
 
 
 # ── line 571: _load_dataset_texts TypeError from len() ────────────────────────
+
 
 def test_load_dataset_texts_len_typeerror():
     """Dataset that raises TypeError on len() → total_hint = None."""
@@ -211,6 +267,7 @@ def test_load_dataset_texts_len_typeerror():
     class _NoLen:
         def __len__(self):
             raise TypeError("no len")
+
         def __iter__(self):
             yield {"text": "hello world"}
 
@@ -226,8 +283,10 @@ def test_load_dataset_texts_len_typeerror():
 
 # ── lines 615-711: run_perplexity_eval ────────────────────────────────────────
 
+
 def _make_mock_model(vocab_size=16):
     """A real nn.Module that returns (logits,) — works with _run_batched_forward."""
+
     class _M(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -265,11 +324,15 @@ def test_run_perplexity_eval_with_shard_source(tmp_path):
         }
     ]
 
-    with patch("evals.perplexity._load_tokenizer_for_model", return_value=tokenizer), \
-         patch("evals.perplexity.get_shard_dir", return_value=tmp_path), \
-         patch("evals.perplexity.build_results_payload", return_value={"task": "perplexity", "results": {}}), \
-         patch("evals.perplexity.write_results_json"):
-
+    with (
+        patch("evals.perplexity._load_tokenizer_for_model", return_value=tokenizer),
+        patch("evals.perplexity.get_shard_dir", return_value=tmp_path),
+        patch(
+            "evals.perplexity.build_results_payload",
+            return_value={"task": "perplexity", "results": {}},
+        ),
+        patch("evals.perplexity.write_results_json"),
+    ):
         result = run_perplexity_eval(
             config=config,
             checkpoint_path="fake.pt",

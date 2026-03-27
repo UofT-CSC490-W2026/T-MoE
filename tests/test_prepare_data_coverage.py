@@ -1,4 +1,5 @@
 """Coverage tests for scripts/prepare_data.py — targeting uncovered lines 144-303, 323."""
+
 from __future__ import annotations
 
 import struct
@@ -8,6 +9,7 @@ import numpy as np
 
 
 # ── _iter_token_arrays: streaming path (lines 157-178) ────────────────────────
+
 
 def _make_streaming_dataset(examples):
     """Return an object that isinstance-checks as IterableDataset and is iterable."""
@@ -103,6 +105,7 @@ def test_iter_token_arrays_streaming_uint32_vocab():
 
 # ── _iter_token_arrays: non-streaming path (lines 180-203) ────────────────────
 
+
 def test_iter_token_arrays_non_streaming():
     """Non-streaming path uses multiprocessing.Pool."""
     from scripts.prepare_data import _iter_token_arrays
@@ -135,6 +138,7 @@ def test_iter_token_arrays_non_streaming():
 
 # ── tokenize_and_pack (lines 204-303) ─────────────────────────────────────────
 
+
 def _make_cfg(dataset_key="wikitext-2", model_key="gpt-neo-125m"):
     cfg = MagicMock()
     cfg.dataset.dataset_key = dataset_key
@@ -164,10 +168,14 @@ def test_tokenize_and_pack_basic(tmp_path):
     # _iter_token_arrays yields a few token arrays
     token_arrays = [np.array([1, 2, 3, 50256], dtype=np.uint16)]
 
-    with patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info), \
-         patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 50256)), \
-         patch("scripts.prepare_data._iter_token_arrays", return_value=iter(token_arrays)), \
-         patch("datasets.load_dataset", return_value=MagicMock()):
+    with (
+        patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info),
+        patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 50256)),
+        patch(
+            "scripts.prepare_data._iter_token_arrays", return_value=iter(token_arrays)
+        ),
+        patch("datasets.load_dataset", return_value=MagicMock()),
+    ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
 
     # Should have written at least one shard
@@ -196,10 +204,14 @@ def test_tokenize_and_pack_skips_none_split(tmp_path):
 
     token_arrays = [np.array([1, 2, 3], dtype=np.uint16)]
 
-    with patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info), \
-         patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 50256)), \
-         patch("scripts.prepare_data._iter_token_arrays", return_value=iter(token_arrays)), \
-         patch("datasets.load_dataset", return_value=MagicMock()):
+    with (
+        patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info),
+        patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 50256)),
+        patch(
+            "scripts.prepare_data._iter_token_arrays", return_value=iter(token_arrays)
+        ),
+        patch("datasets.load_dataset", return_value=MagicMock()),
+    ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
 
     # Only train shard written
@@ -231,10 +243,14 @@ def test_tokenize_and_pack_multiple_shards(tmp_path):
     # One array that fills exactly one shard + a small remainder
     big_array = np.ones(SHARD_SIZE + 10, dtype=np.uint16)
 
-    with patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info), \
-         patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 50256)), \
-         patch("scripts.prepare_data._iter_token_arrays", return_value=iter([big_array])), \
-         patch("datasets.load_dataset", return_value=MagicMock()):
+    with (
+        patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info),
+        patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 50256)),
+        patch(
+            "scripts.prepare_data._iter_token_arrays", return_value=iter([big_array])
+        ),
+        patch("datasets.load_dataset", return_value=MagicMock()),
+    ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
 
     shards = sorted(tmp_path.glob("train_*.bin"))
@@ -262,10 +278,14 @@ def test_tokenize_and_pack_uint32_vocab(tmp_path):
 
     token_arrays = [np.array([1, 2, 3], dtype=np.uint32)]
 
-    with patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info), \
-         patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 151643)), \
-         patch("scripts.prepare_data._iter_token_arrays", return_value=iter(token_arrays)), \
-         patch("datasets.load_dataset", return_value=MagicMock()):
+    with (
+        patch("scripts.prepare_data.get_dataset_info", return_value=dataset_info),
+        patch("scripts.prepare_data.get_tokenizer", return_value=(mock_tok, 151643)),
+        patch(
+            "scripts.prepare_data._iter_token_arrays", return_value=iter(token_arrays)
+        ),
+        patch("datasets.load_dataset", return_value=MagicMock()),
+    ):
         tokenize_and_pack(cfg, tmp_path, num_proc=1)
 
     shards = list(tmp_path.glob("train_*.bin"))
@@ -279,6 +299,7 @@ def test_tokenize_and_pack_uint32_vocab(tmp_path):
 
 # ── main: --num-proc default (line 323) ───────────────────────────────────────
 
+
 def test_main_uses_cpu_count_when_num_proc_none(tmp_path):
     """When --num-proc not given, defaults to min(8, cpu_count)."""
     from scripts.prepare_data import main
@@ -288,11 +309,16 @@ def test_main_uses_cpu_count_when_num_proc_none(tmp_path):
         "dataset:\n  dataset_key: wikitext-2\nmodel:\n  model_key: gpt-neo-125m\n"
     )
 
-    with patch("sys.argv", ["prepare_data.py", "--config", str(cfg_path), "--out-dir", str(tmp_path)]):
+    with patch(
+        "sys.argv",
+        ["prepare_data.py", "--config", str(cfg_path), "--out-dir", str(tmp_path)],
+    ):
         with patch("scripts.prepare_data.tokenize_and_pack") as mock_pack:
             with patch("multiprocessing.cpu_count", return_value=4):
                 main()
                 _, _, kwargs = mock_pack.mock_calls[0]
                 # num_proc should be min(8, 4) = 4
-                assert mock_pack.call_args[1]["num_proc"] == 4 or \
-                       mock_pack.call_args[0][2] == 4
+                assert (
+                    mock_pack.call_args[1]["num_proc"] == 4
+                    or mock_pack.call_args[0][2] == 4
+                )

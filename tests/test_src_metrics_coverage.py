@@ -1,4 +1,5 @@
 """Tests for src/metrics/ coverage gaps — router_metrics."""
+
 import torch
 import numpy as np
 from unittest.mock import patch, MagicMock
@@ -6,6 +7,7 @@ from unittest.mock import patch, MagicMock
 
 def _make_tracker(num_experts=4):
     from src.metrics.router_metrics import RouterMetricsTracker
+
     router = MagicMock()
     router.num_experts = num_experts
     router.top_k = 2
@@ -13,6 +15,7 @@ def _make_tracker(num_experts=4):
 
 
 # ── RouterMetricsTracker ───────────────────────────────────────────────────────
+
 
 def test_compute_usage_dense():
     tracker = _make_tracker()
@@ -40,6 +43,7 @@ def test_compute_expert_entropy():
 
 def test_compute_fatigue_stats_no_fatigue():
     from src.metrics.router_metrics import RouterMetricsTracker
+
     router = MagicMock(spec=[])  # no fatigue attr
     router.num_experts = 4
     tracker = RouterMetricsTracker(router)
@@ -49,6 +53,7 @@ def test_compute_fatigue_stats_no_fatigue():
 
 def test_compute_fatigue_stats_with_fatigue():
     from src.metrics.router_metrics import RouterMetricsTracker
+
     router = MagicMock()
     router.num_experts = 4
     router.fatigue = torch.tensor([0.1, 0.2, 0.3, 0.4])
@@ -111,6 +116,7 @@ def test_compute_confidence_metrics():
 
 def test_compute_all_metrics_with_num_steps():
     from src.metrics.router_metrics import RouterMetricsTracker
+
     router = MagicMock()
     router.num_experts = 4
     router.num_steps = torch.tensor(42)
@@ -123,6 +129,7 @@ def test_compute_all_metrics_with_num_steps():
 
 def test_compute_all_metrics_with_custom_metrics():
     from src.metrics.router_metrics import RouterMetricsTracker
+
     router = MagicMock()
     router.num_experts = 4
     router.get_custom_metrics.return_value = {"custom_key": 1.0}
@@ -167,8 +174,10 @@ def test_log_to_wandb_with_run():
 
 # ── GlobalSpecializationTracker ────────────────────────────────────────────────
 
+
 def test_global_spec_tracker_update():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     token_ids = torch.randint(0, 100, (2, 8))
     expert_indices = torch.randint(0, 4, (2, 8, 2))
@@ -178,6 +187,7 @@ def test_global_spec_tracker_update():
 
 def test_global_spec_tracker_update_none_indices():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     token_ids = torch.randint(0, 100, (2, 8))
     tracker.update(token_ids, None)
@@ -186,6 +196,7 @@ def test_global_spec_tracker_update_none_indices():
 
 def test_global_spec_tracker_update_empty_valid():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     # All tokens out of range
     token_ids = torch.full((2, 8), 200)  # > vocab_size
@@ -196,6 +207,7 @@ def test_global_spec_tracker_update_empty_valid():
 
 def test_global_spec_tracker_compute_metrics_empty():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     result = tracker.compute_metrics()
     assert result == {}
@@ -203,6 +215,7 @@ def test_global_spec_tracker_compute_metrics_empty():
 
 def test_global_spec_tracker_compute_metrics():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     token_ids = torch.randint(0, 100, (4, 16))
     expert_indices = torch.randint(0, 4, (4, 16, 2))
@@ -214,16 +227,20 @@ def test_global_spec_tracker_compute_metrics():
 
 def test_global_spec_tracker_compute_metrics_uniform():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=4, num_experts=4)
     # Use diverse routing so marginal entropy > 0 (avoids the float/.item() edge case)
     token_ids = torch.arange(4).unsqueeze(1).expand(4, 4).contiguous()  # [4, 4]
     # Route each token to a different expert to ensure non-zero marginal entropy
-    expert_indices = torch.stack([
-        torch.zeros(4, 4, dtype=torch.long),
-        torch.ones(4, 4, dtype=torch.long),
-        torch.full((4, 4), 2, dtype=torch.long),
-        torch.full((4, 4), 3, dtype=torch.long),
-    ], dim=2)  # [4, 4, 4] — too many dims, use top_k=2
+    expert_indices = torch.stack(
+        [
+            torch.zeros(4, 4, dtype=torch.long),
+            torch.ones(4, 4, dtype=torch.long),
+            torch.full((4, 4), 2, dtype=torch.long),
+            torch.full((4, 4), 3, dtype=torch.long),
+        ],
+        dim=2,
+    )  # [4, 4, 4] — too many dims, use top_k=2
     expert_indices = torch.randint(0, 4, (4, 4, 2))
     tracker.update(token_ids, expert_indices)
     result = tracker.compute_metrics()
@@ -232,6 +249,7 @@ def test_global_spec_tracker_compute_metrics_uniform():
 
 def test_global_spec_tracker_sync_not_distributed():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     token_ids = torch.randint(0, 100, (2, 8))
     expert_indices = torch.randint(0, 4, (2, 8, 2))
@@ -242,17 +260,22 @@ def test_global_spec_tracker_sync_not_distributed():
 
 def test_global_spec_tracker_update_with_negative_experts():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     token_ids = torch.randint(0, 100, (2, 4))
     # Mix of valid and -1 (padding) expert indices
-    expert_indices = torch.tensor([[[-1, 0], [1, -1], [2, 3], [0, 1]],
-                                    [[-1, -1], [0, 1], [2, 3], [-1, 0]]])
+    expert_indices = torch.tensor(
+        [[[-1, 0], [1, -1], [2, 3], [0, 1]], [[-1, -1], [0, 1], [2, 3], [-1, 0]]]
+    )
     tracker.update(token_ids, expert_indices)
+
 
 # ── GlobalSpecializationTracker edge cases ────────────────────────────────────
 
+
 def test_global_spec_tracker_compute_metrics_zero_tokens():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     result = tracker.compute_metrics()
     assert result == {}
@@ -260,6 +283,7 @@ def test_global_spec_tracker_compute_metrics_zero_tokens():
 
 def test_global_spec_tracker_compute_metrics_no_active_mask():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     # Set total_tokens > 0 but usage_counts all zero → active_mask all False
     tracker.total_tokens = 10
@@ -270,6 +294,7 @@ def test_global_spec_tracker_compute_metrics_no_active_mask():
 def test_global_spec_tracker_update_all_padding_experts():
     """update() with all -1 expert indices (padding) should be a no-op."""
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=100, num_experts=4)
     token_ids = torch.randint(0, 100, (2, 8))
     expert_indices = torch.full((2, 8, 2), -1, dtype=torch.long)
@@ -279,6 +304,7 @@ def test_global_spec_tracker_update_all_padding_experts():
 
 def test_global_spec_tracker_sync_non_distributed():
     from src.metrics.router_metrics import GlobalSpecializationTracker
+
     tracker = GlobalSpecializationTracker(vocab_size=10, num_experts=4)
     token_ids = torch.arange(10).unsqueeze(0)
     expert_indices = torch.randint(0, 4, (1, 10, 1))

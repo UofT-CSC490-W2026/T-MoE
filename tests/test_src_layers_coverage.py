@@ -1,4 +1,5 @@
 """Tests for src/layers/ — base and lora_moe coverage gaps."""
+
 import pytest
 import torch
 import torch.nn as nn
@@ -7,11 +8,13 @@ from unittest.mock import MagicMock
 
 # ── BaseMoELayer ───────────────────────────────────────────────────────────────
 
+
 def test_base_moe_layer_invalid_hidden_dim():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     with pytest.raises(ValueError, match="hidden_dim"):
         ConcreteMoE(hidden_dim=0, num_experts=4, top_k=2)
@@ -21,7 +24,8 @@ def test_base_moe_layer_invalid_num_experts():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     with pytest.raises(ValueError, match="num_experts"):
         ConcreteMoE(hidden_dim=64, num_experts=0, top_k=1)
@@ -31,7 +35,8 @@ def test_base_moe_layer_invalid_top_k():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     with pytest.raises(ValueError, match="top_k"):
         ConcreteMoE(hidden_dim=64, num_experts=4, top_k=0)
@@ -44,7 +49,8 @@ def test_base_moe_layer_get_router_not_initialized():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
     with pytest.raises(RuntimeError, match="Router not initialized"):
@@ -55,7 +61,8 @@ def test_base_moe_layer_get_experts_not_initialized():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
     with pytest.raises(RuntimeError, match="Experts not initialized"):
@@ -66,7 +73,8 @@ def test_base_moe_layer_get_cached_metrics_none():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
     assert layer.get_cached_metrics() is None
@@ -76,7 +84,8 @@ def test_base_moe_layer_get_cached_metrics_no_router():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
     layer._last_routing_weights = torch.randn(8, 4)
@@ -89,7 +98,8 @@ def test_base_moe_layer_get_cached_metrics_no_tracker():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
     layer._last_routing_weights = torch.randn(8, 4)
@@ -102,7 +112,8 @@ def test_base_moe_layer_get_cached_metrics_with_tracker():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
     layer._last_routing_weights = torch.randn(8, 4)
@@ -119,7 +130,8 @@ def test_base_moe_layer_clear_cached_metrics():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
     layer._last_routing_weights = torch.randn(8, 4)
@@ -133,7 +145,8 @@ def test_base_moe_layer_extra_repr():
     from src.layers.base import BaseMoELayer
 
     class ConcreteMoE(BaseMoELayer):
-        def forward(self, x, **kw): pass
+        def forward(self, x, **kw):
+            pass
 
     layer = ConcreteMoE(hidden_dim=64, num_experts=4, top_k=2)
     repr_str = layer.extra_repr()
@@ -141,6 +154,7 @@ def test_base_moe_layer_extra_repr():
 
 
 # ── LoRAMoELayer ───────────────────────────────────────────────────────────────
+
 
 def _make_gptneo_moe(hidden=64, num_experts=4, top_k=2):
     from src.experts.lora import LoRAConfig
@@ -153,9 +167,13 @@ def _make_gptneo_moe(hidden=64, num_experts=4, top_k=2):
     mlp.c_proj = nn.Linear(hidden * 4, hidden)
 
     cfg = LoRAConfig(hidden_dim=hidden, rank=4, alpha=8)
-    router_cfg = MetabolicRouterConfig(hidden_dim=hidden, num_experts=num_experts, top_k=top_k)
+    router_cfg = MetabolicRouterConfig(
+        hidden_dim=hidden, num_experts=num_experts, top_k=top_k
+    )
     router = MetabolicRouter(router_cfg)
-    return LoRAMoELayer.from_pretrained_mlp(mlp=mlp, router=router, lora_config=cfg, num_experts=num_experts)
+    return LoRAMoELayer.from_pretrained_mlp(
+        mlp=mlp, router=router, lora_config=cfg, num_experts=num_experts
+    )
 
 
 def test_lora_moe_layer_forward_basic():
@@ -224,10 +242,14 @@ def test_lora_moe_layer_with_shared_base_lora():
     mlp.c_fc = nn.Linear(hidden, hidden * 4)
     mlp.c_proj = nn.Linear(hidden * 4, hidden)
 
-    cfg = LoRAConfig(hidden_dim=hidden, rank=4, alpha=8, shared_base_rank=2, shared_base_alpha=2.0)
+    cfg = LoRAConfig(
+        hidden_dim=hidden, rank=4, alpha=8, shared_base_rank=2, shared_base_alpha=2.0
+    )
     router_cfg = MetabolicRouterConfig(hidden_dim=hidden, num_experts=4, top_k=2)
     router = MetabolicRouter(router_cfg)
-    moe = LoRAMoELayer.from_pretrained_mlp(mlp=mlp, router=router, lora_config=cfg, num_experts=4)
+    moe = LoRAMoELayer.from_pretrained_mlp(
+        mlp=mlp, router=router, lora_config=cfg, num_experts=4
+    )
 
     x = torch.randn(2, 4, hidden)
     out = moe(x)
@@ -249,7 +271,9 @@ def test_lora_moe_layer_router_no_record_usage_param():
     cfg = LoRAConfig(hidden_dim=hidden, rank=4, alpha=8)
     router_cfg = StandardRouterConfig(hidden_dim=hidden, num_experts=4, top_k=2)
     router = StandardRouter(router_cfg)
-    moe = LoRAMoELayer.from_pretrained_mlp(mlp=mlp, router=router, lora_config=cfg, num_experts=4)
+    moe = LoRAMoELayer.from_pretrained_mlp(
+        mlp=mlp, router=router, lora_config=cfg, num_experts=4
+    )
 
     x = torch.randn(2, 4, hidden)
     out = moe(x)
@@ -257,6 +281,7 @@ def test_lora_moe_layer_router_no_record_usage_param():
 
 
 # ── LoRAMoELayer additional branches ──────────────────────────────────────────
+
 
 def test_lora_moe_layer_with_qwen2_shared_base():
     """Test LoRAMoELayer with Qwen2 expert and shared_base_rank > 0."""
@@ -273,13 +298,22 @@ def test_lora_moe_layer_with_qwen2_shared_base():
     mlp.up_proj = nn.Linear(hidden, intermediate, bias=False)
     mlp.down_proj = nn.Linear(intermediate, hidden, bias=False)
 
-    cfg = LoRAConfig(hidden_dim=hidden, intermediate_dim=intermediate,
-                     rank=4, alpha=8, shared_base_rank=2, shared_base_alpha=2.0)
+    cfg = LoRAConfig(
+        hidden_dim=hidden,
+        intermediate_dim=intermediate,
+        rank=4,
+        alpha=8,
+        shared_base_rank=2,
+        shared_base_alpha=2.0,
+    )
     router_cfg = MetabolicRouterConfig(hidden_dim=hidden, num_experts=4, top_k=2)
     router = MetabolicRouter(router_cfg)
     moe = LoRAMoELayer.from_pretrained_mlp(
-        mlp=mlp, router=router, lora_config=cfg,
-        num_experts=4, expert_type=ExpertType.QWEN2_LORA
+        mlp=mlp,
+        router=router,
+        lora_config=cfg,
+        num_experts=4,
+        expert_type=ExpertType.QWEN2_LORA,
     )
     x = torch.randn(2, 4, hidden)
     out = moe(x)
@@ -298,6 +332,7 @@ def test_lora_moe_layer_get_cached_metrics_with_lora_norms():
 
 # ── LoRAMoELayer missing branches ─────────────────────────────────────────────
 
+
 def test_lora_moe_layer_init_shared_base_lora_out_proj_none():
     """_init_shared_base_lora returns early when out_proj is None."""
     from src.experts.lora import LoRAConfig
@@ -309,8 +344,12 @@ def test_lora_moe_layer_init_shared_base_lora_out_proj_none():
     class NoOutProjExpert(LoRAMLPExpert):
         def __init__(self, config):  # pragma: no cover
             super().__init__(config)
-        def load_from_mlp(self, mlp): pass
-        def forward(self, x): return x
+
+        def load_from_mlp(self, mlp):
+            pass
+
+        def forward(self, x):
+            return x
 
     mlp = nn.Module()
     mlp.c_fc = nn.Linear(64, 256)
@@ -321,6 +360,7 @@ def test_lora_moe_layer_init_shared_base_lora_out_proj_none():
     router = MetabolicRouter(router_cfg)
 
     from src.core.registry import ExpertRegistry
+
     ExpertRegistry._registries["experts"]["no_out_proj"] = NoOutProjExpert
 
     # Build layer manually so we can test _init_shared_base_lora with no out_proj
@@ -367,12 +407,14 @@ def test_lora_moe_layer_forward_all_experts_zero_weight():
 
     class ZeroWeightRouter(BaseRouter):
         """Returns zero weights for all experts except expert 0."""
+
         def forward(self, x, return_metrics=False, **kw):
             B, S, _ = x.shape
             N = B * S
             weights = torch.zeros(N, 4)
             weights[:, 0] = 1.0  # only expert 0 gets weight
             return weights, None, {} if return_metrics else None
+
         def compute_aux_loss(self):
             return torch.tensor(0.0)  # pragma: no cover
 
@@ -387,13 +429,16 @@ def test_lora_moe_layer_forward_all_experts_zero_weight():
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
     router = ZeroWeightRouter(_Cfg())
-    moe = LoRAMoELayer.from_pretrained_mlp(mlp=mlp, router=router, lora_config=cfg, num_experts=4)
+    moe = LoRAMoELayer.from_pretrained_mlp(
+        mlp=mlp, router=router, lora_config=cfg, num_experts=4
+    )
     x = torch.randn(2, 4, 64)
     out = moe(x)
     assert out.shape == (2, 4, 64)
 
 
 # ── LoRAMoELayer shared_proj_lora (Qwen2 path) ───────────────────────────────
+
 
 def test_lora_moe_layer_shared_proj_lora_gptneo():
     """shared_proj_lora with GPT-Neo expert triggers the c_fc dtype branch."""
@@ -406,10 +451,14 @@ def test_lora_moe_layer_shared_proj_lora_gptneo():
     mlp.c_fc = nn.Linear(64, 256)
     mlp.c_proj = nn.Linear(256, 64)
 
-    cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8, shared_base_rank=4, shared_base_alpha=4.0)
+    cfg = LoRAConfig(
+        hidden_dim=64, rank=4, alpha=8, shared_base_rank=4, shared_base_alpha=4.0
+    )
     router_cfg = MetabolicRouterConfig(hidden_dim=64, num_experts=2, top_k=1)
     router = MetabolicRouter(router_cfg)
-    moe = LoRAMoELayer.from_pretrained_mlp(mlp=mlp, router=router, lora_config=cfg, num_experts=2)
+    moe = LoRAMoELayer.from_pretrained_mlp(
+        mlp=mlp, router=router, lora_config=cfg, num_experts=2
+    )
 
     assert moe.shared_proj_lora is not None
     x = torch.randn(2, 4, 64)
@@ -431,6 +480,7 @@ def test_lora_moe_layer_forward_return_metrics_with_indices():
             weights[:, 0] = 1.0
             indices = torch.zeros(N, 1, dtype=torch.long)
             return weights, indices, {} if return_metrics else None
+
         def compute_aux_loss(self):
             return torch.tensor(0.0)  # pragma: no cover
 
@@ -445,7 +495,9 @@ def test_lora_moe_layer_forward_return_metrics_with_indices():
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
     router = IndexRouter(_Cfg())
-    moe = LoRAMoELayer.from_pretrained_mlp(mlp=mlp, router=router, lora_config=cfg, num_experts=2)
+    moe = LoRAMoELayer.from_pretrained_mlp(
+        mlp=mlp, router=router, lora_config=cfg, num_experts=2
+    )
 
     x = torch.randn(2, 4, 64)
     out, metrics = moe(x, return_metrics=True)

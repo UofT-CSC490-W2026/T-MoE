@@ -1,4 +1,5 @@
 """Tests for src/routers/ coverage gaps — base, deepseek, standard, metabolic, stress."""
+
 import pytest
 import torch
 from unittest.mock import MagicMock
@@ -6,12 +7,16 @@ from unittest.mock import MagicMock
 
 # ── BaseRouter ─────────────────────────────────────────────────────────────────
 
+
 def test_base_router_step_noop():
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
-        def forward(self, x, **kw): pass
-        def compute_aux_loss(self): return torch.tensor(0.0)
+        def forward(self, x, **kw):
+            pass
+
+        def compute_aux_loss(self):
+            return torch.tensor(0.0)
 
     cfg = MagicMock()
     cfg.num_experts = 4
@@ -25,8 +30,11 @@ def test_base_router_reset_state():
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
-        def forward(self, x, **kw): pass
-        def compute_aux_loss(self): return torch.tensor(0.0)
+        def forward(self, x, **kw):
+            pass
+
+        def compute_aux_loss(self):
+            return torch.tensor(0.0)
 
     cfg = MagicMock()
     cfg.num_experts = 4
@@ -40,8 +48,11 @@ def test_base_router_clear_aux_state():
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
-        def forward(self, x, **kw): pass
-        def compute_aux_loss(self): return torch.tensor(0.0)
+        def forward(self, x, **kw):
+            pass
+
+        def compute_aux_loss(self):
+            return torch.tensor(0.0)
 
     cfg = MagicMock()
     cfg.num_experts = 4
@@ -55,8 +66,11 @@ def test_base_router_get_state():
     from src.routers.base import BaseRouter
 
     class ConcreteRouter(BaseRouter):
-        def forward(self, x, **kw): pass
-        def compute_aux_loss(self): return torch.tensor(0.0)
+        def forward(self, x, **kw):
+            pass
+
+        def compute_aux_loss(self):
+            return torch.tensor(0.0)
 
     cfg = MagicMock()
     cfg.num_experts = 4
@@ -69,11 +83,14 @@ def test_base_router_get_state():
 
 # ── StandardRouter ─────────────────────────────────────────────────────────────
 
+
 def _make_standard_router(hidden=64, num_experts=4, top_k=2, use_aux=False):
     from src.routers.standard import StandardRouter
     from src.configs.router import StandardRouterConfig
-    cfg = StandardRouterConfig(hidden_dim=hidden, num_experts=num_experts, top_k=top_k,
-                                use_aux_loss=use_aux)
+
+    cfg = StandardRouterConfig(
+        hidden_dim=hidden, num_experts=num_experts, top_k=top_k, use_aux_loss=use_aux
+    )
     return StandardRouter(cfg)
 
 
@@ -142,11 +159,14 @@ def test_standard_router_compute_aux_loss_full():
 
 # ── DeepSeekRouter ─────────────────────────────────────────────────────────────
 
+
 def _make_deepseek_router(hidden=64, num_experts=4, top_k=2, use_sigmoid=False):
     from src.routers.deepseek import DeepSeekRouter
     from src.configs.router import DeepSeekRouterConfig
-    cfg = DeepSeekRouterConfig(hidden_dim=hidden, num_experts=num_experts, top_k=top_k,
-                                use_sigmoid=use_sigmoid)
+
+    cfg = DeepSeekRouterConfig(
+        hidden_dim=hidden, num_experts=num_experts, top_k=top_k, use_sigmoid=use_sigmoid
+    )
     return DeepSeekRouter(cfg)
 
 
@@ -233,9 +253,11 @@ def test_deepseek_router_sync_usage_not_distributed():
 
 # ── MetabolicRouter ────────────────────────────────────────────────────────────
 
+
 def _make_metabolic_router(hidden=64, num_experts=4, top_k=2):
     from src.routers.metabolic import MetabolicRouter
     from src.configs.router import MetabolicRouterConfig
+
     cfg = MetabolicRouterConfig(hidden_dim=hidden, num_experts=num_experts, top_k=top_k)
     return MetabolicRouter(cfg)
 
@@ -243,6 +265,7 @@ def _make_metabolic_router(hidden=64, num_experts=4, top_k=2):
 def test_metabolic_router_top_k_exceeds_experts():
     from src.routers.metabolic import MetabolicRouter
     from src.configs.router import MetabolicRouterConfig
+
     with pytest.raises(ValueError, match="top_k"):
         MetabolicRouter(MetabolicRouterConfig(hidden_dim=64, num_experts=4, top_k=5))
 
@@ -359,18 +382,25 @@ def test_metabolic_router_compute_aux_loss():
 
 # ── StressCorrectedRouter ──────────────────────────────────────────────────────
 
+
 def _make_stress_router(hidden=64, num_experts=4, top_k=2):
     from src.routers.stress_corrected import StressCorrectedRouter
     from src.configs.router import StressCorrectedRouterConfig
-    cfg = StressCorrectedRouterConfig(hidden_dim=hidden, num_experts=num_experts, top_k=top_k)
+
+    cfg = StressCorrectedRouterConfig(
+        hidden_dim=hidden, num_experts=num_experts, top_k=top_k
+    )
     return StressCorrectedRouter(cfg)
 
 
 def test_stress_router_top_k_exceeds_experts():
     from src.routers.stress_corrected import StressCorrectedRouter
     from src.configs.router import StressCorrectedRouterConfig
+
     with pytest.raises(ValueError, match="top_k"):
-        StressCorrectedRouter(StressCorrectedRouterConfig(hidden_dim=64, num_experts=4, top_k=5))
+        StressCorrectedRouter(
+            StressCorrectedRouterConfig(hidden_dim=64, num_experts=4, top_k=5)
+        )
 
 
 def test_stress_router_forward_eval():
@@ -573,6 +603,7 @@ def test_stress_router_step_lambda_calib_no_pending_cos():
 
 def test_kmeans_init():
     from src.routers.stress_corrected import _kmeans_init
+
     activations = torch.randn(50, 64)
     centroids = _kmeans_init(activations, k=4, n_iter=5)
     assert centroids.shape == (4, 64)
@@ -580,12 +611,14 @@ def test_kmeans_init():
 
 def test_kmeans_init_too_few_tokens():
     from src.routers.stress_corrected import _kmeans_init
+
     activations = torch.randn(3, 64)
     with pytest.raises(ValueError, match="need at least"):
         _kmeans_init(activations, k=4)
 
 
 # ── StressCorrectedRouter additional branches ──────────────────────────────────
+
 
 def test_stress_router_update_welford():
     r = _make_stress_router()
@@ -599,6 +632,7 @@ def test_stress_router_welford_no_active():
     """_update_welford with no active experts (all zero weights)."""
     r = _make_stress_router()
     import torch.nn.functional as F
+
     x_norm = torch.zeros(2, 4, 64)
     topk_idx = torch.zeros(2, 4, 2, dtype=torch.long)
     W_norm = F.normalize(r.W, dim=-1)
@@ -633,6 +667,7 @@ def test_stress_router_forward_with_noise_override():
 
 # ── MetabolicRouter additional branches ───────────────────────────────────────
 
+
 def test_metabolic_router_record_usage_accumulate():
     """Test _record_usage accumulates across multiple calls."""
     r = _make_metabolic_router()
@@ -661,6 +696,7 @@ def test_metabolic_router_forward_no_warmup():
 
 # ── DeepSeekRouter additional branches ────────────────────────────────────────
 
+
 def test_deepseek_router_step_overloaded_underloaded():
     """Test bias update for overloaded and underloaded experts."""
     r = _make_deepseek_router()
@@ -688,10 +724,12 @@ def test_deepseek_router_record_usage_accumulate():
 
 # ── ExpertChoiceRouter missing lines ──────────────────────────────────────────
 
+
 def test_expert_choice_router_nan_guard():
     """Trigger the NaN/Inf stability guard in ExpertChoiceRouter.forward."""
     from src.routers.expert_choice import ExpertChoiceRouter
     from src.configs.router import ExpertChoiceRouterConfig
+
     cfg = ExpertChoiceRouterConfig(hidden_dim=4, num_experts=2, top_k=1)
     router = ExpertChoiceRouter(cfg)
     # Inject NaN into gate weights to trigger the guard
@@ -705,6 +743,7 @@ def test_expert_choice_router_nan_guard():
 def test_expert_choice_router_compute_aux_loss():
     from src.routers.expert_choice import ExpertChoiceRouter
     from src.configs.router import ExpertChoiceRouterConfig
+
     cfg = ExpertChoiceRouterConfig(hidden_dim=4, num_experts=2, top_k=1)
     router = ExpertChoiceRouter(cfg)
     loss = router.compute_aux_loss()
@@ -713,9 +752,11 @@ def test_expert_choice_router_compute_aux_loss():
 
 # ── StandardRouter clear_aux_state ────────────────────────────────────────────
 
+
 def test_standard_router_clear_aux_state_explicit():
     from src.routers.standard import StandardRouter
     from src.configs.router import StandardRouterConfig
+
     cfg = StandardRouterConfig(hidden_dim=64, num_experts=4, top_k=2, use_aux_loss=True)
     router = StandardRouter(cfg)
     router.train()
@@ -730,10 +771,12 @@ def test_standard_router_clear_aux_state_explicit():
 
 # ── StressCorrectedRouter get_custom_metrics with None weights and indices ─────
 
+
 def test_stress_router_get_custom_metrics_none_both():
     """get_custom_metrics with both weights=None and indices=None hits the else branch."""
     from src.routers.stress_corrected import StressCorrectedRouter
     from src.configs.router import StressCorrectedRouterConfig
+
     cfg = StressCorrectedRouterConfig(hidden_dim=64, num_experts=4, top_k=2)
     router = StressCorrectedRouter(cfg)
     metrics = router.get_custom_metrics(indices=None, weights=None)
@@ -742,10 +785,12 @@ def test_stress_router_get_custom_metrics_none_both():
 
 # ── StressCorrectedRouter _update_welford with no active experts ───────────────
 
+
 def test_stress_router_update_welford_no_active():
     """_update_welford returns early when no expert is active (w_sum all zero)."""
     from src.routers.stress_corrected import StressCorrectedRouter
     from src.configs.router import StressCorrectedRouterConfig
+
     cfg = StressCorrectedRouterConfig(hidden_dim=4, num_experts=2, top_k=1)
     router = StressCorrectedRouter(cfg)
     # x_norm with shape [1, 1, 4], topk_idx all pointing to expert 0

@@ -1,4 +1,5 @@
 """Extra coverage for evals/results_schema.py — lines 354 and 372."""
+
 from unittest.mock import MagicMock
 
 
@@ -61,7 +62,11 @@ def test_log_results_to_wandb_with_checkpoint_step_and_mmlu():
         assert result is True
         # Verify run.log was called with step kwarg
         calls = mock_run.log.call_args_list
-        step_calls = [c for c in calls if c.kwargs.get("step") == 1000 or (len(c.args) > 1 and c.args[1] == 1000)]
+        step_calls = [
+            c
+            for c in calls
+            if c.kwargs.get("step") == 1000 or (len(c.args) > 1 and c.args[1] == 1000)
+        ]
         assert len(step_calls) > 0
     finally:
         results_schema.WANDB_AVAILABLE = orig

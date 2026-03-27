@@ -1,4 +1,5 @@
 """Coverage tests for src/routers/stress_corrected.py — targeting uncovered lines."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -10,13 +11,16 @@ from src.routers.stress_corrected import StressCorrectedRouter
 
 
 def _make_router(**kwargs):
-    defaults = dict(hidden_dim=16, num_experts=4, top_k=2, temperature=1.0, noise_std=0.0)
+    defaults = dict(
+        hidden_dim=16, num_experts=4, top_k=2, temperature=1.0, noise_std=0.0
+    )
     defaults.update(kwargs)
     cfg = StressCorrectedRouterConfig(**defaults)
     return StressCorrectedRouter(cfg)
 
 
 # ── lines 457-487: distributed sync methods ───────────────────────────────────
+
 
 def test_sync_pending_counts_no_dist_module():
     """ImportError path → silent return."""
@@ -107,6 +111,7 @@ def test_sync_lambda_distributed():
 
 
 # ── lines 503-542: _sync_welford_distributed ─────────────────────────────────
+
 
 def test_sync_welford_no_dist():
     router = _make_router()

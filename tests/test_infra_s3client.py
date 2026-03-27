@@ -1,4 +1,5 @@
 """Tests for infra/s3client — mocked boto3."""
+
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -8,6 +9,7 @@ from unittest.mock import patch, MagicMock
 # S3Client
 # ---------------------------------------------------------------------------
 
+
 def _fresh_client():
     """Build S3Client by going through __init__ with mocked boto3."""
     mock_boto3 = MagicMock()
@@ -15,10 +17,13 @@ def _fresh_client():
     mock_s3 = MagicMock()
     mock_sts = MagicMock()
     mock_sts.get_caller_identity.return_value = {"Account": "123456789"}
-    mock_session.client.side_effect = lambda svc, **kw: mock_sts if svc == "sts" else mock_s3
+    mock_session.client.side_effect = lambda svc, **kw: (
+        mock_sts if svc == "sts" else mock_s3
+    )
     mock_boto3.Session.return_value = mock_session
 
     import infra.s3client.client as mod
+
     with patch.object(mod, "boto3", mock_boto3):
         with patch.object(mod, "BotoConfig", MagicMock()):
             with patch.object(mod, "TransferConfig", MagicMock()):
@@ -35,6 +40,7 @@ def test_s3client_init():
 
 def test_s3client_init_no_credentials():
     from botocore.exceptions import NoCredentialsError
+
     mock_boto3 = MagicMock()
     mock_session = MagicMock()
     mock_sts = MagicMock()
@@ -43,6 +49,7 @@ def test_s3client_init_no_credentials():
     mock_boto3.Session.return_value = mock_session
 
     import infra.s3client.client as mod
+
     with patch.object(mod, "boto3", mock_boto3):
         with patch.object(mod, "BotoConfig", MagicMock()):
             with patch.object(mod, "TransferConfig", MagicMock()):
@@ -103,6 +110,7 @@ def test_download_file_size_mismatch(tmp_path):
 def test_download_file_head_error(tmp_path):
     """Covers the head_object ClientError path."""
     from botocore.exceptions import ClientError
+
     client, mock_s3 = _fresh_client()
     mock_s3.head_object.side_effect = ClientError(
         {"Error": {"Code": "404", "Message": "not found"}}, "HeadObject"
@@ -116,8 +124,18 @@ def test_list_objects_success():
     mock_paginator = MagicMock()
     mock_s3.get_paginator.return_value = mock_paginator
     from datetime import datetime
+
     mock_paginator.paginate.return_value = [
-        {"Contents": [{"Key": "a/b.txt", "Size": 10, "LastModified": datetime(2024, 1, 1), "ETag": "abc"}]}
+        {
+            "Contents": [
+                {
+                    "Key": "a/b.txt",
+                    "Size": 10,
+                    "LastModified": datetime(2024, 1, 1),
+                    "ETag": "abc",
+                }
+            ]
+        }
     ]
     results = client.list_objects("bucket", "a/")
     assert len(results) == 1
@@ -135,6 +153,7 @@ def test_list_objects_empty():
 
 def test_list_objects_client_error():
     from botocore.exceptions import ClientError
+
     client, mock_s3 = _fresh_client()
     mock_paginator = MagicMock()
     mock_s3.get_paginator.return_value = mock_paginator
@@ -160,6 +179,7 @@ def test_delete_objects_success():
 
 def test_delete_objects_client_error():
     from botocore.exceptions import ClientError
+
     client, mock_s3 = _fresh_client()
     mock_s3.delete_objects.side_effect = ClientError(
         {"Error": {"Code": "AccessDenied", "Message": "denied"}}, "DeleteObjects"
@@ -176,6 +196,7 @@ def test_check_bucket_exists_true():
 
 def test_check_bucket_exists_404():
     from botocore.exceptions import ClientError
+
     client, mock_s3 = _fresh_client()
     mock_s3.head_bucket.side_effect = ClientError(
         {"Error": {"Code": "404", "Message": "not found"}}, "HeadBucket"
@@ -185,6 +206,7 @@ def test_check_bucket_exists_404():
 
 def test_check_bucket_exists_403():
     from botocore.exceptions import ClientError
+
     client, mock_s3 = _fresh_client()
     mock_s3.head_bucket.side_effect = ClientError(
         {"Error": {"Code": "403", "Message": "forbidden"}}, "HeadBucket"
@@ -201,6 +223,7 @@ def test_generate_presigned_url_success():
 
 def test_generate_presigned_url_error():
     from botocore.exceptions import ClientError
+
     client, mock_s3 = _fresh_client()
     mock_s3.generate_presigned_url.side_effect = ClientError(
         {"Error": {"Code": "AccessDenied", "Message": "denied"}}, "GeneratePresignedUrl"
@@ -214,8 +237,18 @@ def test_dataset_exists_found():
     mock_paginator = MagicMock()
     mock_s3.get_paginator.return_value = mock_paginator
     from datetime import datetime
+
     mock_paginator.paginate.return_value = [
-        {"Contents": [{"Key": "prefix/data.jsonl", "Size": 10, "LastModified": datetime(2024, 1, 1), "ETag": "abc"}]}
+        {
+            "Contents": [
+                {
+                    "Key": "prefix/data.jsonl",
+                    "Size": 10,
+                    "LastModified": datetime(2024, 1, 1),
+                    "ETag": "abc",
+                }
+            ]
+        }
     ]
     assert client.dataset_exists("bucket", "prefix/") is True
 
@@ -225,14 +258,25 @@ def test_dataset_exists_not_found():
     mock_paginator = MagicMock()
     mock_s3.get_paginator.return_value = mock_paginator
     from datetime import datetime
+
     mock_paginator.paginate.return_value = [
-        {"Contents": [{"Key": "prefix/README.md", "Size": 10, "LastModified": datetime(2024, 1, 1), "ETag": "abc"}]}
+        {
+            "Contents": [
+                {
+                    "Key": "prefix/README.md",
+                    "Size": 10,
+                    "LastModified": datetime(2024, 1, 1),
+                    "ETag": "abc",
+                }
+            ]
+        }
     ]
     assert client.dataset_exists("bucket", "prefix/") is False
 
 
 def test_progress_callback():
     import infra.s3client.client as mod
+
     cb = mod.S3Client._progress_callback(100, "test")
     cb(25)
     cb(25)
@@ -242,6 +286,7 @@ def test_progress_callback():
 
 def test_progress_callback_zero_total():
     import infra.s3client.client as mod
+
     cb = mod.S3Client._progress_callback(0, "test")
     cb(10)  # should not raise
 
@@ -250,8 +295,10 @@ def test_progress_callback_zero_total():
 # s3_sync
 # ---------------------------------------------------------------------------
 
+
 def test_upload_experiment_dir_not_found():
     from infra.s3client.s3_sync import upload_experiment_dir
+
     with pytest.raises(FileNotFoundError):
         upload_experiment_dir("/nonexistent/dir", "bucket", "prefix/")
 
@@ -264,6 +311,7 @@ def test_upload_experiment_dir_bucket_inaccessible(tmp_path):
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
         import importlib
+
         importlib.reload(s3_sync)
         with pytest.raises(RuntimeError, match="inaccessible"):
             s3_sync.upload_experiment_dir(str(tmp_path), "bucket", "prefix/")
@@ -280,6 +328,7 @@ def test_upload_experiment_dir_success(tmp_path):
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
         import importlib
+
         importlib.reload(s3_sync)
         result = s3_sync.upload_experiment_dir(str(tmp_path), "bucket", "prefix/")
     assert len(result["uploaded"]) == 2
@@ -296,6 +345,7 @@ def test_upload_experiment_dir_partial_failure(tmp_path):
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
         import importlib
+
         importlib.reload(s3_sync)
         result = s3_sync.upload_experiment_dir(str(tmp_path), "bucket", "prefix/")
     assert len(result["failed"]) == 1
@@ -309,6 +359,7 @@ def test_download_s3_prefix_no_objects(tmp_path):
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
         import importlib
+
         importlib.reload(s3_sync)
         result = s3_sync.download_s3_prefix("bucket", "prefix/", str(tmp_path))
     assert result == []
@@ -326,6 +377,7 @@ def test_download_s3_prefix_success(tmp_path):
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
         import importlib
+
         importlib.reload(s3_sync)
         result = s3_sync.download_s3_prefix("bucket", "prefix/", str(tmp_path))
     assert len(result) == 1
@@ -340,6 +392,7 @@ def test_download_s3_prefix_download_failure(tmp_path):
     with patch.dict("sys.modules", {"infra.s3client.client": mock_s3_mod}):
         from infra.s3client import s3_sync
         import importlib
+
         importlib.reload(s3_sync)
         result = s3_sync.download_s3_prefix("bucket", "prefix/", str(tmp_path))
     assert result == []
@@ -348,6 +401,7 @@ def test_download_s3_prefix_download_failure(tmp_path):
 def test_upload_file_client_error(tmp_path):
     """Covers lines 120-128: ClientError on upload."""
     from botocore.exceptions import ClientError
+
     client, mock_s3 = _fresh_client()
     f = tmp_path / "data.txt"
     f.write_text("hello")
@@ -364,7 +418,9 @@ def test_upload_file_with_metadata_and_content_type(tmp_path):
     f = tmp_path / "data.txt"
     f.write_text("hello")
     result = client.upload_file(
-        str(f), "bucket", "key",
+        str(f),
+        "bucket",
+        "key",
         metadata={"author": "test"},
         content_type="text/plain",
     )
@@ -377,6 +433,7 @@ def test_upload_file_with_metadata_and_content_type(tmp_path):
 def test_download_file_client_error(tmp_path):
     """Covers lines 166-174: ClientError on download_file."""
     from botocore.exceptions import ClientError
+
     client, mock_s3 = _fresh_client()
     mock_s3.head_object.return_value = {"ContentLength": 5}
     mock_s3.download_file.side_effect = ClientError(
@@ -389,6 +446,7 @@ def test_download_file_client_error(tmp_path):
 def test_check_bucket_exists_other_error():
     """Covers line 282: non-404/403 error code path."""
     from botocore.exceptions import ClientError
+
     client, mock_s3 = _fresh_client()
     mock_s3.head_bucket.side_effect = ClientError(
         {"Error": {"Code": "500", "Message": "internal error"}}, "HeadBucket"
@@ -403,12 +461,17 @@ def test_s3client_init_with_endpoint_url():
     mock_s3 = MagicMock()
     mock_sts = MagicMock()
     mock_sts.get_caller_identity.return_value = {"Account": "123456789"}
-    mock_session.client.side_effect = lambda svc, **kw: mock_sts if svc == "sts" else mock_s3
+    mock_session.client.side_effect = lambda svc, **kw: (
+        mock_sts if svc == "sts" else mock_s3
+    )
     mock_boto3.Session.return_value = mock_session
 
     import infra.s3client.client as mod
+
     with patch.object(mod, "boto3", mock_boto3):
         with patch.object(mod, "BotoConfig", MagicMock()):
             with patch.object(mod, "TransferConfig", MagicMock()):
-                client = mod.S3Client(region="us-east-1", endpoint_url="http://localhost:9000")
+                client = mod.S3Client(
+                    region="us-east-1", endpoint_url="http://localhost:9000"
+                )
     assert client.endpoint_url == "http://localhost:9000"

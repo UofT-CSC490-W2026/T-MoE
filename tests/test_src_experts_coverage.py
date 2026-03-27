@@ -1,10 +1,12 @@
 """Tests for src/experts/ — base, lora, pool, qwen2_lora coverage gaps."""
+
 import pytest
 import torch
 import torch.nn as nn
 
 
 # ── BaseExpert ─────────────────────────────────────────────────────────────────
+
 
 def test_base_expert_get_param_count():
     from src.experts.base import BaseExpert
@@ -13,7 +15,9 @@ def test_base_expert_get_param_count():
         def __init__(self):
             super().__init__(config=None)
             self.linear = nn.Linear(10, 10)
-        def forward(self, x): return self.linear(x)
+
+        def forward(self, x):
+            return self.linear(x)
 
     e = ConcreteExpert()
     count = e.get_param_count()
@@ -27,7 +31,9 @@ def test_base_expert_get_flops():
         def __init__(self):
             super().__init__(config=None)
             self.linear = nn.Linear(10, 10)
-        def forward(self, x): return self.linear(x)
+
+        def forward(self, x):
+            return self.linear(x)
 
     e = ConcreteExpert()
     x = torch.randn(4, 10)
@@ -42,7 +48,9 @@ def test_base_expert_clone_from_parent():
         def __init__(self):
             super().__init__(config=None)
             self.linear = nn.Linear(10, 10)
-        def forward(self, x): return self.linear(x)
+
+        def forward(self, x):
+            return self.linear(x)
 
     parent = ConcreteExpert()
     child = ConcreteExpert()
@@ -56,8 +64,10 @@ def test_base_expert_clone_from_parent():
 
 # ── LoRAConfig ─────────────────────────────────────────────────────────────────
 
+
 def test_lora_config_defaults():
     from src.experts.lora import LoRAConfig
+
     cfg = LoRAConfig(hidden_dim=768)
     assert cfg.intermediate_dim == 4 * 768
     assert cfg.scaling == 1.0  # alpha/rank = 16/16
@@ -65,20 +75,24 @@ def test_lora_config_defaults():
 
 def test_lora_config_shared_base_alpha_auto():
     from src.experts.lora import LoRAConfig
+
     cfg = LoRAConfig(hidden_dim=768, shared_base_rank=8, shared_base_alpha=0.0)
     assert cfg.shared_base_alpha == 8.0  # auto-set to rank
 
 
 def test_lora_config_shared_base_alpha_explicit():
     from src.experts.lora import LoRAConfig
+
     cfg = LoRAConfig(hidden_dim=768, shared_base_rank=8, shared_base_alpha=4.0)
     assert cfg.shared_base_alpha == 4.0
 
 
 # ── LoRALayer ──────────────────────────────────────────────────────────────────
 
+
 def test_lora_layer_forward_no_base():
     from src.experts.lora import LoRALayer
+
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
     x = torch.randn(4, 64)
     out = layer(x)
@@ -87,6 +101,7 @@ def test_lora_layer_forward_no_base():
 
 def test_lora_layer_forward_with_base():
     from src.experts.lora import LoRALayer
+
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
     weight = torch.randn(32, 64)
     bias = torch.randn(32)
@@ -98,6 +113,7 @@ def test_lora_layer_forward_with_base():
 
 def test_lora_layer_load_base_weight_wrong_shape():
     from src.experts.lora import LoRALayer
+
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
     with pytest.raises(ValueError, match="Weight shape"):
         layer.load_base_weight(torch.randn(10, 10))
@@ -105,6 +121,7 @@ def test_lora_layer_load_base_weight_wrong_shape():
 
 def test_lora_layer_forward_dtype_mismatch():
     from src.experts.lora import LoRALayer
+
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
     weight = torch.randn(32, 64).float()
     bias = torch.randn(32).float()
@@ -117,21 +134,27 @@ def test_lora_layer_forward_dtype_mismatch():
 
 def test_lora_layer_b_init_scale():
     from src.experts.lora import LoRALayer
-    layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8, b_init_scale=0.01)
+
+    layer = LoRALayer(
+        in_features=64, out_features=32, rank=4, alpha=8, b_init_scale=0.01
+    )
     # B should be non-zero
     assert not torch.all(layer.lora_B.weight == 0)
 
 
 def test_lora_layer_with_dropout():
     from src.experts.lora import LoRALayer
+
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8, dropout=0.1)
     assert isinstance(layer.lora_dropout, nn.Dropout)
 
 
 # ── SharedLoRALayer ────────────────────────────────────────────────────────────
 
+
 def test_shared_lora_layer_forward():
     from src.experts.lora import SharedLoRALayer
+
     weight = torch.randn(32, 64)
     layer = SharedLoRALayer(shared_weight=weight, shared_bias=None, rank=4, alpha=8)
     x = torch.randn(4, 64)
@@ -141,6 +164,7 @@ def test_shared_lora_layer_forward():
 
 def test_shared_lora_layer_forward_with_bias():
     from src.experts.lora import SharedLoRALayer
+
     weight = torch.randn(32, 64)
     bias = torch.randn(32)
     layer = SharedLoRALayer(shared_weight=weight, shared_bias=bias, rank=4, alpha=8)
@@ -151,6 +175,7 @@ def test_shared_lora_layer_forward_with_bias():
 
 def test_shared_lora_layer_forward_override_weight():
     from src.experts.lora import SharedLoRALayer
+
     weight = torch.randn(32, 64)
     layer = SharedLoRALayer(shared_weight=weight, shared_bias=None, rank=4, alpha=8)
     x = torch.randn(4, 64)
@@ -161,6 +186,7 @@ def test_shared_lora_layer_forward_override_weight():
 
 def test_shared_lora_layer_dtype_mismatch():
     from src.experts.lora import SharedLoRALayer
+
     weight = torch.randn(32, 64).float()
     bias = torch.randn(32).float()
     layer = SharedLoRALayer(shared_weight=weight, shared_bias=bias, rank=4, alpha=8)
@@ -171,22 +197,30 @@ def test_shared_lora_layer_dtype_mismatch():
 
 def test_shared_lora_layer_b_init_scale():
     from src.experts.lora import SharedLoRALayer
+
     weight = torch.randn(32, 64)
-    layer = SharedLoRALayer(shared_weight=weight, shared_bias=None, rank=4, alpha=8, b_init_scale=0.01)
+    layer = SharedLoRALayer(
+        shared_weight=weight, shared_bias=None, rank=4, alpha=8, b_init_scale=0.01
+    )
     assert not torch.all(layer.lora_B.weight == 0)
 
 
 def test_shared_lora_layer_with_dropout():
     from src.experts.lora import SharedLoRALayer
+
     weight = torch.randn(32, 64)
-    layer = SharedLoRALayer(shared_weight=weight, shared_bias=None, rank=4, alpha=8, dropout=0.1)
+    layer = SharedLoRALayer(
+        shared_weight=weight, shared_bias=None, rank=4, alpha=8, dropout=0.1
+    )
     assert isinstance(layer.lora_dropout, nn.Dropout)
 
 
 # ── SharedBaseLoRA ─────────────────────────────────────────────────────────────
 
+
 def test_shared_base_lora_forward():
     from src.experts.lora import SharedBaseLoRA
+
     layer = SharedBaseLoRA(in_features=64, out_features=32, rank=4, alpha=8.0)
     h = torch.randn(4, 64)
     out = layer(h)
@@ -194,6 +228,7 @@ def test_shared_base_lora_forward():
 
 
 # ── LoRAMLPExpert ──────────────────────────────────────────────────────────────
+
 
 def test_lora_mlp_expert_freeze_base_weights():
     from src.experts.lora import LoRAConfig
@@ -209,6 +244,7 @@ def test_lora_mlp_expert_freeze_base_weights():
 
 
 # ── ExpertPool ─────────────────────────────────────────────────────────────────
+
 
 def test_expert_pool_consolidate_shared_weights():
     from src.experts.pool import ExpertPool
@@ -314,6 +350,7 @@ def test_expert_pool_freeze_base_weights():
 
 # ── Qwen2LoRAMLP ───────────────────────────────────────────────────────────────
 
+
 def test_qwen2_lora_mlp_load_from_mlp():
     from src.experts.qwen2_lora import Qwen2LoRAMLP
     from src.experts.lora import LoRAConfig
@@ -367,6 +404,7 @@ def test_qwen2_lora_mlp_get_lora_layer_names():
 
 # ── ExpertPool additional branches ────────────────────────────────────────────
 
+
 def test_expert_pool_consolidate_no_lora_layer_names():
     """Test consolidate_shared_weights when expert has no get_lora_layer_names."""
     from src.experts.pool import ExpertPool
@@ -383,7 +421,7 @@ def test_expert_pool_consolidate_no_lora_layer_names():
 
     # Remove get_lora_layer_names to test fallback path
     for e in pool.experts:
-        if hasattr(e, 'get_lora_layer_names'):
+        if hasattr(e, "get_lora_layer_names"):
             del e.__class__.get_lora_layer_names
     try:
         pool.consolidate_shared_weights()
@@ -405,9 +443,11 @@ def test_expert_pool_load_all_missing_file(tmp_path):
 
 # ── LoRALayer additional branches ─────────────────────────────────────────────
 
+
 def test_lora_layer_forward_base_bias_dtype_mismatch():
     """Test LoRALayer forward when base_bias dtype differs from input."""
     from src.experts.lora import LoRALayer
+
     layer = LoRALayer(in_features=64, out_features=32, rank=4, alpha=8)
     weight = torch.randn(32, 64).float()
     bias = torch.randn(32).float()
@@ -420,9 +460,11 @@ def test_lora_layer_forward_base_bias_dtype_mismatch():
 
 # ── SharedLoRALayer dtype mismatch branches ───────────────────────────────────
 
+
 def test_shared_lora_layer_dtype_mismatch_weight_and_bias():
     """Trigger both w.dtype != x.dtype and b.dtype != x.dtype branches."""
     from src.experts.lora import SharedLoRALayer
+
     weight = torch.randn(32, 64).to(torch.float16)
     bias = torch.randn(32).to(torch.float16)
     layer = SharedLoRALayer(shared_weight=weight, shared_bias=bias, rank=4, alpha=8)
@@ -432,6 +474,7 @@ def test_shared_lora_layer_dtype_mismatch_weight_and_bias():
 
 
 # ── ExpertPool consolidate_shared_weights — no c_fc fallback ─────────────────
+
 
 def test_expert_pool_consolidate_no_c_fc():
     """consolidate_shared_weights returns early when expert has no c_fc and no get_lora_layer_names."""
@@ -443,13 +486,18 @@ def test_expert_pool_consolidate_no_c_fc():
     class BareExpert(LoRAMLPExpert):
         def __init__(self, config):
             super().__init__(config)
-        def load_from_mlp(self, mlp): pass
-        def forward(self, x): return x
+
+        def load_from_mlp(self, mlp):
+            pass
+
+        def forward(self, x):
+            return x
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
     # Build pool normally but with BareExpert via registry patching
     from src.core.registry import ExpertRegistry
     from src.project_types import ExpertType
+
     ExpertRegistry._registries["experts"]["bare_test_consolidate"] = BareExpert
 
     pool = ExpertPool.__new__(ExpertPool)
@@ -466,6 +514,7 @@ def test_expert_pool_consolidate_no_c_fc():
 
 # ── ExpertPool make_base_trainable — no c_fc branch ──────────────────────────
 
+
 def test_expert_pool_make_base_trainable_no_c_fc():
     """make_base_trainable returns early when expert has no c_fc."""
     from src.experts.pool import ExpertPool
@@ -475,8 +524,12 @@ def test_expert_pool_make_base_trainable_no_c_fc():
     class BareExpert(LoRAMLPExpert):
         def __init__(self, config):
             super().__init__(config)
-        def load_from_mlp(self, mlp): pass
-        def forward(self, x): return x
+
+        def load_from_mlp(self, mlp):
+            pass
+
+        def forward(self, x):
+            return x
 
     cfg = LoRAConfig(hidden_dim=64, rank=4, alpha=8)
     pool = ExpertPool.__new__(ExpertPool)
@@ -491,6 +544,7 @@ def test_expert_pool_make_base_trainable_no_c_fc():
 
 
 # ── LoRAMLPExpert freeze_base_weights ─────────────────────────────────────────
+
 
 def test_lora_mlp_expert_freeze_base_weights_sets_no_grad():
     """freeze_base_weights sets requires_grad=False on base_weight params."""

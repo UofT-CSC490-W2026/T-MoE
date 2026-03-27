@@ -1,4 +1,5 @@
 """Coverage tests for scripts/train.py — targeting uncovered lines."""
+
 from __future__ import annotations
 
 import math
@@ -13,6 +14,7 @@ from omegaconf import OmegaConf
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
+
 
 def _write_shard(path: Path, tokens: list[int], uint32: bool = False) -> None:
     n = len(tokens)
@@ -37,6 +39,7 @@ def _write_versioned_shard(path: Path, tokens: list[int], dtype_flag: int = 0) -
 
 
 # ── ShardDataset (line 147 — wrap-around, versioned shard) ────────────────────
+
 
 def test_shard_dataset_basic(tmp_path):
     from scripts.train import ShardDataset
@@ -124,6 +127,7 @@ def test_shard_dataset_multi_shard(tmp_path):
 
 # ── load_config (lines 315-321) ───────────────────────────────────────────────
 
+
 def test_load_config_no_overrides(tmp_path):
     from scripts.train import load_config
 
@@ -144,6 +148,7 @@ def test_load_config_with_overrides(tmp_path):
 
 # ── parse_args (lines 329-330) ────────────────────────────────────────────────
 
+
 def test_parse_args_basic():
     from scripts.train import parse_args
 
@@ -157,13 +162,21 @@ def test_parse_args_basic():
 def test_parse_args_with_all_flags():
     from scripts.train import parse_args
 
-    with patch("sys.argv", [
-        "train.py", "--config", "exp.yaml",
-        "--resume", "ckpt.pt",
-        "--output-dir", "/tmp/out",
-        "--shard-dir", "/tmp/shards",
-        "training.lr=1e-4",
-    ]):
+    with patch(
+        "sys.argv",
+        [
+            "train.py",
+            "--config",
+            "exp.yaml",
+            "--resume",
+            "ckpt.pt",
+            "--output-dir",
+            "/tmp/out",
+            "--shard-dir",
+            "/tmp/shards",
+            "training.lr=1e-4",
+        ],
+    ):
         args, overrides = parse_args()
     assert args.resume == "ckpt.pt"
     assert args.output_dir == "/tmp/out"
@@ -172,6 +185,7 @@ def test_parse_args_with_all_flags():
 
 
 # ── build_optimizer (lines 336-368) ───────────────────────────────────────────
+
 
 def _make_opt_cfg(optimizer="adamw", lr=1e-4, lr_base=None):
     cfg = MagicMock()
@@ -233,6 +247,7 @@ def test_build_optimizer_with_lr_base():
 
 # ── evaluate (lines 433-437) ──────────────────────────────────────────────────
 
+
 def test_evaluate_basic():
     from scripts.train import evaluate
 
@@ -267,12 +282,15 @@ def test_evaluate_respects_max_batches():
             return None, torch.tensor(1.0), {}
 
     model = _M()
-    data = [(torch.zeros(2, 4, dtype=torch.long), torch.zeros(2, 4, dtype=torch.long))] * 10
+    data = [
+        (torch.zeros(2, 4, dtype=torch.long), torch.zeros(2, 4, dtype=torch.long))
+    ] * 10
     evaluate(model, data, "cpu", max_batches=3)
     assert call_count == 3
 
 
 # ── init_wandb (lines 536-537 and surrounding) ────────────────────────────────
+
 
 def test_init_wandb_not_main_process():
     from scripts.train import init_wandb
@@ -295,7 +313,9 @@ def test_init_wandb_mode_disabled():
     from scripts.train import init_wandb
 
     cfg = MagicMock()
-    cfg.get = lambda k, d=None: {"logging": {"enabled": True, "mode": "disabled"}}.get(k, d)
+    cfg.get = lambda k, d=None: {"logging": {"enabled": True, "mode": "disabled"}}.get(
+        k, d
+    )
 
     with patch("scripts.train.is_main_process", return_value=True):
         init_wandb(cfg)  # prints "WandB disabled"
@@ -305,7 +325,9 @@ def test_init_wandb_import_error():
     from scripts.train import init_wandb
 
     cfg = MagicMock()
-    cfg.get = lambda k, d=None: {"logging": {"enabled": True, "mode": "online"}}.get(k, d)
+    cfg.get = lambda k, d=None: {"logging": {"enabled": True, "mode": "online"}}.get(
+        k, d
+    )
     cfg.experiment_name = "test"
 
     with patch("scripts.train.is_main_process", return_value=True):
@@ -318,7 +340,12 @@ def test_init_wandb_success_with_url():
 
     cfg = MagicMock()
     cfg.get = lambda k, d=None: {
-        "logging": {"enabled": True, "mode": "online", "project": "myproj", "entity": None}
+        "logging": {
+            "enabled": True,
+            "mode": "online",
+            "project": "myproj",
+            "entity": None,
+        }
     }.get(k, d)
     cfg.experiment_name = "test_run"
 
@@ -340,7 +367,12 @@ def test_init_wandb_success_no_url():
 
     cfg = MagicMock()
     cfg.get = lambda k, d=None: {
-        "logging": {"enabled": True, "mode": "online", "project": "myproj", "entity": "myentity"}
+        "logging": {
+            "enabled": True,
+            "mode": "online",
+            "project": "myproj",
+            "entity": "myentity",
+        }
     }.get(k, d)
     cfg.experiment_name = "test_run"
 
@@ -360,7 +392,9 @@ def test_init_wandb_exception():
     from scripts.train import init_wandb
 
     cfg = MagicMock()
-    cfg.get = lambda k, d=None: {"logging": {"enabled": True, "mode": "online"}}.get(k, d)
+    cfg.get = lambda k, d=None: {"logging": {"enabled": True, "mode": "online"}}.get(
+        k, d
+    )
     cfg.experiment_name = "test"
 
     mock_wandb = MagicMock()
@@ -398,6 +432,7 @@ def test_init_wandb_env_mode_fallback():
 
 
 # ── log_wandb (lines 578+) ────────────────────────────────────────────────────
+
 
 def test_log_wandb_not_main():
     from scripts.train import log_wandb
@@ -440,6 +475,7 @@ def test_log_wandb_import_error():
 
 # ── _broadcast_scalar ─────────────────────────────────────────────────────────
 
+
 def test_broadcast_scalar_not_distributed():
     from scripts.train import _broadcast_scalar
 
@@ -448,6 +484,7 @@ def test_broadcast_scalar_not_distributed():
 
 
 # ── main() — heavily mocked to cover lines 578-1368 ──────────────────────────
+
 
 def _make_full_cfg(tmp_path):
     """Build a minimal OmegaConf config for main()."""
@@ -505,6 +542,7 @@ def _make_full_cfg(tmp_path):
 
 class _TinyModel(torch.nn.Module):
     """Minimal model that satisfies train.py's interface."""
+
     vocab_size = 16
     moe_layers = {}
 
@@ -536,20 +574,34 @@ def test_main_runs_minimal(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.wrap_model_for_distributed", side_effect=lambda m, *a, **kw: m), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch(
+            "scripts.train.wrap_model_for_distributed",
+            side_effect=lambda m, *a, **kw: m,
+        ),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -567,13 +619,28 @@ def test_main_no_val_shards(tmp_path):
         "seed": 42,
         "compile": False,
         "dataset": {"dataset_key": "wikitext-2", "max_seq_len": 8},
-        "model": {"model_key": "gpt-neo-125m", "freeze_backbone": True, "moe_layer_indices": []},
+        "model": {
+            "model_key": "gpt-neo-125m",
+            "freeze_backbone": True,
+            "moe_layer_indices": [],
+        },
         "router": {"type": "standard", "num_experts": 2, "top_k": 1},
-        "expert": {"type": "gpt_neo_lora", "count": 2, "lora": {"rank": 4, "alpha": 1.0, "dropout": 0.0, "init_scale": 0.01}},
+        "expert": {
+            "type": "gpt_neo_lora",
+            "count": 2,
+            "lora": {"rank": 4, "alpha": 1.0, "dropout": 0.0, "init_scale": 0.01},
+        },
         "training": {
-            "optimizer": "adamw", "lr": 1e-4, "batch_size": 2, "steps": 1,
-            "log_interval": 1, "eval_interval": 100, "save_interval": 100,
-            "warmup_steps": 0, "gradient_accumulation_steps": 1, "clip_grad_norm": 0.0,
+            "optimizer": "adamw",
+            "lr": 1e-4,
+            "batch_size": 2,
+            "steps": 1,
+            "log_interval": 1,
+            "eval_interval": 100,
+            "save_interval": 100,
+            "warmup_steps": 0,
+            "gradient_accumulation_steps": 1,
+            "clip_grad_norm": 0.0,
         },
         "logging": {"enabled": False},
     }
@@ -583,19 +650,30 @@ def test_main_no_val_shards(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -612,23 +690,38 @@ def test_main_with_resume(tmp_path):
     ckpt_path.write_text("fake")
 
     mock_ckpt_mgr = MagicMock()
-    mock_ckpt_mgr.load_checkpoint.return_value = {"step": 0, "metrics": {"val_loss": 2.0}}
+    mock_ckpt_mgr.load_checkpoint.return_value = {
+        "step": 0,
+        "metrics": {"val_loss": 2.0},
+    }
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out"),
-                             "--resume", str(ckpt_path)]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.checkpoint.CheckpointManager", return_value=mock_ckpt_mgr), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--resume",
+                str(ckpt_path),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.checkpoint.CheckpointManager", return_value=mock_ckpt_mgr),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
     mock_ckpt_mgr.load_checkpoint.assert_called_once()
@@ -646,19 +739,30 @@ def test_main_adam_optimizer(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -673,26 +777,39 @@ def test_main_steps_from_config(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
 # ── Additional main() coverage: moe_metrics logging, early stopping, periodic save ──
 
+
 class _MoELayer(torch.nn.Module):
     """Fake MoE layer with router and expert_pool for diagnostic coverage."""
+
     def __init__(self):
         super().__init__()
         self._last_routing_weights = None
@@ -710,6 +827,7 @@ class _MoELayer(torch.nn.Module):
 
 class _TinyModelWithMoE(torch.nn.Module):
     """Model with moe_layers to exercise diagnostic/logging paths."""
+
     vocab_size = 16
 
     def __init__(self):
@@ -724,20 +842,24 @@ class _TinyModelWithMoE(torch.nn.Module):
         logits = self.fc(x)
         loss = torch.tensor(1.0, requires_grad=True)
         # Return moe_metrics with all the keys the logging block checks
-        moe_metrics = {
-            "layer_0": {
-                "effective_experts": 2.0,
-                "routing_diversity_gini": 0.3,
-                "router_confidence_mean": 0.7,
-                "fatigue_std": 0.1,
-                "mean_k": 1.5,
-                "stress_mean": 0.2,
-                "usage_distribution": [0.5, 0.5],
-                "ema_load_per_expert": [0.5, 0.5],
-                "lora_delta_norm_per_expert": [0.1, 0.2],
-                "load_balance": 0.9,
+        moe_metrics = (
+            {
+                "layer_0": {
+                    "effective_experts": 2.0,
+                    "routing_diversity_gini": 0.3,
+                    "router_confidence_mean": 0.7,
+                    "fatigue_std": 0.1,
+                    "mean_k": 1.5,
+                    "stress_mean": 0.2,
+                    "usage_distribution": [0.5, 0.5],
+                    "ema_load_per_expert": [0.5, 0.5],
+                    "lora_delta_norm_per_expert": [0.1, 0.2],
+                    "load_balance": 0.9,
+                }
             }
-        } if return_metrics else {}
+            if return_metrics
+            else {}
+        )
         return logits, loss, moe_metrics
 
     def eval(self):
@@ -757,19 +879,30 @@ def test_main_with_moe_metrics_logging(tmp_path):
 
     model = _TinyModelWithMoE()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -793,27 +926,41 @@ def test_main_early_stopping(tmp_path):
         # Return increasing loss so is_best is never True after first call
         return 2.0 + call_count[0]
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.evaluate", side_effect=_fake_evaluate), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.evaluate", side_effect=_fake_evaluate),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         # Patch cfg after load to inject early_stopping_patience
-        original_load = __import__("scripts.train", fromlist=["load_config"]).load_config
+        original_load = __import__(
+            "scripts.train", fromlist=["load_config"]
+        ).load_config
 
         def _patched_load(path, overrides):
             c = original_load(path, overrides)
             # inject early_stopping_patience via OmegaConf
             from omegaconf import OmegaConf
+
             OmegaConf.update(c, "training.early_stopping_patience", 1)
             return c
 
@@ -828,28 +975,39 @@ def test_main_periodic_save(tmp_path):
     cfg, shard_dir = _make_full_cfg(tmp_path)
     cfg.training.steps = 4
     cfg.training.eval_interval = 100  # no eval
-    cfg.training.log_interval = 100   # no log
-    cfg.training.save_interval = 2    # save at step 2
+    cfg.training.log_interval = 100  # no log
+    cfg.training.save_interval = 2  # save at step 2
     cfg_path = tmp_path / "cfg.yaml"
     OmegaConf.save(cfg, cfg_path)
 
     tiny_model = _TinyModel()
     mock_ckpt_mgr = MagicMock()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.checkpoint.CheckpointManager", return_value=mock_ckpt_mgr), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.checkpoint.CheckpointManager", return_value=mock_ckpt_mgr),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
     # Should have called save_checkpoint for the periodic save
@@ -868,19 +1026,30 @@ def test_main_grad_accum_gt1(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -896,23 +1065,35 @@ def test_main_warmup_steps(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
 # ── Additional coverage: compile path, SPAR init, Chinchilla print, final save ──
+
 
 def test_main_compile_path(tmp_path):
     """Covers the compile=True path."""
@@ -930,20 +1111,31 @@ def test_main_compile_path(tmp_path):
 
     model = _ModelWithBackbone()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("torch.compile", side_effect=lambda m, **kw: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("torch.compile", side_effect=lambda m, **kw: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -958,20 +1150,31 @@ def test_main_compile_no_backbone(tmp_path):
 
     tiny_model = _TinyModel()  # no backbone attr
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("torch.compile", side_effect=lambda m, **kw: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("torch.compile", side_effect=lambda m, **kw: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -994,19 +1197,30 @@ def test_main_chinchilla_steps_none(tmp_path):
         OmegaConf.update(c, "training.steps", OmegaConf.MISSING)
         return c
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         # Just run with steps=2 from config (already set), this covers the override note
         main()
 
@@ -1041,19 +1255,30 @@ def test_main_moe_layer_with_expert_pool_grads(tmp_path):
 
     model = _ModelWithPool()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1084,19 +1309,30 @@ def test_main_moe_layer_with_router_grads(tmp_path):
 
     model = _ModelWithRouterGrad()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1130,19 +1366,30 @@ def test_main_moe_router_with_lambda_val(tmp_path):
 
     model = _ModelWithLambda()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1160,8 +1407,12 @@ def test_main_moe_router_with_get_state(tmp_path):
             self.clear_aux_state = MagicMock()
 
         def get_state(self):
-            return {"lambda_eff": 0.3, "fraction_penalised": 0.1,
-                    "fatigue_tanh_mean": 0.2, "fairshare": 0.5}
+            return {
+                "lambda_eff": 0.3,
+                "fraction_penalised": 0.1,
+                "fatigue_tanh_mean": 0.2,
+                "fairshare": 0.5,
+            }
 
     class _MoELayerWithState(_MoELayer):
         def __init__(self):
@@ -1173,39 +1424,56 @@ def test_main_moe_router_with_get_state(tmp_path):
             super().__init__()
             self.moe_layers = {0: _MoELayerWithState()}
 
-        def forward(self, input_ids, labels=None, return_metrics=True, record_usage=True):
+        def forward(
+            self, input_ids, labels=None, return_metrics=True, record_usage=True
+        ):
             x = self.embed(input_ids % 16)
             logits = self.fc(x)
             loss = torch.tensor(1.0, requires_grad=True)
-            moe_metrics = {
-                "layer_0": {
-                    "effective_experts": 2.0,
-                    "routing_diversity_gini": 0.3,
-                    "router_confidence_mean": 0.7,
-                    "fatigue_std": 0.1,
-                    "mean_k": 1.5,
-                    "stress_mean": 0.2,
-                    "lambda_eff": 0.3,
-                    "fraction_penalised": 0.1,
+            moe_metrics = (
+                {
+                    "layer_0": {
+                        "effective_experts": 2.0,
+                        "routing_diversity_gini": 0.3,
+                        "router_confidence_mean": 0.7,
+                        "fatigue_std": 0.1,
+                        "mean_k": 1.5,
+                        "stress_mean": 0.2,
+                        "lambda_eff": 0.3,
+                        "fraction_penalised": 0.1,
+                    }
                 }
-            } if return_metrics else {}
+                if return_metrics
+                else {}
+            )
             return logits, loss, moe_metrics
 
     model = _ModelWithState()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1237,19 +1505,30 @@ def test_main_moe_router_with_fatigue(tmp_path):
 
     model = _ModelWithWelford()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1264,16 +1543,22 @@ def test_main_spec_trackers_with_moe(tmp_path):
     class _ModelWithVocabAndMoE(_TinyModelWithMoE):
         vocab_size = 16
 
-        def forward(self, input_ids, labels=None, return_metrics=True, record_usage=True):
+        def forward(
+            self, input_ids, labels=None, return_metrics=True, record_usage=True
+        ):
             x = self.embed(input_ids % 16)
             logits = self.fc(x)
             loss = torch.tensor(1.0, requires_grad=True)
             b, s = input_ids.shape
-            moe_metrics = {
-                "layer_0": {
-                    "indices": torch.zeros(b, s, 1, dtype=torch.long),
+            moe_metrics = (
+                {
+                    "layer_0": {
+                        "indices": torch.zeros(b, s, 1, dtype=torch.long),
+                    }
                 }
-            } if return_metrics else {}
+                if return_metrics
+                else {}
+            )
             return logits, loss, moe_metrics
 
     model = _ModelWithVocabAndMoE()
@@ -1282,24 +1567,39 @@ def test_main_spec_trackers_with_moe(tmp_path):
     mock_tracker = MagicMock()
     mock_tracker.sync_and_compute.return_value = {"specialization_score": 0.5}
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.metrics.router_metrics.GlobalSpecializationTracker", return_value=mock_tracker), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch(
+            "src.metrics.router_metrics.GlobalSpecializationTracker",
+            return_value=mock_tracker,
+        ),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
 # ── Cover remaining gaps: distributed device path, StopIteration, scaler ──────
+
 
 def test_main_stopiteration_epoch_wrap(tmp_path):
     """Covers StopIteration → epoch wrap in training loop."""
@@ -1316,13 +1616,28 @@ def test_main_stopiteration_epoch_wrap(tmp_path):
         "seed": 42,
         "compile": False,
         "dataset": {"dataset_key": "wikitext-2", "max_seq_len": 8},
-        "model": {"model_key": "gpt-neo-125m", "freeze_backbone": True, "moe_layer_indices": []},
+        "model": {
+            "model_key": "gpt-neo-125m",
+            "freeze_backbone": True,
+            "moe_layer_indices": [],
+        },
         "router": {"type": "standard", "num_experts": 2, "top_k": 1},
-        "expert": {"type": "gpt_neo_lora", "count": 2, "lora": {"rank": 4, "alpha": 1.0, "dropout": 0.0, "init_scale": 0.01}},
+        "expert": {
+            "type": "gpt_neo_lora",
+            "count": 2,
+            "lora": {"rank": 4, "alpha": 1.0, "dropout": 0.0, "init_scale": 0.01},
+        },
         "training": {
-            "optimizer": "adamw", "lr": 1e-4, "batch_size": 4, "steps": 5,
-            "log_interval": 100, "eval_interval": 100, "save_interval": 100,
-            "warmup_steps": 0, "gradient_accumulation_steps": 1, "clip_grad_norm": 1.0,
+            "optimizer": "adamw",
+            "lr": 1e-4,
+            "batch_size": 4,
+            "steps": 5,
+            "log_interval": 100,
+            "eval_interval": 100,
+            "save_interval": 100,
+            "warmup_steps": 0,
+            "gradient_accumulation_steps": 1,
+            "clip_grad_norm": 1.0,
         },
         "logging": {"enabled": False},
     }
@@ -1332,19 +1647,30 @@ def test_main_stopiteration_epoch_wrap(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1359,19 +1685,30 @@ def test_main_clip_norm_zero(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1385,19 +1722,30 @@ def test_main_not_main_process(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=False), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=False),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1411,19 +1759,30 @@ def test_main_shard_dir_override(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out2")]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out2"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1437,18 +1796,22 @@ def test_main_no_output_dir(tmp_path):
 
     tiny_model = _TinyModel()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir)]), \
-         patch("scripts.train.build_model", return_value=tiny_model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            ["train.py", "--config", str(cfg_path), "--shard-dir", str(shard_dir)],
+        ),
+        patch("scripts.train.build_model", return_value=tiny_model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
 
 
@@ -1464,7 +1827,9 @@ def test_main_moe_trainable_base(tmp_path):
     class _MoELayerWithBase(_MoELayer):
         def __init__(self):
             super().__init__()
-            self.expert_pool = MagicMock(spec=["experts", "consolidate_shared_weights", "make_base_trainable"])
+            self.expert_pool = MagicMock(
+                spec=["experts", "consolidate_shared_weights", "make_base_trainable"]
+            )
             self.expert_pool.experts = []
             self.expert_pool.consolidate_shared_weights = MagicMock()
             self.expert_pool.make_base_trainable = MagicMock()
@@ -1476,19 +1841,30 @@ def test_main_moe_trainable_base(tmp_path):
 
     model = _ModelWithBase()
 
-    with patch("sys.argv", ["train.py", "--config", str(cfg_path),
-                             "--shard-dir", str(shard_dir),
-                             "--output-dir", str(tmp_path / "out")]), \
-         patch("scripts.train.build_model", return_value=model), \
-         patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)), \
-         patch("scripts.train.is_main_process", return_value=True), \
-         patch("scripts.train.init_wandb"), \
-         patch("scripts.train.log_wandb"), \
-         patch("scripts.train.cleanup_distributed"), \
-         patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m), \
-         patch("src.training.precision.COMPUTE_DTYPE", torch.float32), \
-         patch("src.training.precision.needs_grad_scaler", return_value=False), \
-         patch("src.training.precision.is_mixed_precision", return_value=False):
+    with (
+        patch(
+            "sys.argv",
+            [
+                "train.py",
+                "--config",
+                str(cfg_path),
+                "--shard-dir",
+                str(shard_dir),
+                "--output-dir",
+                str(tmp_path / "out"),
+            ],
+        ),
+        patch("scripts.train.build_model", return_value=model),
+        patch("scripts.train.init_distributed", return_value=(False, 0, 0, 1)),
+        patch("scripts.train.is_main_process", return_value=True),
+        patch("scripts.train.init_wandb"),
+        patch("scripts.train.log_wandb"),
+        patch("scripts.train.cleanup_distributed"),
+        patch("scripts.train.get_model_for_attr_access", side_effect=lambda m: m),
+        patch("src.training.precision.COMPUTE_DTYPE", torch.float32),
+        patch("src.training.precision.needs_grad_scaler", return_value=False),
+        patch("src.training.precision.is_mixed_precision", return_value=False),
+    ):
         main()
     model.moe_layers[0].expert_pool.make_base_trainable.assert_called_once()
 

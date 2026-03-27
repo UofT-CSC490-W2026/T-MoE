@@ -1,4 +1,5 @@
 """Extra coverage for scripts/train.py — missing lines."""
+
 import struct
 import numpy as np
 import pytest
@@ -11,8 +12,10 @@ from unittest.mock import patch, MagicMock
 # load_config
 # ---------------------------------------------------------------------------
 
+
 def test_load_config_no_overrides(tmp_path):
     from scripts.train import load_config
+
     cfg_file = tmp_path / "test.yaml"
     cfg_file.write_text("experiment_name: test\ntraining:\n  lr: 1e-4\n")
     cfg = load_config(str(cfg_file), [])
@@ -21,6 +24,7 @@ def test_load_config_no_overrides(tmp_path):
 
 def test_load_config_with_overrides(tmp_path):
     from scripts.train import load_config
+
     cfg_file = tmp_path / "test.yaml"
     cfg_file.write_text("experiment_name: test\ntraining:\n  lr: 1e-4\n")
     cfg = load_config(str(cfg_file), ["training.lr=5e-5"])
@@ -31,8 +35,10 @@ def test_load_config_with_overrides(tmp_path):
 # parse_args
 # ---------------------------------------------------------------------------
 
+
 def test_parse_args_basic():
     from scripts.train import parse_args
+
     with patch("sys.argv", ["train.py", "--config", "experiments/test.yaml"]):
         args, overrides = parse_args()
     assert args.config == "experiments/test.yaml"
@@ -42,12 +48,21 @@ def test_parse_args_basic():
 
 def test_parse_args_with_resume_and_output():
     from scripts.train import parse_args
-    with patch("sys.argv", [
-        "train.py", "--config", "exp.yaml",
-        "--resume", "/tmp/ckpt.pt",
-        "--output-dir", "/tmp/out",
-        "--shard-dir", "/tmp/shards",
-    ]):
+
+    with patch(
+        "sys.argv",
+        [
+            "train.py",
+            "--config",
+            "exp.yaml",
+            "--resume",
+            "/tmp/ckpt.pt",
+            "--output-dir",
+            "/tmp/out",
+            "--shard-dir",
+            "/tmp/shards",
+        ],
+    ):
         args, overrides = parse_args()
     assert args.resume == "/tmp/ckpt.pt"
     assert args.output_dir == "/tmp/out"
@@ -57,6 +72,7 @@ def test_parse_args_with_resume_and_output():
 # ---------------------------------------------------------------------------
 # ShardDataset
 # ---------------------------------------------------------------------------
+
 
 def _write_shard(path: Path, tokens: list, dtype_flag: int = 0):
     """Write a minimal shard file (versioned 10-byte header)."""
@@ -77,6 +93,7 @@ def _write_legacy_shard(path: Path, tokens: list):
 
 def test_shard_dataset_basic(tmp_path):
     from scripts.train import ShardDataset
+
     tokens = list(range(200))
     _write_shard(tmp_path / "train_shard_0000.bin", tokens)
     ds = ShardDataset(tmp_path, "train", seq_len=10)
@@ -87,6 +104,7 @@ def test_shard_dataset_basic(tmp_path):
 
 def test_shard_dataset_legacy_shard(tmp_path):
     from scripts.train import ShardDataset
+
     tokens = list(range(200))
     _write_legacy_shard(tmp_path / "train_shard_0000.bin", tokens)
     ds = ShardDataset(tmp_path, "train", seq_len=10)
@@ -95,6 +113,7 @@ def test_shard_dataset_legacy_shard(tmp_path):
 
 def test_shard_dataset_uint32(tmp_path):
     from scripts.train import ShardDataset
+
     tokens = list(range(200))
     _write_shard(tmp_path / "train_shard_0000.bin", tokens, dtype_flag=1)
     ds = ShardDataset(tmp_path, "train", seq_len=10)
@@ -103,12 +122,14 @@ def test_shard_dataset_uint32(tmp_path):
 
 def test_shard_dataset_no_shards(tmp_path):
     from scripts.train import ShardDataset
+
     with pytest.raises(FileNotFoundError, match="No shards found"):
         ShardDataset(tmp_path, "train", seq_len=10)
 
 
 def test_shard_dataset_unknown_dtype_flag(tmp_path):
     from scripts.train import ShardDataset
+
     tokens = list(range(200))
     arr = np.array(tokens, dtype=np.uint16)
     with open(tmp_path / "train_shard_0000.bin", "wb") as f:
@@ -122,6 +143,7 @@ def test_shard_dataset_unknown_dtype_flag(tmp_path):
 def test_shard_dataset_getitem_wrap(tmp_path):
     """Covers the wrap-around path (line 147) in __getitem__."""
     from scripts.train import ShardDataset
+
     # Use seq_len close to total tokens so the last sequence must wrap
     tokens = list(range(20))
     _write_shard(tmp_path / "train_shard_0000.bin", tokens)
@@ -144,6 +166,7 @@ def test_shard_dataset_getitem_wrap(tmp_path):
 
 def test_shard_dataset_multiple_shards(tmp_path):
     from scripts.train import ShardDataset
+
     for i in range(3):
         _write_shard(tmp_path / f"train_shard_{i:04d}.bin", list(range(100)))
     ds = ShardDataset(tmp_path, "train", seq_len=10)
@@ -155,6 +178,7 @@ def test_shard_dataset_multiple_shards(tmp_path):
 # ---------------------------------------------------------------------------
 # build_optimizer
 # ---------------------------------------------------------------------------
+
 
 def _simple_model():
     model = torch.nn.Linear(4, 4)
@@ -176,6 +200,7 @@ def _make_cfg(optimizer="adamw", lr=1e-4, lr_base=None):
 
 def test_build_optimizer_adamw():
     from scripts.train import build_optimizer
+
     model = _simple_model()
     cfg = _make_cfg("adamw")
     opt = build_optimizer(model, cfg)
@@ -184,6 +209,7 @@ def test_build_optimizer_adamw():
 
 def test_build_optimizer_adam():
     from scripts.train import build_optimizer
+
     model = _simple_model()
     cfg = _make_cfg("adam")
     opt = build_optimizer(model, cfg)
@@ -192,6 +218,7 @@ def test_build_optimizer_adam():
 
 def test_build_optimizer_unknown():
     from scripts.train import build_optimizer
+
     model = _simple_model()
     cfg = _make_cfg("sgd")
     with pytest.raises(ValueError, match="Unknown optimizer"):
@@ -219,6 +246,7 @@ def test_build_optimizer_with_lr_base():
 # evaluate
 # ---------------------------------------------------------------------------
 
+
 def test_evaluate_basic():
     from scripts.train import evaluate
 
@@ -236,6 +264,7 @@ def test_evaluate_basic():
 
 def test_evaluate_empty_loader():
     from scripts.train import evaluate
+
     model = MagicMock()
     result = evaluate(model, [], "cpu")
     assert result == float("inf")
@@ -245,8 +274,10 @@ def test_evaluate_empty_loader():
 # init_wandb / log_wandb
 # ---------------------------------------------------------------------------
 
+
 def test_init_wandb_disabled():
     from scripts.train import init_wandb
+
     cfg = MagicMock()
     cfg.get.return_value = {"enabled": False}
     # Should not raise
@@ -256,6 +287,7 @@ def test_init_wandb_disabled():
 
 def test_init_wandb_mode_disabled():
     from scripts.train import init_wandb
+
     cfg = MagicMock()
     cfg.get.return_value = {"enabled": True, "mode": "disabled"}
     with patch("scripts.train.is_main_process", return_value=True):
@@ -264,6 +296,7 @@ def test_init_wandb_mode_disabled():
 
 def test_init_wandb_not_main_process():
     from scripts.train import init_wandb
+
     cfg = MagicMock()
     with patch("scripts.train.is_main_process", return_value=False):
         init_wandb(cfg)  # should be a no-op
@@ -271,6 +304,7 @@ def test_init_wandb_not_main_process():
 
 def test_init_wandb_import_error():
     from scripts.train import init_wandb
+
     cfg = MagicMock()
     cfg.get.return_value = {"enabled": True, "mode": "online"}
     with patch("scripts.train.is_main_process", return_value=True):
@@ -288,10 +322,12 @@ def test_init_wandb_success():
     mock_run.url = None
     mock_wandb.init.return_value = mock_run
 
-    cfg = OmegaConf.create({
-        "experiment_name": "test_exp",
-        "logging": {"enabled": True, "mode": "online", "project": "test"},
-    })
+    cfg = OmegaConf.create(
+        {
+            "experiment_name": "test_exp",
+            "logging": {"enabled": True, "mode": "online", "project": "test"},
+        }
+    )
 
     with patch("scripts.train.is_main_process", return_value=True):
         with _patch_wandb(mock_wandb):
@@ -300,12 +336,14 @@ def test_init_wandb_success():
 
 def test_log_wandb_not_main():
     from scripts.train import log_wandb
+
     with patch("scripts.train.is_main_process", return_value=False):
         log_wandb({"loss": 1.0})  # no-op
 
 
 def test_log_wandb_no_run():
     from scripts.train import log_wandb
+
     mock_wandb = MagicMock()
     mock_wandb.run = None
     with patch("scripts.train.is_main_process", return_value=True):
@@ -315,6 +353,7 @@ def test_log_wandb_no_run():
 
 def test_log_wandb_success():
     from scripts.train import log_wandb
+
     mock_wandb = MagicMock()
     mock_run = MagicMock()
     mock_wandb.run = mock_run
@@ -330,8 +369,10 @@ def test_log_wandb_success():
 # _broadcast_scalar
 # ---------------------------------------------------------------------------
 
+
 def test_broadcast_scalar_non_distributed():
     from scripts.train import _broadcast_scalar
+
     result = _broadcast_scalar(3.14, "cpu", is_distributed=False)
     assert abs(result - 3.14) < 1e-6
 
@@ -339,6 +380,7 @@ def test_broadcast_scalar_non_distributed():
 # ---------------------------------------------------------------------------
 # build_model (mocked)
 # ---------------------------------------------------------------------------
+
 
 def test_build_model_mocked(tmp_path):
     """Smoke test build_model with all heavy deps mocked."""
@@ -372,12 +414,19 @@ def test_build_model_mocked(tmp_path):
     mock_lora_layer = MagicMock()
 
     with patch("src.core.ModelRegistry", mock_registry):
-        with patch("src.configs.model.model_lookup", return_value={"hf_name": "x", "model_type": "gpt_neo", "variant": "125m"}):
+        with patch(
+            "src.configs.model.model_lookup",
+            return_value={"hf_name": "x", "model_type": "gpt_neo", "variant": "125m"},
+        ):
             with patch("src.routers.create_router", return_value=mock_router):
-                with patch("src.layers.lora_moe.LoRAMoELayer.from_pretrained_mlp", return_value=mock_lora_layer):
+                with patch(
+                    "src.layers.lora_moe.LoRAMoELayer.from_pretrained_mlp",
+                    return_value=mock_lora_layer,
+                ):
                     with patch("src.experts.lora.LoRAConfig"):
                         with patch("src.project_types.ExpertType"):
                             import src.models  # noqa: F401 — trigger registration
+
                             model = build_model(cfg)
     assert model is not None
 
@@ -386,8 +435,10 @@ def test_build_model_mocked(tmp_path):
 # main() — error paths
 # ---------------------------------------------------------------------------
 
+
 def test_main_missing_config():
     from scripts.train import main
+
     with patch("sys.argv", ["train.py"]):
         with pytest.raises(SystemExit):
             main()
@@ -395,6 +446,7 @@ def test_main_missing_config():
 
 def test_main_keyboard_interrupt(tmp_path):
     from scripts.train import main
+
     cfg_file = tmp_path / "test.yaml"
     cfg_file.write_text(
         "experiment_name: test\n"
@@ -418,6 +470,7 @@ def test_main_keyboard_interrupt(tmp_path):
 # ---------------------------------------------------------------------------
 # init_wandb — remaining branches (lines 433-437, 486, 493)
 # ---------------------------------------------------------------------------
+
 
 def _patch_wandb(mock_wandb):
     """Context manager that reliably replaces the wandb module for local imports."""
@@ -449,10 +502,17 @@ def test_init_wandb_with_entity():
     mock_run.url = "https://wandb.ai/test"
     mock_wandb.init.return_value = mock_run
 
-    cfg = OmegaConf.create({
-        "experiment_name": "test_exp",
-        "logging": {"enabled": True, "mode": "online", "project": "test", "entity": "myteam"},
-    })
+    cfg = OmegaConf.create(
+        {
+            "experiment_name": "test_exp",
+            "logging": {
+                "enabled": True,
+                "mode": "online",
+                "project": "test",
+                "entity": "myteam",
+            },
+        }
+    )
 
     with patch("scripts.train.is_main_process", return_value=True):
         with _patch_wandb(mock_wandb):
@@ -469,10 +529,12 @@ def test_init_wandb_exception():
     mock_wandb = MagicMock()
     mock_wandb.init.side_effect = Exception("wandb error")
 
-    cfg = OmegaConf.create({
-        "experiment_name": "test_exp",
-        "logging": {"enabled": True, "mode": "online", "project": "test"},
-    })
+    cfg = OmegaConf.create(
+        {
+            "experiment_name": "test_exp",
+            "logging": {"enabled": True, "mode": "online", "project": "test"},
+        }
+    )
 
     with patch("scripts.train.is_main_process", return_value=True):
         with _patch_wandb(mock_wandb):
@@ -483,12 +545,15 @@ def test_init_wandb_exception():
 # _initialize_router_prototypes — no SPAR routers (early return path, line 333)
 # ---------------------------------------------------------------------------
 
+
 def test_initialize_router_prototypes_no_spar_routers():
     """Covers line 333: early return when no StressCorrectedRouter found."""
     from scripts.train import _initialize_router_prototypes
 
     model = torch.nn.Linear(4, 4)
-    loader = [(torch.zeros(2, 4, dtype=torch.long), torch.zeros(2, 4, dtype=torch.long))]
+    loader = [
+        (torch.zeros(2, 4, dtype=torch.long), torch.zeros(2, 4, dtype=torch.long))
+    ]
 
     # Pass a plain nn.Module — it has no LoRAMoELayer submodules,
     # so routers_by_layer stays empty and the function returns early.
@@ -500,9 +565,11 @@ def test_initialize_router_prototypes_no_spar_routers():
 # ShardDataset — cross-shard boundary access
 # ---------------------------------------------------------------------------
 
+
 def test_shard_dataset_cross_shard_boundary(tmp_path):
     """Covers the multi-shard bisect path in __getitem__."""
     from scripts.train import ShardDataset
+
     # Two small shards — a sequence will span both
     _write_shard(tmp_path / "train_shard_0000.bin", list(range(15)))
     _write_shard(tmp_path / "train_shard_0001.bin", list(range(15, 30)))
@@ -517,6 +584,7 @@ def test_shard_dataset_cross_shard_boundary(tmp_path):
 # ---------------------------------------------------------------------------
 # log_wandb — ImportError path (lines 536-537)
 # ---------------------------------------------------------------------------
+
 
 def test_log_wandb_import_error():
     """Covers lines 536-537: ImportError in log_wandb."""
@@ -542,6 +610,7 @@ def test_log_wandb_import_error():
 # build_optimizer — lr_base with no matching params (param_groups stays single)
 # ---------------------------------------------------------------------------
 
+
 def test_build_optimizer_lr_base_no_matching_params():
     """Covers lr_base path when no shared_fc_weight/shared_proj_weight params exist."""
     from scripts.train import build_optimizer
@@ -564,8 +633,10 @@ def test_build_optimizer_lr_base_no_matching_params():
 # ShardDataset — val split
 # ---------------------------------------------------------------------------
 
+
 def test_shard_dataset_val_split(tmp_path):
     from scripts.train import ShardDataset
+
     _write_shard(tmp_path / "val_shard_0000.bin", list(range(100)))
     ds = ShardDataset(tmp_path, "val", seq_len=10)
     assert len(ds) > 0
