@@ -38,7 +38,7 @@ class GlobalSpecializationTracker:
             TestGlobalSpecializationTrackerAccumulation
         Why these tests:
             Padding tokens (id < 0 or >= vocab_size) and padding experts (-1 from
-            adaptive-k) both need to be silently dropped — missing either filter
+            adaptive-k) both need to be silently dropped; missing either filter
             corrupts the histogram or crashes bincount. Accumulation tests make sure
             counts add up across batches rather than resetting each call.
         """
@@ -109,7 +109,7 @@ class GlobalSpecializationTracker:
 
         import torch.distributed as dist
 
-        # All-reduce a GPU copy of usage_counts — O(vocab × experts) = ~3.2 MB for 125M
+        # All-reduce a GPU copy of usage_counts (O(vocab x experts) = ~3.2 MB for 125M)
         counts_gpu = self.usage_counts.to(device)
         dist.all_reduce(counts_gpu, op=dist.ReduceOp.SUM)
         counts_synced = counts_gpu.cpu()
@@ -136,11 +136,11 @@ class GlobalSpecializationTracker:
             TestComputeMetricsEmptyState
             TestGlobalTokensSeen
         Why these tests:
-            Empty state (total_tokens=0) must return {} without crashing — rank 0
+            Empty state (total_tokens=0) must return {} without crashing; rank 0
             can call this at step 0. The specialization score formula is easy to
             get wrong (swapped H(E|T)/H(E) ratio, wrong axis). The degenerate branch
             (marginal_entropy < 1e-5) has a known bug where .item() is called on a
-            plain Python float — pinned by test_degenerate_marginal_entropy_zero_branch.
+            plain Python float, pinned by test_degenerate_marginal_entropy_zero_branch.
             global_tokens_seen must count tokens, not token×top_k assignments.
         """
         if self.total_tokens == 0:
@@ -159,7 +159,7 @@ class GlobalSpecializationTracker:
             # P(E|T)
             p_e_given_t = active_usage / active_usage.sum(dim=1, keepdim=True)
 
-            # H(E|T) — weighted by token frequency
+            # H(E|T) weighted by token frequency
             entropy_e_given_t = -(p_e_given_t * torch.log(p_e_given_t + 1e-10)).sum(
                 dim=1
             )
@@ -215,7 +215,7 @@ class RouterMetricsTracker:
             Two separate code paths: indices=None (dense, expert-choice routers) and
             indices provided (sparse, top-k routers). The clamp(min=0) before
             scatter_add_ is what stops -1 indices from silently inflating the last
-            expert's count — easy to miss in a refactor.
+            expert's count, easy to miss in a refactor.
         """
         if indices is None:
             # Dense case: weights is (N, E)
@@ -240,7 +240,7 @@ class RouterMetricsTracker:
             TestEffectiveExpertsInvariant
             TestSingleExpertDegenerate
         Why these tests:
-            Near-zero and all-zero usage are common early in training — the log(p + 1e-10)
+            Near-zero and all-zero usage are common early in training; the log(p + 1e-10)
             guard must prevent NaN/inf. Normalized entropy must stay in [0, 1].
             Single-expert case (N=1) checks the boundary where entropy = 0.
         """
@@ -262,7 +262,7 @@ class RouterMetricsTracker:
             TestFatigueStatsAbsenceAndPresence
         Why these tests:
             The hasattr(router, 'fatigue') guard must return {} for non-metabolic
-            routers — otherwise compute_all_metrics crashes on SPAR. Also checks
+            routers, otherwise compute_all_metrics crashes on SPAR. Also checks
             that fatigue_per_expert is numpy (WandB histogram expects it).
         """
         if not hasattr(self.router, "fatigue"):
@@ -288,7 +288,7 @@ class RouterMetricsTracker:
             TestUsageDistributionNormalization
         Why these tests:
             usage_distribution must sum to 1 and be numpy for WandB. The epsilon
-            in the denominator prevents NaN when all usage is zero — a real scenario
+            in the denominator prevents NaN when all usage is zero, a real scenario
             at the start of training.
         """
         usage_counts = (
@@ -326,7 +326,7 @@ class RouterMetricsTracker:
             TestGiniIndexDeviceCache
             TestSingleExpertDegenerate
         Why these tests:
-            The formula has a specific closed form — "looks right" isn't enough.
+            The formula has a specific closed form; "looks right" isn't enough.
             Checks exact values for known distributions (uniform → 0, monopoly → 0.75),
             scale invariance, and the N=1 boundary. The device cache is tested because
             a stale cache causes device mismatch errors on GPU.
@@ -417,14 +417,14 @@ class RouterMetricsTracker:
             TestComputeAllMetricsRouterSpecificKeys
             TestLargeBatchStability
         Why these tests:
-            Usage is computed once and passed to every sub-metric — if any sub-function
+            Usage is computed once and passed to every sub-metric; if any sub-function
             ignores the usage= kwarg and recomputes, results can diverge. The conditional
             keys (fatigue, num_steps, custom metrics) are gated on hasattr checks that
             break silently if a buffer is renamed. Large batch test catches NaN/inf
             regressions at realistic scale.
         """
         metrics = {}
-        # Compute usage once — shared by entropy, distribution, gini, effective_experts.
+        # Compute usage once, shared by entropy, distribution, gini, effective_experts.
         usage = self._compute_usage(indices, weights)
         entropy_metrics = self.compute_expert_entropy(indices, weights, usage=usage)
         metrics.update(entropy_metrics)
