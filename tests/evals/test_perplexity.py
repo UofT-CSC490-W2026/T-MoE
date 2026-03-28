@@ -1,7 +1,5 @@
 import math
-
 import torch
-
 from evals.perplexity import (
     compute_document_nll,
     evaluate_text_documents,
@@ -48,7 +46,6 @@ class _WhitespaceTokenizer:
 def test_compute_document_nll_counts_each_target_once_with_overlap():
     model = _PerfectNextTokenModel(vocab_size=16)
     input_ids = torch.tensor([[0, 1, 2, 3, 4, 5, 6]], dtype=torch.long)
-
     total_nll, total_tokens = compute_document_nll(
         model,
         input_ids,
@@ -56,7 +53,6 @@ def test_compute_document_nll_counts_each_target_once_with_overlap():
         max_length=4,
         device="cpu",
     )
-
     assert total_tokens == 6
     assert total_nll < 1e-4
 
@@ -68,7 +64,6 @@ def test_summarize_language_model_metrics_computes_ppl_and_bpb():
         total_tokens=6,
         total_bytes=12,
     )
-
     assert math.isclose(summary["ppl"], 10.0, rel_tol=1e-6)
     expected_bpb = total_nll / (math.log(2) * 12)
     assert math.isclose(summary["bpb"], expected_bpb, rel_tol=1e-6)
@@ -79,7 +74,6 @@ def test_evaluate_text_documents_aggregates_metrics():
         {"alpha": 0, "beta": 1, "gamma": 2, "delta": 3, "epsilon": 4}
     )
     model = _UniformModel(vocab_size=5)
-
     summary = evaluate_text_documents(
         model,
         tokenizer,
@@ -89,7 +83,6 @@ def test_evaluate_text_documents_aggregates_metrics():
         device="cpu",
         include_bpb=True,
     )
-
     assert summary["documents_scored"] == 2
     assert summary["tokens_scored"] == 3
     assert math.isclose(summary["ppl"], 5.0, rel_tol=1e-6)

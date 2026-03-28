@@ -1,5 +1,4 @@
 from pathlib import Path
-
 from evals.lm_harness_runner import run_lm_harness_eval
 
 
@@ -19,7 +18,6 @@ class _DummyModel:
 def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_path):
     calls = []
     build_calls = []
-
     monkeypatch.setattr(
         "evals.lm_harness_runner.load_model_for_eval",
         lambda **kwargs: (_DummyModel(), {"step": 42, "metrics": {}}),
@@ -62,7 +60,6 @@ def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_
     monkeypatch.setattr(
         "evals.lm_harness_runner._simple_evaluate", fake_simple_evaluate
     )
-
     payload = run_lm_harness_eval(
         config={"experiment_name": "demo"},
         checkpoint_path=tmp_path / "checkpoint_step_42.pt",
@@ -71,7 +68,6 @@ def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_
         batch_size={"zero_shot": 2, "five_shot": 1},
         limit=10,
     )
-
     assert payload["task"] == "lm_harness"
     assert payload["results"] == {
         "hellaswag": 0.31,
@@ -98,7 +94,6 @@ def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_
 
 def test_run_lm_harness_eval_allows_empty_five_shot_tasks(monkeypatch, tmp_path):
     calls = []
-
     monkeypatch.setattr(
         "evals.lm_harness_runner.load_model_for_eval",
         lambda **kwargs: (_DummyModel(), {"step": 42, "metrics": {}}),
@@ -119,7 +114,6 @@ def test_run_lm_harness_eval_allows_empty_five_shot_tasks(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "evals.lm_harness_runner._simple_evaluate", fake_simple_evaluate
     )
-
     payload = run_lm_harness_eval(
         config={"experiment_name": "demo"},
         checkpoint_path=tmp_path / "checkpoint_step_42.pt",
@@ -130,7 +124,6 @@ def test_run_lm_harness_eval_allows_empty_five_shot_tasks(monkeypatch, tmp_path)
         zero_shot_tasks=("piqa",),
         five_shot_tasks=(),
     )
-
     assert payload["results"] == {"piqa": 0.62}
     assert payload["metadata"]["mmlu_subjects"] == {}
     assert len(calls) == 1

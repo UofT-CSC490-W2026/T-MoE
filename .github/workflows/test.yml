@@ -4,6 +4,7 @@ on: [push, pull_request]
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   test:
@@ -20,7 +21,7 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
       - name: Run tests with coverage
         run: |
-          pytest --cov=. --cov-report=term --cov-report=xml | tee coverage.txt
+          pytest --cov=. --cov-report=term --cov-report=xml --junitxml=pytest.xml | tee coverage.txt
       - name: Extract coverage percentage
         run: |
           COVERAGE=$(grep '^TOTAL' coverage.txt | awk '{print $NF}')
@@ -32,6 +33,13 @@ jobs:
           elif [ "$(echo "$NUM >= 60" | bc)" -eq 1 ]; then COLOR="yellow"
           else COLOR="red"; fi
           sed -i "s|!\[Coverage\](https://img.shields.io/badge/coverage-.*)|![Coverage](https://img.shields.io/badge/coverage-${COVERAGE}25-${COLOR})|" README.md
+      - name: Post coverage comment on PR
+        if: github.event_name == 'pull_request'
+        
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: coverage.txt
+          junitxml-path: pytest.xml
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"

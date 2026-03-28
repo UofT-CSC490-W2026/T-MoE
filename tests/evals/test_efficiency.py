@@ -1,5 +1,4 @@
 import math
-
 from evals.efficiency import run_efficiency_eval, summarize_timing_measurements
 
 
@@ -20,7 +19,6 @@ def test_summarize_timing_measurements_computes_expected_stats():
         batch_size=2,
         seq_len=4,
     )
-
     assert math.isclose(summary["throughput_tokens_per_sec_mean"], 6.0, rel_tol=1e-6)
     assert math.isclose(summary["throughput_tokens_per_sec_std"], 2.0, rel_tol=1e-6)
     assert math.isclose(summary["latency_ms_per_token_p50"], 187.5, rel_tol=1e-6)
@@ -29,7 +27,6 @@ def test_summarize_timing_measurements_computes_expected_stats():
 
 def test_run_efficiency_eval_adds_reference_ratio(monkeypatch, tmp_path):
     call_log = []
-
     monkeypatch.setattr(
         "evals.efficiency.load_model_for_eval",
         lambda **kwargs: (_DummyModel(), {"step": 10, "metrics": {}}),
@@ -70,7 +67,6 @@ def test_run_efficiency_eval_adds_reference_ratio(monkeypatch, tmp_path):
         }
 
     monkeypatch.setattr("evals.efficiency._profile_loaded_model", fake_profile)
-
     payload = run_efficiency_eval(
         config={"experiment_name": "demo"},
         checkpoint_path=tmp_path / "checkpoint_step_10.pt",
@@ -78,7 +74,6 @@ def test_run_efficiency_eval_adds_reference_ratio(monkeypatch, tmp_path):
         device="cpu",
         reference_checkpoint_path=tmp_path / "checkpoint_step_20.pt",
     )
-
     assert payload["task"] == "efficiency"
     assert payload["results"]["batch_1_throughput_tokens_per_sec_mean"] == 100.0
     assert math.isclose(

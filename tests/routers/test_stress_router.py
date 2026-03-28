@@ -1,7 +1,6 @@
 import torch
 import torch.nn.functional as F
 import pytest
-
 from src.configs.router import StressCorrectedRouterConfig
 from src.routers.stress_corrected import StressCorrectedRouter
 
@@ -31,7 +30,6 @@ def make_input(batch=2, seq=4, hidden=64, device="cpu"):
 
 
 def run_steps(router, x, n):
-    """Simulate n optimizer steps: forward + step() each time."""
     for _ in range(n):
         router(x, record_usage=True)
         router.step()
@@ -60,7 +58,6 @@ class TestForwardShapes:
         N = 3 * 6
         assert weights.shape == (N, 4)
         assert indices is None
-        # Each row has exactly top_k non-zero entries
         assert (weights > 0).sum(dim=-1).eq(2).all()
 
     def test_weights_sum_to_one(self, device):
@@ -137,43 +134,30 @@ class TestLambdaCalibration:
 
 class TestOneSidedPenalty:
     def test_zero_penalty_at_fair_share(self, device):
-        """At equilibrium (all L_i = 1/N), the load penalty is zero for all experts."""
         router = make_router(num_experts=4, device=device)
         router.eval()
-        # Uniform load = fair share
         fair = 1.0 / 4
         router.ema_load.fill_(fair)
-
         with torch.no_grad():
             penalty = (router.ema_load - fair).clamp(min=0.0)
-
         assert penalty.max().item() == pytest.approx(0.0, abs=1e-7), (
             "One-sided penalty must be zero when all experts are at fair share"
         )
 
     def test_penalty_only_for_overloaded(self, device):
-        """Only overloaded experts (L_i > 1/N) receive a penalty; underloaded get zero."""
         router = make_router(num_experts=4, device=device)
         router.eval()
-        # Expert 0 overloaded (0.5 >> 0.25), expert 1 underloaded (0.1)
         router.ema_load.copy_(torch.tensor([0.5, 0.1, 0.2, 0.2], device=device))
-
         fair = 1.0 / 4
         penalty = (router.ema_load - fair).clamp(min=0.0)
-
         assert penalty[0].item() > 0.0, "Overloaded expert should have positive penalty"
         assert penalty[1].item() == pytest.approx(0.0, abs=1e-7), (
             "Underloaded expert should have zero penalty"
         )
 
     def test_overloaded_expert_selected_less(self, device):
-        """With top_k=1, the load penalty should steer routing away from the overloaded expert."""
-        # Use top_k=1: forces a single winner per token so penalty has a decisive effect.
         router = make_router(num_experts=4, top_k=1, temperature=0.5, device=device)
         router.eval()
-
-        # Expert 0: heavily overloaded; expert 1: at fair share.
-        # Both have same cosine sim → load penalty alone determines the winner.
         with torch.no_grad():
             router.ema_load.copy_(torch.tensor([0.7, 0.1, 0.1, 0.1], device=device))
             direction = F.normalize(torch.randn(64, device=device), dim=-1)
@@ -181,44 +165,35 @@ class TestOneSidedPenalty:
             router.W[1] = direction.clone()
             router.W[2] = F.normalize(torch.randn(64, device=device), dim=-1)
             router.W[3] = F.normalize(torch.randn(64, device=device), dim=-1)
-            router.lambda_val.fill_(2.0)  # penalty for expert 0: 2.0*(0.7-0.25)=0.90
-
-        x = direction.unsqueeze(0).unsqueeze(0)  # [1,1,64]
+            router.lambda_val.fill_(2.0)
+        x = direction.unsqueeze(0).unsqueeze(0)
         count_0, count_1 = 0, 0
         for _ in range(20):
             weights, _, _ = router(x)
-            # Dense (N, E): check which expert has non-zero weight
             selected = weights[0].nonzero().squeeze(-1).tolist()
             if 0 in selected:
                 count_0 += 1
             if 1 in selected:
                 count_1 += 1
-
         assert count_1 > count_0, (
             f"Underloaded expert 1 should win over overloaded expert 0 with top_k=1. "
             f"count_0={count_0}, count_1={count_1}"
         )
 
     def test_output_weights_use_cosine_only(self, device):
-        """Output weights = softmax(cos / τ), not affected by load penalty."""
         router = make_router(temperature=1.0, device=device)
         router.eval()
-
         x = make_input(device=device)
         weights, _, _ = router(x)
-
         with torch.no_grad():
             W_norm = F.normalize(router.W, dim=-1)
             x_norm = F.normalize(x, dim=-1)
-            cos_sim = x_norm @ W_norm.T  # [B, S, E]
-            # top-k indices from cos_sim (no load penalty in eval with zero ema_load offset)
+            cos_sim = x_norm @ W_norm.T
             topk_cos, topk_idx = cos_sim.topk(router.top_k, dim=-1)
             expected_sparse = F.softmax(topk_cos / router.temperature, dim=-1)
-            # Build expected dense matrix
             N = x.shape[0] * x.shape[1]
             expected = torch.zeros(N, router.num_experts, device=device)
             expected.scatter_(1, topk_idx.view(N, -1), expected_sparse.view(N, -1))
-
         assert torch.allclose(weights, expected, atol=1e-5), (
             "Output weights must equal softmax(cos/τ) regardless of load penalty"
         )
@@ -241,20 +216,17 @@ class TestTauAnnealing:
 
     def test_tau_starts_at_temperature(self, device):
         router = self._make_annealing_router(device=device)
-        # num_steps=0 at init → τ = temperature
         assert router._current_tau() == pytest.approx(router.temperature)
 
     def test_tau_decreases_over_steps(self, device):
         router = self._make_annealing_router(device=device)
         router.train()
         x = make_input(device=device)
-
         tau_0 = router._current_tau()
         run_steps(router, x, 50)
         tau_50 = router._current_tau()
         run_steps(router, x, 50)
         tau_100 = router._current_tau()
-
         assert tau_50 < tau_0, "τ must decrease during annealing"
         assert tau_100 < tau_50, "τ must keep decreasing until tau_anneal_steps"
 
@@ -264,12 +236,10 @@ class TestTauAnnealing:
         )
         router.train()
         x = make_input(device=device)
-        # Run well past anneal_steps
         run_steps(router, x, 100)
         assert router._current_tau() == pytest.approx(0.1, abs=1e-6)
 
     def test_no_annealing_when_disabled(self, device):
-        """tau_anneal_steps=0 → τ fixed at temperature throughout."""
         cfg = StressCorrectedRouterConfig(
             hidden_dim=64,
             num_experts=4,
@@ -286,7 +256,6 @@ class TestTauAnnealing:
         assert router._current_tau() == pytest.approx(0.5)
 
     def test_no_annealing_when_tau_final_equals_temperature(self, device):
-        """tau_final == temperature → τ fixed regardless of tau_anneal_steps."""
         cfg = StressCorrectedRouterConfig(
             hidden_dim=64,
             num_experts=4,
@@ -303,27 +272,20 @@ class TestTauAnnealing:
         assert router._current_tau() == pytest.approx(0.5)
 
     def test_tau_affects_output_weight_sharpness(self, device):
-        """Lower τ → sharper (more concentrated) output weight distribution."""
         router_sharp = self._make_annealing_router(
             tau_start=1.0, tau_final=0.1, anneal_steps=10, device=device
         )
         router_sharp.train()
         x = make_input(device=device)
-        # Run past anneal point so τ = 0.1
         run_steps(router_sharp, x, 20)
         router_sharp.eval()
-
         router_flat = make_router(temperature=1.0, device=device)
         router_flat.eval()
-
-        # Copy W and ema_load so the only difference is τ
         with torch.no_grad():
             router_sharp.W.copy_(router_flat.W)
-
         x_test = make_input(batch=4, seq=8, device=device)
         weights_sharp, _, _ = router_sharp(x_test)
         weights_flat, _, _ = router_flat(x_test)
-
         entropy_sharp = (
             -(weights_sharp * weights_sharp.clamp(min=1e-10).log())
             .sum(-1)
@@ -340,50 +302,36 @@ class TestTauAnnealing:
 
 class TestWelford:
     def test_welford_accumulates_after_forward(self, device):
-        """Welford_n should increase after forward passes with record_usage=True."""
         router = make_router(device=device)
         router.train()
         x = make_input(device=device)
-
         n_before = router.welford_n.sum().item()
         for _ in range(5):
             router(x, record_usage=True)
         n_after = router.welford_n.sum().item()
-
         assert n_after > n_before, (
             "Welford_n must increase after training forward passes"
         )
 
     def test_welford_not_in_logit(self, device):
-        """Zeroing vs non-zeroing Welford state should not change selection logits."""
         router = make_router(device=device)
         router.eval()
-
         with torch.no_grad():
             router.welford_n.fill_(1000.0)
             router.welford_mu.fill_(0.3)
             router.welford_M2.fill_(10.0)
-
         x = make_input(device=device)
-
-        # Router with Welford data
         _, idx_with, _ = router(x)
-
-        # Reset Welford to zero
         with torch.no_grad():
             router.welford_n.zero_()
             router.welford_mu.zero_()
             router.welford_M2.zero_()
-
         _, idx_without, _ = router(x)
-
-        # Both return None for indices (dense format); compare weights instead
         w_with, _, _ = router(x)
         router.welford_n.zero_()
         router.welford_mu.zero_()
         router.welford_M2.zero_()
         w_without, _, _ = router(x)
-
         assert torch.allclose(w_with, w_without, atol=1e-6), (
             "Welford state must not affect routing decisions (metrics-only)"
         )
@@ -409,13 +357,11 @@ class TestNoiseAnnealing:
         router = self._make_annealing_router(device=device)
         router.train()
         x = make_input(device=device)
-
         n0 = router._current_noise_std()
         run_steps(router, x, 50)
         n50 = router._current_noise_std()
         run_steps(router, x, 50)
         n100 = router._current_noise_std()
-
         assert n50 < n0, "noise_std must decrease during annealing"
         assert n100 < n50, "noise_std must keep decreasing until noise_anneal_steps"
 
@@ -423,7 +369,7 @@ class TestNoiseAnnealing:
         router = self._make_annealing_router(anneal_steps=50, device=device)
         router.train()
         x = make_input(device=device)
-        run_steps(router, x, 100)  # well past anneal_steps
+        run_steps(router, x, 100)
         assert router._current_noise_std() == pytest.approx(0.0, abs=1e-7)
 
     def test_no_annealing_when_disabled(self, device):
@@ -457,33 +403,26 @@ class TestNoiseAnnealing:
 
 class TestPrototypeInit:
     def test_initialize_prototypes_changes_W(self, device):
-        """initialize_prototypes_from_data must update W to non-random values."""
         router = make_router(hidden_dim=64, num_experts=4, device=device)
         W_before = router.W.data.clone()
-
         activations = torch.randn(200, 64, device=device)
         router.initialize_prototypes_from_data(activations)
-
         assert not torch.allclose(router.W.data, W_before), (
             "W must change after prototype initialization"
         )
 
     def test_initialized_prototypes_are_unit_normalized(self, device):
-        """W rows must be unit vectors after initialization."""
         router = make_router(hidden_dim=64, num_experts=4, device=device)
         activations = torch.randn(200, 64, device=device)
         router.initialize_prototypes_from_data(activations)
-
         norms = router.W.data.norm(dim=-1)
         assert torch.allclose(norms, torch.ones_like(norms), atol=1e-5), (
             "All prototype rows must be unit-normalized"
         )
 
     def test_initialized_prototypes_improve_cosine_similarity(self, device):
-        """After init from structured data, mean cos_sim to assigned centroid must exceed 0.3."""
         torch.manual_seed(0)
         hidden_dim, num_experts = 64, 4
-        # Construct clustered data: 4 clusters, 50 tokens each
         cluster_dirs = F.normalize(
             torch.randn(num_experts, hidden_dim, device=device), dim=-1
         )
@@ -494,42 +433,33 @@ class TestPrototypeInit:
             )
             activations.append(tokens)
         activations = torch.cat(activations, dim=0)
-
         router = make_router(
             hidden_dim=hidden_dim, num_experts=num_experts, device=device
         )
         router.initialize_prototypes_from_data(activations, n_iter=30)
-
         W_norm = F.normalize(router.W.data, dim=-1)
         x_norm = F.normalize(activations, dim=-1)
-        cos_sim = (x_norm @ W_norm.T).max(dim=-1).values  # best expert per token
+        cos_sim = (x_norm @ W_norm.T).max(dim=-1).values
         mean_cos = cos_sim.mean().item()
-
         assert mean_cos > 0.3, (
             f"Initialized prototypes should align with clustered data (got {mean_cos:.3f})"
         )
 
     def test_initialize_prototypes_no_crash_with_exact_k_tokens(self, device):
-        """Edge case: exactly num_experts tokens — k-means still runs."""
         router = make_router(hidden_dim=64, num_experts=4, device=device)
         activations = torch.randn(4, 64, device=device)
-        router.initialize_prototypes_from_data(
-            activations, n_iter=5
-        )  # should not raise
+        router.initialize_prototypes_from_data(activations, n_iter=5)
 
     def test_kmeans_init_all_experts_assigned(self, device):
-        """All k centroids must be assigned (no dead centroids for well-separated clusters)."""
         from src.routers.stress_corrected import _kmeans_init
 
         torch.manual_seed(1)
         k = 4
-        # Well-separated clusters
         activations = torch.cat(
             [torch.randn(50, 32, device=device) + i * 10.0 for i in range(k)], dim=0
         )
         centroids = _kmeans_init(activations, k=k, n_iter=20)
         assert centroids.shape == (k, 32)
-        # All centroids should be non-zero (assigned)
         norms = centroids.norm(dim=-1)
         assert (norms > 0).all(), (
             "All centroids must be assigned for well-separated clusters"

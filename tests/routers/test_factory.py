@@ -1,5 +1,4 @@
 import pytest
-
 from src.configs.router import (
     MetabolicRouterConfig,
     StandardRouterConfig,
@@ -9,13 +8,13 @@ from src.configs.router import (
     ExpertChoiceRouterConfig,
     StressCorrectedRouterConfig,
 )
+
 from src.routers.factory import create_router, create_router_from_config
 from src.routers.metabolic import MetabolicRouter
 from src.routers.standard import StandardRouter, SwitchRouter, TopKRouter
 from src.routers.deepseek import DeepSeekRouter
 from src.routers.expert_choice import ExpertChoiceRouter
 from src.routers.stress_corrected import StressCorrectedRouter
-
 
 COMMON = dict(hidden_dim=32, num_experts=4, top_k=2)
 
@@ -61,7 +60,6 @@ class TestCreateRouterFromConfig:
         assert isinstance(router, StandardRouter)
 
     def test_switch_config_creates_switch_router(self):
-        # Regression: SwitchRouterConfig must dispatch to SwitchRouter, not StandardRouter
         config = SwitchRouterConfig(hidden_dim=32, num_experts=4, top_k=1)
         router = create_router_from_config(config)
         assert isinstance(router, SwitchRouter), (

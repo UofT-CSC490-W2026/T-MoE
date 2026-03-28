@@ -13,9 +13,7 @@ def test_remap_legacy_moe_state_dict_maps_router_and_lora_keys():
         "backbone.transformer.h.3.mlp.experts.2.fc2.lora_B.weight": "already_backbone_fc2_b",
         "backbone.transformer.wte.weight": "token_embed",
     }
-
     remapped, changed = _remap_legacy_moe_state_dict(legacy_state_dict)
-
     assert changed is True
     assert (
         remapped["backbone.transformer.h.1.mlp.router.gate.weight"] == "router_weight"

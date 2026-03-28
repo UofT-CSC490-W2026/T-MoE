@@ -1,10 +1,8 @@
 from pathlib import Path
-
 from scripts.eval import main, run_task
 
 
 def _fake_load_model(monkeypatch):
-    """Patch load_model_for_eval to avoid needing real checkpoints."""
     monkeypatch.setattr(
         "evals.loading.load_model_for_eval",
         lambda **kwargs: (object(), {}),
@@ -31,7 +29,6 @@ def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
     _fake_load_model(monkeypatch)
-
     result = main(
         [
             "--task",
@@ -51,7 +48,6 @@ def test_run_task_dispatches_perplexity(monkeypatch, tmp_path):
             "training.lr=1e-4",
         ]
     )
-
     assert result["task"] == "perplexity"
     assert captured["config_arg"] == "experiments/smoketest.yaml"
     assert captured["overrides"] == ["training.lr=1e-4"]
@@ -81,7 +77,6 @@ def test_run_task_uses_default_eval_dir(monkeypatch):
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
     _fake_load_model(monkeypatch)
-
     main(
         [
             "--task",
@@ -92,7 +87,6 @@ def test_run_task_uses_default_eval_dir(monkeypatch):
             "demo_exp",
         ]
     )
-
     assert captured["output_path"] == Path("outputs/demo_exp/eval/perplexity.json")
 
 
@@ -101,7 +95,6 @@ def test_run_task_rejects_unimplemented_tasks(monkeypatch):
         "scripts.eval.load_experiment_config",
         lambda *args, **kwargs: {"experiment_name": "demo"},
     )
-
     args = type(
         "Args",
         (),
@@ -126,7 +119,6 @@ def test_run_task_rejects_unimplemented_tasks(monkeypatch):
             "overrides": [],
         },
     )()
-
     monkeypatch.setattr(
         "scripts.eval.run_lm_harness_eval",
         lambda **kwargs: {"task": "lm_harness"},
@@ -135,7 +127,6 @@ def test_run_task_rejects_unimplemented_tasks(monkeypatch):
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
     _fake_load_model(monkeypatch)
-
     assert run_task(args)["task"] == "lm_harness"
 
 
@@ -144,7 +135,6 @@ def test_run_task_dispatches_lm_harness(monkeypatch, tmp_path):
         "scripts.eval.load_experiment_config",
         lambda *args, **kwargs: {"experiment_name": "demo"},
     )
-
     captured = {}
 
     def fake_run_lm_harness_eval(**kwargs):
@@ -156,7 +146,6 @@ def test_run_task_dispatches_lm_harness(monkeypatch, tmp_path):
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
     _fake_load_model(monkeypatch)
-
     result = main(
         [
             "--task",
@@ -173,7 +162,6 @@ def test_run_task_dispatches_lm_harness(monkeypatch, tmp_path):
             "16",
         ]
     )
-
     assert result["task"] == "lm_harness"
     assert captured["output_path"] == Path("outputs/demo/eval/lm_harness.json")
     assert captured["device"] == "cpu"
@@ -186,7 +174,6 @@ def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
         "scripts.eval.load_experiment_config",
         lambda *args, **kwargs: {"experiment_name": "demo"},
     )
-
     captured = {}
 
     def fake_run_efficiency_eval(**kwargs):
@@ -198,7 +185,6 @@ def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
     _fake_load_model(monkeypatch)
-
     result = main(
         [
             "--task",
@@ -219,7 +205,6 @@ def test_run_task_dispatches_efficiency(monkeypatch, tmp_path):
             str(tmp_path / "checkpoint_step_200.pt"),
         ]
     )
-
     assert result["task"] == "efficiency"
     assert captured["output_path"] == Path("outputs/demo/eval/efficiency.json")
     assert captured["device"] == "cpu"
@@ -234,7 +219,6 @@ def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
         "scripts.eval.load_experiment_config",
         lambda *args, **kwargs: {"experiment_name": "demo"},
     )
-
     payload = {
         "task": "perplexity",
         "experiment_name": "demo",
@@ -243,7 +227,6 @@ def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
         "metadata": {},
     }
     monkeypatch.setattr("scripts.eval.run_perplexity_eval", lambda **kwargs: payload)
-
     captured = {}
 
     def fake_log_results_to_wandb(payload, config):
@@ -253,7 +236,6 @@ def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
 
     monkeypatch.setattr("scripts.eval.log_results_to_wandb", fake_log_results_to_wandb)
     _fake_load_model(monkeypatch)
-
     result = main(
         [
             "--task",
@@ -264,7 +246,6 @@ def test_run_task_logs_eval_payload_to_wandb(monkeypatch, tmp_path):
             "demo",
         ]
     )
-
     assert result is payload
     assert captured["payload"] is payload
     assert captured["config"] == {"experiment_name": "demo"}
@@ -277,12 +258,10 @@ def test_run_task_sweeps_all_checkpoints_into_history_outputs(monkeypatch, tmp_p
     second = checkpoint_dir / "checkpoint_step_200.pt"
     first.write_text("stub", encoding="utf-8")
     second.write_text("stub", encoding="utf-8")
-
     monkeypatch.setattr(
         "scripts.eval.load_experiment_config",
         lambda *args, **kwargs: {"experiment_name": "demo"},
     )
-
     captured = []
 
     def fake_run_perplexity_eval(**kwargs):
@@ -300,7 +279,6 @@ def test_run_task_sweeps_all_checkpoints_into_history_outputs(monkeypatch, tmp_p
         "scripts.eval.log_results_to_wandb", lambda payload, config: True
     )
     _fake_load_model(monkeypatch)
-
     result = main(
         [
             "--task",
@@ -312,7 +290,6 @@ def test_run_task_sweeps_all_checkpoints_into_history_outputs(monkeypatch, tmp_p
             "demo",
         ]
     )
-
     assert [payload["checkpoint_step"] for payload in result] == [100, 200]
     assert captured[0]["output_path"] == Path(
         "outputs/demo/eval/history/checkpoint_step_100/perplexity.json"

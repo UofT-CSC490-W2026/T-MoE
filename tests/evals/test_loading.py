@@ -1,5 +1,4 @@
 import torch
-
 import evals.loading as loading
 from evals.loading import build_model_from_config, load_model_for_eval
 from src.layers.lora_moe import LoRAMoELayer
@@ -99,9 +98,7 @@ def _patch_model_registry(monkeypatch):
 
 def test_build_model_from_config_injects_requested_moe_layers(monkeypatch):
     _patch_model_registry(monkeypatch)
-
     model = build_model_from_config(_test_config(), device="cuda:0")
-
     assert set(model.moe_layers.keys()) == {"1", "3", "5"}
     assert model.to_calls[-1]["device"] == "cuda:0"
     assert model.to_calls[-1]["dtype"] is None
@@ -124,16 +121,13 @@ def test_load_model_for_eval_returns_checkpoint_info(monkeypatch, tmp_path):
 
     _patch_model_registry(monkeypatch)
     monkeypatch.setattr(CheckpointManager, "load_checkpoint", fake_load_checkpoint)
-
     checkpoint_path = tmp_path / "checkpoint_step_42.pt"
     checkpoint_path.write_bytes(b"placeholder")
-
     model, checkpoint_info = load_model_for_eval(
         _test_config(),
         checkpoint_path=checkpoint_path,
         device="cpu",
     )
-
     assert checkpoint_info["step"] == 42
     assert checkpoint_info["metrics"]["loss"] == 1.23
     assert model.loaded_checkpoint_path == checkpoint_path
@@ -155,16 +149,13 @@ def test_load_model_for_eval_applies_explicit_dtype(monkeypatch, tmp_path):
 
     _patch_model_registry(monkeypatch)
     monkeypatch.setattr(CheckpointManager, "load_checkpoint", fake_load_checkpoint)
-
     checkpoint_path = tmp_path / "checkpoint_step_42.pt"
     checkpoint_path.write_bytes(b"placeholder")
-
     model, _ = load_model_for_eval(
         _test_config(),
         checkpoint_path=checkpoint_path,
         device="cuda:0",
         dtype=torch.bfloat16,
     )
-
     assert model.to_calls[-1]["device"] == "cuda:0"
     assert model.to_calls[-1]["dtype"] == "torch.bfloat16"

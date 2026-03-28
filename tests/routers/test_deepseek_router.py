@@ -1,5 +1,4 @@
 import torch
-
 from src.configs.router import DeepSeekRouterConfig
 from src.routers.deepseek import DeepSeekRouter
 
@@ -11,12 +10,9 @@ def test_deepseek_router_forward(device):
     router = DeepSeekRouter(config).to(device)
     x = torch.randn(2, 4, config.hidden_dim, device=device)
     weights, indices, metrics = router(x, return_metrics=True)
-
     N = 2 * 4
     assert weights.shape == (N, config.num_experts)
     assert indices is None
     assert router.bias.shape == (4,)
-
-    # Step to accumulate fatigue/bias load balance
     router.step()
     assert not torch.allclose(router.bias, torch.zeros_like(router.bias))

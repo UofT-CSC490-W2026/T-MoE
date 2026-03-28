@@ -1,6 +1,5 @@
 import pytest
 from pathlib import Path
-
 from src.configs.dataset import (
     DATASET_REGISTRY,
     get_dataset_info,
@@ -27,7 +26,6 @@ class TestDatasetRegistry:
     def test_streaming_datasets_have_no_val(self):
         for key, info in DATASET_REGISTRY.items():
             if info["streaming"]:
-                # Large streaming datasets typically have no val split
                 val = info["splits"].get("val")
                 assert val is None or isinstance(val, str)
 
@@ -60,7 +58,6 @@ class TestGetShardDir:
         assert str(path).startswith("/tmp/shards")
 
     def test_same_tokenizer_models_share_dir(self):
-        """gpt-neo-125m and gpt-neo-1.3b use the same tokenizer."""
         path_125m = get_shard_dir("fineweb-edu", "gpt-neo-125m")
         path_1b = get_shard_dir("fineweb-edu", "gpt-neo-1.3b")
         assert path_125m == path_1b

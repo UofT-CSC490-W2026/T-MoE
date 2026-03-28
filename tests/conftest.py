@@ -3,10 +3,14 @@ import torch
 from typing import Tuple
 from src.configs.router import MetabolicRouterConfig
 
+try:
+    import datasets  # noqa: F401
+except Exception:
+    pass
+
 
 @pytest.fixture
 def device() -> torch.device:
-    """Auto-detect available device for device-agnostic testing."""
     if torch.cuda.is_available():
         return torch.device("cuda")
     elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -16,7 +20,6 @@ def device() -> torch.device:
 
 @pytest.fixture
 def standard_config() -> MetabolicRouterConfig:
-    """Standard metabolic router configuration for testing (v6 formulation)."""
     return MetabolicRouterConfig(
         hidden_dim=256,
         num_experts=8,
@@ -32,7 +35,6 @@ def standard_config() -> MetabolicRouterConfig:
 
 @pytest.fixture
 def minimal_config() -> MetabolicRouterConfig:
-    """Minimal configuration for edge case testing."""
     return MetabolicRouterConfig(
         hidden_dim=64,
         num_experts=2,
@@ -48,7 +50,6 @@ def minimal_config() -> MetabolicRouterConfig:
 
 @pytest.fixture
 def router(standard_config, device):
-    """Initialized metabolic router instance."""
     from src.routers.metabolic import MetabolicRouter
 
     router = MetabolicRouter(standard_config)
@@ -57,26 +58,23 @@ def router(standard_config, device):
 
 @pytest.fixture
 def test_input(device) -> torch.Tensor:
-    """Standard test input tensor [batch=2, seq=4, hidden=256]."""
     return torch.randn(2, 4, 256, device=device)
 
 
 @pytest.fixture(
     params=[
-        (1, 1, 64),  # Minimal: single token
-        (2, 4, 256),  # Standard: small batch
-        (8, 16, 512),  # Large: bigger hidden dim
+        (1, 1, 64),
+        (2, 4, 256),
+        (8, 16, 512),
     ]
 )
 def parametric_input(request, device) -> Tuple[torch.Tensor, Tuple[int, int, int]]:
-    """Parametric test inputs with various shapes."""
     batch, seq, hidden = request.param
     return torch.randn(batch, seq, hidden, device=device), (batch, seq, hidden)
 
 
 @pytest.fixture
 def zero_fatigue_router(standard_config, device):
-    """Router with fatigue explicitly reset to zero."""
     from src.routers.metabolic import MetabolicRouter
 
     router = MetabolicRouter(standard_config).to(device)
