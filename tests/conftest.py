@@ -3,6 +3,11 @@ import torch
 from typing import Tuple
 from src.configs.router import MetabolicRouterConfig
 
+try:
+    import datasets  # noqa: F401
+except Exception:
+    pass
+
 
 @pytest.fixture
 def device() -> torch.device:
