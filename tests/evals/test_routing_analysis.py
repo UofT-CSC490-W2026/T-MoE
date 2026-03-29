@@ -226,6 +226,10 @@ class _StubLoRAMoELayer(nn.Module):
         return hidden
 
 
+# Patch target for isinstance check in _attach_routing_hooks
+_LORA_MOE_ISINSTANCE_PATH = "evals.routing_analysis.LoRAMoELayer"
+
+
 class _StubMoEModel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -251,108 +255,67 @@ class TestRunRoutingAnalysisIntegration:
     def _make_config(self):
         return {"model": {"model_key": "gpt-neo-125m"}}
 
-    @patch("evals.routing_analysis.load_model_for_eval")
-    @patch("evals.routing_analysis.model_lookup")
-    @patch("evals.routing_analysis.AutoTokenizer")
-    def test_returns_payload_with_expected_keys(
-        self, mock_auto_tok, mock_model_lookup, mock_load
-    ):
+    def _run(self, texts, **kwargs):
+        """Helper: run routing analysis with the stub model, patching isinstance."""
         from evals.routing_analysis import run_routing_analysis
 
         stub_model = _StubMoEModel()
         stub_model.eval()
-        mock_load.return_value = (stub_model, {"step": 100})
-        mock_model_lookup.return_value = {"hf_name": "EleutherAI/gpt-neo-125m"}
-        mock_auto_tok.from_pretrained.return_value = _StubTokenizer()
 
-        payload = run_routing_analysis(
-            config=self._make_config(),
-            checkpoint_path="/fake/ckpt.pt",
-            model=stub_model,
-            checkpoint_info={"step": 100},
+        with (
+            patch(
+                "evals.routing_analysis.load_model_for_eval",
+                return_value=(stub_model, {"step": 100}),
+            ),
+            patch(
+                "evals.routing_analysis.model_lookup",
+                return_value={"hf_name": "EleutherAI/gpt-neo-125m"},
+            ),
+            patch("evals.routing_analysis.AutoTokenizer") as mock_tok,
+            # _attach_routing_hooks does a local `from src.layers.lora_moe import LoRAMoELayer`
+            # so we must patch the source module, not the routing_analysis namespace.
+            patch("src.layers.lora_moe.LoRAMoELayer", _StubLoRAMoELayer),
+        ):
+            mock_tok.from_pretrained.return_value = _StubTokenizer()
+            return run_routing_analysis(
+                config=self._make_config(),
+                checkpoint_path="/fake/ckpt.pt",
+                model=stub_model,
+                checkpoint_info={"step": 100},
+                texts=texts,
+                device="cpu",
+                **kwargs,
+            )
+
+    def test_returns_payload_with_expected_keys(self):
+        payload = self._run(
             texts=["hello world foo bar baz"] * 5,
             n_samples=5,
             max_length=16,
             top_n_tokens=10,
-            device="cpu",
         )
-
         assert payload["task"] == "routing_analysis"
         assert "results" in payload
         assert "summary" in payload["metadata"]
         assert "full_analysis" in payload["metadata"]
 
-    @patch("evals.routing_analysis.load_model_for_eval")
-    @patch("evals.routing_analysis.model_lookup")
-    @patch("evals.routing_analysis.AutoTokenizer")
-    def test_samples_processed_matches_input(
-        self, mock_auto_tok, mock_model_lookup, mock_load
-    ):
-        from evals.routing_analysis import run_routing_analysis
-
-        stub_model = _StubMoEModel()
-        stub_model.eval()
-        mock_load.return_value = (stub_model, {})
-        mock_model_lookup.return_value = {"hf_name": "EleutherAI/gpt-neo-125m"}
-        mock_auto_tok.from_pretrained.return_value = _StubTokenizer()
-
-        payload = run_routing_analysis(
-            config=self._make_config(),
-            checkpoint_path="/fake/ckpt.pt",
-            model=stub_model,
-            checkpoint_info={},
-            texts=["abc def ghi"] * 8,
-            device="cpu",
-        )
-
+    def test_samples_processed_matches_input(self):
+        payload = self._run(texts=["abc def ghi"] * 8)
         assert payload["results"]["samples_processed"] == pytest.approx(8.0)
 
-    @patch("evals.routing_analysis.load_model_for_eval")
-    @patch("evals.routing_analysis.model_lookup")
-    @patch("evals.routing_analysis.AutoTokenizer")
-    def test_empty_texts_skipped(self, mock_auto_tok, mock_model_lookup, mock_load):
-        from evals.routing_analysis import run_routing_analysis
-
-        stub_model = _StubMoEModel()
-        stub_model.eval()
-        mock_load.return_value = (stub_model, {})
-        mock_model_lookup.return_value = {"hf_name": "EleutherAI/gpt-neo-125m"}
-        mock_auto_tok.from_pretrained.return_value = _StubTokenizer()
-
-        payload = run_routing_analysis(
-            config=self._make_config(),
-            checkpoint_path="/fake/ckpt.pt",
-            model=stub_model,
-            checkpoint_info={},
-            texts=["hello world", "", "   ", "foo bar"],
-            device="cpu",
-        )
-
+    def test_empty_texts_skipped(self):
+        payload = self._run(texts=["hello world", "", "   ", "foo bar"])
         assert payload["results"]["samples_processed"] == pytest.approx(2.0)
 
-    @patch("evals.routing_analysis.load_model_for_eval")
-    @patch("evals.routing_analysis.model_lookup")
-    @patch("evals.routing_analysis.AutoTokenizer")
-    def test_summary_rows_have_required_fields(
-        self, mock_auto_tok, mock_model_lookup, mock_load
-    ):
-        from evals.routing_analysis import run_routing_analysis
-
-        stub_model = _StubMoEModel()
-        stub_model.eval()
-        mock_load.return_value = (stub_model, {})
-        mock_model_lookup.return_value = {"hf_name": "EleutherAI/gpt-neo-125m"}
-        mock_auto_tok.from_pretrained.return_value = _StubTokenizer()
-
-        payload = run_routing_analysis(
-            config=self._make_config(),
-            checkpoint_path="/fake/ckpt.pt",
-            model=stub_model,
-            checkpoint_info={},
-            texts=["hello world test"] * 3,
-            device="cpu",
+    def test_summary_rows_non_empty(self):
+        """Hooks must fire and produce at least one summary row."""
+        payload = self._run(texts=["hello world test"] * 3)
+        assert len(payload["metadata"]["summary"]) > 0, (
+            "summary is empty — routing hooks did not fire"
         )
 
+    def test_summary_rows_have_required_fields(self):
+        payload = self._run(texts=["hello world test"] * 3)
         required = {
             "layer",
             "expert",
@@ -362,34 +325,15 @@ class TestRunRoutingAnalysisIntegration:
             "specialization_score",
             "top_5_tokens",
         }
+        assert len(payload["metadata"]["summary"]) > 0, "summary is empty"
         for row in payload["metadata"]["summary"]:
             assert required.issubset(row.keys()), (
                 f"Missing keys: {required - row.keys()}"
             )
 
-    @patch("evals.routing_analysis.load_model_for_eval")
-    @patch("evals.routing_analysis.model_lookup")
-    @patch("evals.routing_analysis.AutoTokenizer")
-    def test_specialization_score_in_valid_range(
-        self, mock_auto_tok, mock_model_lookup, mock_load
-    ):
-        from evals.routing_analysis import run_routing_analysis
-
-        stub_model = _StubMoEModel()
-        stub_model.eval()
-        mock_load.return_value = (stub_model, {})
-        mock_model_lookup.return_value = {"hf_name": "EleutherAI/gpt-neo-125m"}
-        mock_auto_tok.from_pretrained.return_value = _StubTokenizer()
-
-        payload = run_routing_analysis(
-            config=self._make_config(),
-            checkpoint_path="/fake/ckpt.pt",
-            model=stub_model,
-            checkpoint_info={},
-            texts=["the quick brown fox jumps"] * 10,
-            device="cpu",
-        )
-
+    def test_specialization_score_in_valid_range(self):
+        payload = self._run(texts=["the quick brown fox jumps"] * 10)
+        assert len(payload["metadata"]["summary"]) > 0, "summary is empty"
         for row in payload["metadata"]["summary"]:
             score = row["specialization_score"]
             assert 0.0 <= score <= 1.0, (
