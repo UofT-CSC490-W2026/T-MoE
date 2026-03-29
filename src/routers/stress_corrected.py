@@ -41,14 +41,13 @@ class StressCorrectedRouter(BaseRouter):
     r"""
     SPAR Router — symmetric load-corrected cosine routing, no auxiliary loss.
 
-    Selection:   z_i(x) = cos(x, W_i) - λ·(L_i - 1/N)
+    Selection:   z_i(x) = cos(x, W_i) - λ·(L_i - k/N)
     Output wt:   w_i = softmax(cos(x, W_i) / τ)  over top-k selected experts
     Lambda:      λ = min(σ_cos · N, 5.0), calibrated once post-warmup
                  σ_cos = within-token inter-expert std (averaged across tokens)
     Load EMA:    L_i(t) = (1-α)·L_i(t-1) + α·U_i(t)
-                 U_i = soft output weight fraction (not hard count) — at τ=0.1
-                 the dominant expert gets ~2× its selection-frequency share, so
-                 soft tracking prevents penalty under-correction.
+                 U_i = hard dispatch fraction (1/k per top-k token, NOT soft weights)
+                 Fair share is k/N; ∑_i L_i = k/N * N = k = top_k.
     """
 
     def __init__(self, config: StressCorrectedRouterConfig):
@@ -72,7 +71,8 @@ class StressCorrectedRouter(BaseRouter):
             F.normalize(torch.randn(config.num_experts, config.hidden_dim), dim=-1)
         )
         self.register_buffer(
-            "ema_load", torch.ones(config.num_experts) / config.num_experts
+            "ema_load",
+            torch.ones(config.num_experts) * (config.top_k / config.num_experts),
         )
         self.register_buffer("lambda_val", torch.tensor(config.lambda_init))
         self.register_buffer("lambda_initialized", torch.tensor(False))
@@ -192,19 +192,22 @@ class StressCorrectedRouter(BaseRouter):
     def _update_load_and_welford(
         self,
         topk_idx: torch.Tensor,
-        topk_weights: torch.Tensor,
         cos_sim: torch.Tensor,
     ) -> None:
         # @dynamo.disable: this function mutates buffers; keeping it out of the
         # compiled graph avoids version-counter conflicts on _pending_counts.
         with torch.no_grad():
             counts = torch.zeros(self.num_experts, device=topk_idx.device)
-            counts.scatter_add_(
-                0,
-                topk_idx.flatten().clamp(min=0),
-                topk_weights.flatten().to(counts.dtype),
+            # Hard dispatch: each selected (token, expert) pair contributes 1 count.
+            # Divide by n_tokens so L_i = invocation probability ∈ [0, 1],
+            # summing to top_k. Fair share = top_k/N; penalty activates exactly
+            # when expert exceeds its dispatch fair share (not k× fair share).
+            n_tokens = topk_idx.numel() // self.top_k  # B*S
+            ones = torch.ones(
+                topk_idx.numel(), device=topk_idx.device, dtype=counts.dtype
             )
-            counts.div_(counts.sum().clamp(min=1e-8))
+            counts.scatter_add_(0, topk_idx.flatten().clamp(min=0), ones)
+            counts.div_(n_tokens)
             self._pending_counts.add_(counts)
             self._pending_count_n.add_(1)
             self._update_welford(cos_sim, topk_idx)
@@ -234,7 +237,11 @@ class StressCorrectedRouter(BaseRouter):
             noise = used_noise * (-torch.log(-torch.log(u)))
 
         ema_load = self._read_ema_load()
-        logits = cos_sim - self.lambda_val * (ema_load - 1.0 / self.num_experts) + noise
+        logits = (
+            cos_sim
+            - self.lambda_val * (ema_load - self.top_k / self.num_experts)
+            + noise
+        )
         topk_vals, topk_idx = logits.topk(self.top_k, dim=-1)  # [B, S, k]
 
         tau = max(
@@ -255,9 +262,7 @@ class StressCorrectedRouter(BaseRouter):
         expert_weights = expert_weights.scatter(1, topk_idx_flat, topk_weights_flat)
 
         if self.training and record_usage:
-            self._update_load_and_welford(
-                topk_idx.detach(), topk_weights.detach(), cos_sim.detach()
-            )
+            self._update_load_and_welford(topk_idx.detach(), cos_sim.detach())
 
         metrics = None
         if return_metrics:
@@ -422,7 +427,7 @@ class StressCorrectedRouter(BaseRouter):
 
     def reset_state(self) -> None:
         with torch.no_grad():
-            self.ema_load.fill_(1.0 / self.num_experts)
+            self.ema_load.fill_(self.top_k / self.num_experts)
             self.lambda_val.fill_(self.config.lambda_init)
             self.lambda_initialized.fill_(False)
             self.welford_n.zero_()

@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import multiprocessing
+import os
 import struct
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -109,7 +110,7 @@ def get_tokenizer(model_key: str):
     hf_name = model_info["hf_name"]
 
     print(f"Loading tokenizer: {hf_name}")
-    tokenizer = AutoTokenizer.from_pretrained(hf_name)
+    tokenizer = AutoTokenizer.from_pretrained(hf_name, token=os.environ.get("HF_TOKEN"))
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.model_max_length = int(
@@ -130,7 +131,9 @@ def _tokenize_batch(args: tuple) -> list[list[int]]:
     if _worker_tok is None or _worker_tok_name != tokenizer_name:
         from transformers import AutoTokenizer
 
-        _worker_tok = AutoTokenizer.from_pretrained(tokenizer_name)
+        _worker_tok = AutoTokenizer.from_pretrained(
+            tokenizer_name, token=os.environ.get("HF_TOKEN")
+        )
         _worker_tok.model_max_length = int(1e30)
         _worker_tok_name = tokenizer_name
     results = []
@@ -167,7 +170,9 @@ def _iter_token_arrays(
     if is_streaming:
         from transformers import AutoTokenizer
 
-        tok = AutoTokenizer.from_pretrained(tokenizer_name)
+        tok = AutoTokenizer.from_pretrained(
+            tokenizer_name, token=os.environ.get("HF_TOKEN")
+        )
 
         batch_texts: list[str] = []
         for example in dataset:
@@ -248,6 +253,7 @@ def tokenize_and_pack(
             split=hf_split,
             streaming=use_streaming,
             cache_dir=cache_dir,
+            token=os.environ.get("HF_TOKEN"),
         )
 
         shard_index = 0

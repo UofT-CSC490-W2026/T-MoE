@@ -390,7 +390,11 @@ def build_optimizer(model: torch.nn.Module, cfg) -> torch.optim.Optimizer:
                 base_params.append(p)
                 base_param_ids.add(id(p))
 
-    # Everything else.
+    # Single param group — preserves fused=True AdamW kernel (splitting groups with
+    # different weight_decay disables the CUDA fused path in PyTorch 2.10, causing
+    # ~3x throughput regression). Weight decay on router.W is neutralized post-step
+    # via renormalization in the training loop (router.W is L2-normalized in forward
+    # anyway, so the unit-sphere constraint eliminates the weight decay effect).
     other_params = [
         p for p in model.parameters() if p.requires_grad and id(p) not in base_param_ids
     ]

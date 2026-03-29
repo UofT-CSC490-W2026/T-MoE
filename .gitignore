@@ -17,6 +17,7 @@ venv/
 # Testing
 .pytest_cache/
 .ruff_cache/
+.hypothesis/
 
 # Logging & Research
 wandb/
@@ -24,6 +25,7 @@ outputs/
 logs/
 *.log
 runs/
+plots/
 
 # System
 .DS_Store

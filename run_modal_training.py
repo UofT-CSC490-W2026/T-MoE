@@ -32,7 +32,7 @@ from omegaconf import OmegaConf
 # CONFIGURATION — change this one line to switch experiments
 # =============================================================================
 
-CONFIG = "experiments/qwen2_1.5b_stress_v2-fineweb.yaml"
+CONFIG = "experiments/qwen2_1.5b_stress_v3-fineweb.yaml"
 
 # GPU spec is read from compute.modal.gpu in the active config.
 # Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
@@ -197,6 +197,14 @@ def _resolve_eval_checkpoint(cfg, checkpoint: str, all_checkpoints: bool) -> str
     return _resolve_runtime_path(checkpoint)
 
 
+def _hf_env(base_env: dict) -> dict:
+    """Return base_env with HF_TOKEN injected if available in os.environ."""
+    token = os.environ.get("HF_TOKEN")
+    if token:
+        return {**base_env, "HF_TOKEN": token}
+    return base_env
+
+
 # ---------------------------------------------------------------------------
 # Stage 1: Data Preparation (CPU — cheap, run once per dataset)
 # ---------------------------------------------------------------------------
@@ -247,7 +255,7 @@ def stage_data(config: str = CONFIG, force: bool = False):  # noqa: B008
         ],
         cwd="/app",
         check=True,
-        env={**os.environ, "HF_DATASETS_CACHE": hf_cache, "HF_HOME": hf_cache},
+        env=_hf_env({**os.environ, "HF_DATASETS_CACHE": hf_cache, "HF_HOME": hf_cache}),
     )
     volume.commit()
     print(f"[stage_data] Done → {out_dir}")
@@ -309,7 +317,9 @@ def stage_eval_data(config: str = CONFIG, force: bool = False):  # noqa: B008
             ],
             cwd="/app",
             check=True,
-            env={**os.environ, "HF_DATASETS_CACHE": hf_cache, "HF_HOME": hf_cache},
+            env=_hf_env(
+                {**os.environ, "HF_DATASETS_CACHE": hf_cache, "HF_HOME": hf_cache}
+            ),
         )
 
     volume.commit()
@@ -495,11 +505,13 @@ def stage_eval(
                     ],
                     cwd="/app",
                     check=True,
-                    env={
-                        **os.environ,
-                        "HF_DATASETS_CACHE": hf_cache,
-                        "HF_HOME": hf_cache,
-                    },
+                    env=_hf_env(
+                        {
+                            **os.environ,
+                            "HF_DATASETS_CACHE": hf_cache,
+                            "HF_HOME": hf_cache,
+                        }
+                    ),
                 )
                 volume.commit()
                 print(f"[stage_eval] Eval shards ready: {out_dir}")
@@ -548,12 +560,14 @@ def stage_eval(
             cmd,
             cwd="/app",
             check=True,
-            env={
-                **os.environ,
-                "HF_DATASETS_CACHE": hf_cache,
-                "HF_HOME": hf_cache,
-                "SHARD_BASE_DIR": SHARDS_DIR,
-            },
+            env=_hf_env(
+                {
+                    **os.environ,
+                    "HF_DATASETS_CACHE": hf_cache,
+                    "HF_HOME": hf_cache,
+                    "SHARD_BASE_DIR": SHARDS_DIR,
+                }
+            ),
         )
 
     # ---------------------------------------------------------------------------

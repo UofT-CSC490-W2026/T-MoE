@@ -2,6 +2,7 @@ from evals.efficiency import run_efficiency_eval
 from evals.loading import build_model_from_config, load_model_for_eval
 from evals.lm_harness_runner import run_lm_harness_eval
 from evals.perplexity import run_perplexity_eval
+from evals.routing_analysis import run_routing_analysis
 from evals.results_schema import (
     build_results_payload,
     flatten_scalars,
@@ -17,6 +18,7 @@ __all__ = [
     "load_model_for_eval",
     "run_lm_harness_eval",
     "run_perplexity_eval",
+    "run_routing_analysis",
     "build_results_payload",
     "flatten_scalars",
     "get_git_commit",
