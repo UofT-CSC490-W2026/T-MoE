@@ -79,6 +79,16 @@ def parse_args():
             "Ignored for streaming datasets (streaming tokenizes sequentially)."
         ),
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default=None,
+        help=(
+            "HuggingFace datasets cache directory. "
+            "Pass the S3-downloaded data path to avoid re-downloading from the hub "
+            "(required in VPC-isolated environments)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -200,7 +210,9 @@ def _iter_token_arrays(
                     print(f"  ... {docs_done:,} docs tokenized ({i} batches)")
 
 
-def tokenize_and_pack(cfg, out_dir: Path, num_proc: int = 1) -> None:
+def tokenize_and_pack(
+    cfg, out_dir: Path, num_proc: int = 1, cache_dir: str | None = None
+) -> None:
     from datasets import load_dataset
 
     dataset_key = cfg.dataset.dataset_key
@@ -235,6 +247,7 @@ def tokenize_and_pack(cfg, out_dir: Path, num_proc: int = 1) -> None:
             name=dataset_info.get("hf_name"),
             split=hf_split,
             streaming=use_streaming,
+            cache_dir=cache_dir,
         )
 
         shard_index = 0
@@ -322,7 +335,7 @@ def main():
     else:
         out_dir = get_shard_dir(dataset_key, cfg.model.model_key)
 
-    tokenize_and_pack(cfg, out_dir, num_proc=num_proc)
+    tokenize_and_pack(cfg, out_dir, num_proc=num_proc, cache_dir=args.cache_dir)
     print(f"Data preparation complete. Shards written to: {out_dir}")
 
 

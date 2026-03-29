@@ -264,11 +264,11 @@ def download_dataset_from_s3(pipeline_config, cache_dir: str) -> None:
     for archive in cache_path.glob("*.tar.gz"):
         logger.info("Extracting %s", archive.name)
         with tarfile.open(archive, "r:gz") as tar:
-            tar.extractall(cache_path)
+            tar.extractall(cache_path, filter="data")
     for archive in cache_path.glob("*.tar"):
         logger.info("Extracting %s", archive.name)
         with tarfile.open(archive, "r") as tar:
-            tar.extractall(cache_path)
+            tar.extractall(cache_path, filter="data")
     for archive in cache_path.glob("*.zip"):
         logger.info("Extracting %s", archive.name)
         with zipfile.ZipFile(archive, "r") as zip_ref:
@@ -284,7 +284,8 @@ def upload_outputs_to_s3(pipeline_config, output_dir: str) -> None:
     from infra.s3client.s3_sync import upload_experiment_dir
 
     output_path = Path(output_dir)
-    s3_prefix = f"experiments/{output_path.name}/"
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    s3_prefix = f"checkpoints/{output_path.name}/{timestamp}/"
 
     result = upload_experiment_dir(
         local_dir=output_dir,
@@ -372,8 +373,7 @@ def submit_batch_job(
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     job_name = f"tmoe-training-{config_name}-{timestamp}"
 
-    # Job command (only arguments, since entrypoint is python run_aws_training.py --mode container)
-    command = ["--config", config_name]
+    command = ["--mode", "container", "--config", config_name]
     if overrides:
         command.extend(overrides)
 
@@ -382,6 +382,7 @@ def submit_batch_job(
         {"name": "RAW_DATA_BUCKET", "value": pipeline_config.raw_data_bucket},
         {"name": "AWS_REGION", "value": pipeline_config.aws_region},
         {"name": "ENVIRONMENT", "value": os.environ.get("ENVIRONMENT", "dev")},
+        {"name": "DATASET_NAME", "value": pipeline_config.dataset_name},
     ]
 
     if wandb_api_key := os.environ.get("WANDB_API_KEY"):

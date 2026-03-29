@@ -21,7 +21,7 @@ resource "aws_launch_template" "batch_gpu" {
 }
 
 resource "aws_batch_compute_environment" "gpu_spot" {
-  compute_environment_name = "${var.project_name}-${var.environment}-cpu-verify-v2"
+  compute_environment_name = "${var.project_name}-${var.environment}-gpu-v1"
   type                     = "MANAGED"
   state                    = "ENABLED"
   service_role             = aws_iam_role.batch_service.arn
@@ -37,7 +37,7 @@ resource "aws_batch_compute_environment" "gpu_spot" {
     instance_role       = aws_iam_instance_profile.batch_ecs.arn
 
     ec2_configuration {
-      image_type = "ECS_AL2023"
+      image_type = "ECS_AL2023_NVIDIA"
     }
 
     launch_template {
@@ -108,7 +108,7 @@ resource "aws_batch_job_definition" "training" {
 
   container_properties = jsonencode({
     image   = "${aws_ecr_repository.training.repository_url}:latest"
-    command = ["python", "run_training_pipeline.py", "--mode", "container"]
+    command = ["--config", "gptneo_125m_lora"]
 
     resourceRequirements = [
       {
