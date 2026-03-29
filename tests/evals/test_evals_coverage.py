@@ -520,6 +520,8 @@ def test_run_lm_harness_eval():
             "winogrande": {"acc,none": 0.70},
             "arc_easy": {"acc_norm,none": 0.65},
             "arc_challenge": {"acc_norm,none": 0.55},
+            "boolq": {"acc,none": 0.72},
+            "openbookqa": {"acc_norm,none": 0.58},
             "mmlu": {"acc,none": 0.60},
         }
     }
@@ -563,6 +565,8 @@ def test_run_lm_harness_eval_different_batch_sizes():
             "winogrande": {"acc,none": 0.70},
             "arc_easy": {"acc_norm,none": 0.65},
             "arc_challenge": {"acc_norm,none": 0.55},
+            "boolq": {"acc,none": 0.72},
+            "openbookqa": {"acc_norm,none": 0.58},
             "mmlu": {"acc,none": 0.60},
         }
     }
