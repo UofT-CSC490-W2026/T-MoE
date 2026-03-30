@@ -48,11 +48,19 @@ def upload_experiment_dir(
     failed: List[str] = []
 
     all_files = sorted(f for f in local_path.rglob("*") if f.is_file())
-    logger.info("Uploading %d files from %s → s3://%s/%s", len(all_files), local_dir, bucket, s3_prefix)
+    logger.info(
+        "Uploading %d files from %s → s3://%s/%s",
+        len(all_files),
+        local_dir,
+        bucket,
+        s3_prefix,
+    )
 
     for file_path in all_files:
         s3_key = f"{s3_prefix}{file_path.relative_to(local_path)}"
-        if s3_client.upload_file(local_path=file_path, bucket=bucket, key=s3_key, show_progress=False):
+        if s3_client.upload_file(
+            local_path=file_path, bucket=bucket, key=s3_key, show_progress=False
+        ):
             uploaded.append(f"s3://{bucket}/{s3_key}")
         else:
             logger.error("Failed to upload: %s", file_path)
@@ -97,17 +105,25 @@ def download_s3_prefix(
         logger.warning("No objects found under s3://%s/%s", bucket, s3_prefix)
         return []
 
-    logger.info("Downloading %d objects from s3://%s/%s → %s", len(objects), bucket, s3_prefix, local_dir)
+    logger.info(
+        "Downloading %d objects from s3://%s/%s → %s",
+        len(objects),
+        bucket,
+        s3_prefix,
+        local_dir,
+    )
 
     downloaded: List[str] = []
     for obj in objects:
         s3_key = obj["Key"]
-        relative = s3_key[len(s3_prefix):].lstrip("/")
+        relative = s3_key[len(s3_prefix) :].lstrip("/")
         if not relative:
             continue  # skip directory markers
 
         dest = local_path / relative
-        if s3_client.download_file(bucket=bucket, key=s3_key, local_path=dest, show_progress=False):
+        if s3_client.download_file(
+            bucket=bucket, key=s3_key, local_path=dest, show_progress=False
+        ):
             downloaded.append(str(dest))
         else:
             logger.error("Failed to download: s3://%s/%s", bucket, s3_key)

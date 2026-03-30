@@ -35,7 +35,14 @@ class CloudWatchFormatter(logging.Formatter):
 
         # Merge caller-supplied extra fields
         for key, val in record.__dict__.items():
-            if key not in _BUILTIN_ATTRS and key not in ("message", "msg", "args", "exc_info", "exc_text", "stack_info"):
+            if key not in _BUILTIN_ATTRS and key not in (
+                "message",
+                "msg",
+                "args",
+                "exc_info",
+                "exc_text",
+                "stack_info",
+            ):
                 entry[key] = val
 
         return json.dumps(entry, default=str)
@@ -64,10 +71,12 @@ def get_logger(
     if json_format:
         handler.setFormatter(CloudWatchFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S",
-        ))
+        handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                datefmt="%Y-%m-%dT%H:%M:%S",
+            )
+        )
     handler.setLevel(getattr(logging, resolved_level, logging.INFO))
     log.addHandler(handler)
     log.propagate = False

@@ -88,7 +88,9 @@ def _load_yaml_section() -> dict:
         di = cfg.get("data_ingestion")
         return OmegaConf.to_container(di, resolve=True) if di else {}  # type: ignore[return-value]
     except Exception:
-        logger.warning("Failed to parse config.yaml data_ingestion section", exc_info=True)
+        logger.warning(
+            "Failed to parse config.yaml data_ingestion section", exc_info=True
+        )
         return {}
 
 
@@ -136,25 +138,29 @@ def _flatten_yaml(yaml: dict) -> dict:
     flat["dataset_splits"] = yaml.get("dataset_splits")
 
     sm = yaml.get("sagemaker", {})
-    flat.update({
-        "instance_type": sm.get("instance_type"),
-        "instance_count": sm.get("instance_count"),
-        "max_runtime_seconds": sm.get("max_runtime_seconds"),
-        "transformers_version": sm.get("transformers_version"),
-        "pytorch_version": sm.get("pytorch_version"),
-        "python_version": sm.get("python_version"),
-    })
+    flat.update(
+        {
+            "instance_type": sm.get("instance_type"),
+            "instance_count": sm.get("instance_count"),
+            "max_runtime_seconds": sm.get("max_runtime_seconds"),
+            "transformers_version": sm.get("transformers_version"),
+            "pytorch_version": sm.get("pytorch_version"),
+            "python_version": sm.get("python_version"),
+        }
+    )
 
     s3 = yaml.get("s3", {})
     flat["raw_data_bucket"] = s3.get("raw_data_bucket")
     flat["raw_data_prefix"] = s3.get("raw_data_prefix")
 
     proc = yaml.get("processing", {})
-    flat.update({
-        "output_format": proc.get("output_format"),
-        "max_retries": proc.get("max_retries"),
-        "log_level": proc.get("log_level"),
-    })
+    flat.update(
+        {
+            "output_format": proc.get("output_format"),
+            "max_retries": proc.get("max_retries"),
+            "log_level": proc.get("log_level"),
+        }
+    )
 
     return {k: v for k, v in flat.items() if v is not None}
 
@@ -178,12 +184,14 @@ def _load_compute_config() -> dict:
         flat: dict = {"compute_backend": compute.get("backend", "aws")}
         modal = compute.get("modal", {})
         if modal:
-            flat.update({
-                "modal_gpu": modal.get("gpu"),
-                "modal_cpu": modal.get("cpu"),
-                "modal_timeout": modal.get("timeout"),
-                "modal_volume_name": modal.get("volume_name"),
-            })
+            flat.update(
+                {
+                    "modal_gpu": modal.get("gpu"),
+                    "modal_cpu": modal.get("cpu"),
+                    "modal_timeout": modal.get("timeout"),
+                    "modal_volume_name": modal.get("volume_name"),
+                }
+            )
 
         return {k: v for k, v in flat.items() if v is not None}
     except Exception:
@@ -259,7 +267,9 @@ def _validate(merged: dict) -> PipelineConfig:
     if use_sagemaker:
         role = merged["sagemaker_role_arn"]
         if not role.startswith("arn:aws:iam::"):
-            raise ValueError(f"SAGEMAKER_ROLE_ARN must start with 'arn:aws:iam::' — got: {role!r}")
+            raise ValueError(
+                f"SAGEMAKER_ROLE_ARN must start with 'arn:aws:iam::' — got: {role!r}"
+            )
 
     env = merged.get("environment", "dev")
     if env not in ("dev", "staging", "prod"):
@@ -267,15 +277,23 @@ def _validate(merged: dict) -> PipelineConfig:
 
     log_level = merged.get("log_level", "INFO").upper()
     if log_level not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
-        raise ValueError(f"LOG_LEVEL must be DEBUG/INFO/WARNING/ERROR/CRITICAL — got: {log_level!r}")
+        raise ValueError(
+            f"LOG_LEVEL must be DEBUG/INFO/WARNING/ERROR/CRITICAL — got: {log_level!r}"
+        )
     merged["log_level"] = log_level
 
     if merged.get("output_format", "jsonl") not in ("jsonl", "parquet", "text"):
-        raise ValueError(f"OUTPUT_FORMAT must be jsonl/parquet/text — got: {merged.get('output_format')!r}")
+        raise ValueError(
+            f"OUTPUT_FORMAT must be jsonl/parquet/text — got: {merged.get('output_format')!r}"
+        )
 
     # Coerce types
     use_sm = merged.get("use_sagemaker", False)
-    merged["use_sagemaker"] = use_sm.lower() in ("true", "1", "yes") if isinstance(use_sm, str) else bool(use_sm)
+    merged["use_sagemaker"] = (
+        use_sm.lower() in ("true", "1", "yes")
+        if isinstance(use_sm, str)
+        else bool(use_sm)
+    )
     merged["max_retries"] = int(merged.get("max_retries", 3))
 
     for field in ("instance_count", "max_runtime_seconds"):
@@ -298,11 +316,29 @@ def _validate(merged: dict) -> PipelineConfig:
     merged["compute_backend"] = backend
 
     known_fields = {
-        "aws_region", "raw_data_bucket", "dataset_name", "output_format", "raw_data_prefix",
-        "environment", "log_level", "max_retries", "use_sagemaker", "dataset_config",
-        "dataset_splits", "sagemaker_role_arn", "instance_type", "instance_count",
-        "max_runtime_seconds", "transformers_version", "pytorch_version", "python_version",
-        "compute_backend", "modal_gpu", "modal_cpu", "modal_timeout", "modal_volume_name",
+        "aws_region",
+        "raw_data_bucket",
+        "dataset_name",
+        "output_format",
+        "raw_data_prefix",
+        "environment",
+        "log_level",
+        "max_retries",
+        "use_sagemaker",
+        "dataset_config",
+        "dataset_splits",
+        "sagemaker_role_arn",
+        "instance_type",
+        "instance_count",
+        "max_runtime_seconds",
+        "transformers_version",
+        "pytorch_version",
+        "python_version",
+        "compute_backend",
+        "modal_gpu",
+        "modal_cpu",
+        "modal_timeout",
+        "modal_volume_name",
     }
     return PipelineConfig(**{k: v for k, v in merged.items() if k in known_fields})
 
@@ -334,6 +370,9 @@ def load_pipeline_config() -> PipelineConfig:
     config = _validate(merged)
     logger.info(
         "Pipeline config loaded: region=%s bucket=%s dataset=%s backend=%s",
-        config.aws_region, config.raw_data_bucket, config.dataset_name, config.compute_backend,
+        config.aws_region,
+        config.raw_data_bucket,
+        config.dataset_name,
+        config.compute_backend,
     )
     return config

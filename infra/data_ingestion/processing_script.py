@@ -47,7 +47,9 @@ def validate_environment() -> None:
         probe.write_text("ok")
         probe.unlink()
     except OSError as exc:
-        raise EnvironmentError(f"Output dir {output_dir} is not writable: {exc}") from exc
+        raise EnvironmentError(
+            f"Output dir {output_dir} is not writable: {exc}"
+        ) from exc
 
     free_gb = shutil.disk_usage(str(output_dir)).free / (1024**3)
     logger.info("Disk free: %.1f GB", free_gb)
@@ -58,7 +60,9 @@ def validate_environment() -> None:
         raise EnvironmentError("DATASET_NAME is empty")
 
     if OUTPUT_FORMAT not in ("jsonl", "parquet", "text"):
-        raise EnvironmentError(f"OUTPUT_FORMAT must be jsonl/parquet/text — got {OUTPUT_FORMAT!r}")
+        raise EnvironmentError(
+            f"OUTPUT_FORMAT must be jsonl/parquet/text — got {OUTPUT_FORMAT!r}"
+        )
 
     try:
         urllib.request.urlopen("https://huggingface.co", timeout=10)
@@ -77,23 +81,31 @@ def load_huggingface_dataset(dataset_name: str) -> Dict[str, Any]:
     last_error: Exception | None = None
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            logger.info("Loading dataset %s (attempt %d/%d)", dataset_name, attempt, MAX_RETRIES)
+            logger.info(
+                "Loading dataset %s (attempt %d/%d)", dataset_name, attempt, MAX_RETRIES
+            )
             ds = load_dataset(dataset_name)
             break
         except (ConnectionError, TimeoutError, OSError) as exc:
             last_error = exc
             wait = RETRY_DELAY * (2 ** (attempt - 1))
-            logger.warning("Attempt %d failed (%s). Retrying in %.1fs …", attempt, exc, wait)
+            logger.warning(
+                "Attempt %d failed (%s). Retrying in %.1fs …", attempt, exc, wait
+            )
             time.sleep(wait)
     else:
-        raise RuntimeError(f"Failed to load {dataset_name} after {MAX_RETRIES} attempts: {last_error}")
+        raise RuntimeError(
+            f"Failed to load {dataset_name} after {MAX_RETRIES} attempts: {last_error}"
+        )
 
     if ds is None or len(ds) == 0:  # type: ignore[arg-type]
         raise RuntimeError(f"Dataset {dataset_name} is empty or None")
 
     for name in ds:
         split = ds[name]
-        logger.info("  split %-12s — %7d rows, columns=%s", name, len(split), split.column_names)
+        logger.info(
+            "  split %-12s — %7d rows, columns=%s", name, len(split), split.column_names
+        )
 
     return dict(ds)  # type: ignore[arg-type]
 
@@ -107,19 +119,28 @@ def validate_split_data(split_name: str, split_data: Any) -> None:
 
     columns = split_data.column_names
     if "text" not in columns:
-        raise ValueError(f"Split '{split_name}' is missing 'text' column. Found: {columns}")
+        raise ValueError(
+            f"Split '{split_name}' is missing 'text' column. Found: {columns}"
+        )
 
     sample = split_data.select(range(min(5, len(split_data))))
     if not any(row.get("text") and row["text"].strip() for row in sample):
         raise ValueError(f"Split '{split_name}' first 5 rows are all empty/None")
 
-    logger.info("Validated split '%s': %d examples, columns=%s", split_name, len(split_data), columns)
+    logger.info(
+        "Validated split '%s': %d examples, columns=%s",
+        split_name,
+        len(split_data),
+        columns,
+    )
 
 
 _EXT_MAP = {"jsonl": ".jsonl", "parquet": ".parquet", "text": ".txt"}
 
 
-def write_split_to_disk(split_name: str, split_data: Any, output_format: str = "jsonl") -> Path:
+def write_split_to_disk(
+    split_name: str, split_data: Any, output_format: str = "jsonl"
+) -> Path:
     """Write one split to disk in the requested format. Returns the output path."""
     if output_format not in _EXT_MAP:
         raise ValueError(f"Unsupported format {output_format!r}")
@@ -157,7 +178,11 @@ def write_split_to_disk(split_name: str, split_data: Any, output_format: str = "
     file_size = output_path.stat().st_size
     logger.info(
         "Written split '%s': %d records (%d empty skipped), %.2f MB → %s",
-        split_name, total_records, empty_records, file_size / 1024 / 1024, output_path,
+        split_name,
+        total_records,
+        empty_records,
+        file_size / 1024 / 1024,
+        output_path,
     )
 
     if file_size == 0:
@@ -220,20 +245,33 @@ def main() -> None:
 
     files = list(output_dir.iterdir())
     total_size = sum(f.stat().st_size for f in files if f.is_file())
-    logger.info("Output directory: %d files, %.2f MB total", len(files), total_size / 1024 / 1024)
-    logger.info("COMPLETION: %s", json.dumps({
-        "status": "SUCCESS",
-        "dataset": DATASET_NAME,
-        "splits": list(splits_info.keys()),
-        "total_records": sum(s["num_examples"] for s in splits_info.values()),
-        "total_bytes": total_size,
-        "elapsed_seconds": round(elapsed, 2),
-    }))
+    logger.info(
+        "Output directory: %d files, %.2f MB total",
+        len(files),
+        total_size / 1024 / 1024,
+    )
+    logger.info(
+        "COMPLETION: %s",
+        json.dumps(
+            {
+                "status": "SUCCESS",
+                "dataset": DATASET_NAME,
+                "splits": list(splits_info.keys()),
+                "total_records": sum(s["num_examples"] for s in splits_info.values()),
+                "total_bytes": total_size,
+                "elapsed_seconds": round(elapsed, 2),
+            }
+        ),
+    )
 
 
 if __name__ == "__main__":
     try:
-        logger.info("SPAR SageMaker Processing Job — dataset=%s format=%s", DATASET_NAME, OUTPUT_FORMAT)
+        logger.info(
+            "SPAR SageMaker Processing Job — dataset=%s format=%s",
+            DATASET_NAME,
+            OUTPUT_FORMAT,
+        )
         main()
         logger.info("Processing job completed successfully")
     except Exception as exc:
@@ -241,11 +279,16 @@ if __name__ == "__main__":
         try:
             error_meta = Path(OUTPUT_BASE_DIR) / "metadata.json"
             error_meta.parent.mkdir(parents=True, exist_ok=True)
-            error_meta.write_text(json.dumps({
-                "status": "FAILED",
-                "error": str(exc),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }, indent=2))
+            error_meta.write_text(
+                json.dumps(
+                    {
+                        "status": "FAILED",
+                        "error": str(exc),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                    indent=2,
+                )
+            )
         except Exception:
             pass
         sys.exit(1)

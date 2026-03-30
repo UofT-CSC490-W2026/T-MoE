@@ -52,8 +52,11 @@ class FallbackIngestion:
 
         logger.info(
             "Fallback ingestion: dataset=%s config=%s bucket=%s prefix=%s format=%s",
-            self.dataset_name, self.dataset_config or "default",
-            self.s3_bucket, self.s3_prefix, self.output_format,
+            self.dataset_name,
+            self.dataset_config or "default",
+            self.s3_bucket,
+            self.s3_prefix,
+            self.output_format,
         )
 
         with tempfile.TemporaryDirectory(prefix="tmoe_ingestion_") as temp_dir:
@@ -65,8 +68,12 @@ class FallbackIngestion:
             splits_info: Dict[str, Dict[str, Any]] = {}
             for split_name in splits_to_process:
                 split_data = dataset[split_name]
-                logger.info("Processing split: %s (%d examples)", split_name, len(split_data))
-                local_file = self._write_split_to_disk(split_name, split_data, temp_path)
+                logger.info(
+                    "Processing split: %s (%d examples)", split_name, len(split_data)
+                )
+                local_file = self._write_split_to_disk(
+                    split_name, split_data, temp_path
+                )
                 splits_info[split_name] = {
                     "num_examples": len(split_data),
                     "local_path": str(local_file),
@@ -75,7 +82,10 @@ class FallbackIngestion:
 
             metadata_file = temp_path / "metadata.json"
             metadata_file.write_text(
-                json.dumps(self._create_metadata(splits_info, time.time() - start_time), indent=2),
+                json.dumps(
+                    self._create_metadata(splits_info, time.time() - start_time),
+                    indent=2,
+                ),
                 encoding="utf-8",
             )
 
@@ -94,7 +104,9 @@ class FallbackIngestion:
 
             logger.info(
                 "Ingestion complete: %d records, %.2f MB, %.1f s",
-                summary["total_records"], summary["total_bytes"] / 1024 / 1024, elapsed,
+                summary["total_records"],
+                summary["total_bytes"] / 1024 / 1024,
+                elapsed,
             )
             return summary
 
@@ -104,7 +116,12 @@ class FallbackIngestion:
 
         for attempt in range(1, self.max_retries + 1):
             try:
-                logger.info("Loading dataset %s (attempt %d/%d)", self.dataset_name, attempt, self.max_retries)
+                logger.info(
+                    "Loading dataset %s (attempt %d/%d)",
+                    self.dataset_name,
+                    attempt,
+                    self.max_retries,
+                )
                 ds = (
                     load_dataset(self.dataset_name, self.dataset_config)
                     if self.dataset_config
@@ -116,14 +133,21 @@ class FallbackIngestion:
 
                 for name in ds:
                     split = ds[name]
-                    logger.info("  split %-12s — %7d rows, columns=%s", name, len(split), split.column_names)
+                    logger.info(
+                        "  split %-12s — %7d rows, columns=%s",
+                        name,
+                        len(split),
+                        split.column_names,
+                    )
 
                 return dict(ds)  # type: ignore[arg-type]
 
             except (ConnectionError, TimeoutError, OSError) as exc:
                 last_error = exc
                 wait = 5.0 * (2 ** (attempt - 1))
-                logger.warning("Attempt %d failed (%s). Retrying in %.1fs...", attempt, exc, wait)
+                logger.warning(
+                    "Attempt %d failed (%s). Retrying in %.1fs...", attempt, exc, wait
+                )
                 time.sleep(wait)
 
         raise RuntimeError(
@@ -137,12 +161,16 @@ class FallbackIngestion:
         if self.dataset_splits:
             missing = set(self.dataset_splits) - set(available_splits)
             if missing:
-                raise ValueError(f"Requested splits {missing} not found. Available: {available_splits}")
+                raise ValueError(
+                    f"Requested splits {missing} not found. Available: {available_splits}"
+                )
             return self.dataset_splits
 
         return available_splits
 
-    def _write_split_to_disk(self, split_name: str, split_data: Any, output_dir: Path) -> Path:
+    def _write_split_to_disk(
+        self, split_name: str, split_data: Any, output_dir: Path
+    ) -> Path:
         """Write one split to disk in the configured format."""
         ext_map = {"jsonl": ".jsonl", "parquet": ".parquet", "text": ".txt"}
 
@@ -180,7 +208,10 @@ class FallbackIngestion:
         file_size = output_file.stat().st_size
         logger.info(
             "Written split '%s': %d records (%d empty skipped), %.2f MB",
-            split_name, total_records, empty_records, file_size / 1024 / 1024,
+            split_name,
+            total_records,
+            empty_records,
+            file_size / 1024 / 1024,
         )
 
         if file_size == 0:
@@ -188,7 +219,9 @@ class FallbackIngestion:
 
         return output_file
 
-    def _create_metadata(self, splits_info: Dict[str, Dict[str, Any]], processing_time: float) -> Dict[str, Any]:
+    def _create_metadata(
+        self, splits_info: Dict[str, Dict[str, Any]], processing_time: float
+    ) -> Dict[str, Any]:
         """Build a metadata dict matching the SageMaker processing output format."""
         return {
             "dataset_name": self.dataset_name,
@@ -197,7 +230,10 @@ class FallbackIngestion:
             "processing_time_seconds": round(processing_time, 2),
             "output_format": self.output_format,
             "splits": {
-                name: {"num_examples": info["num_examples"], "file_size": info["file_size"]}
+                name: {
+                    "num_examples": info["num_examples"],
+                    "file_size": info["file_size"],
+                }
                 for name, info in splits_info.items()
             },
             "total_records": sum(s["num_examples"] for s in splits_info.values()),
@@ -218,7 +254,9 @@ class FallbackIngestion:
         s3_client = S3Client(region=self.aws_region, max_retries=self.max_retries)
 
         if not s3_client.check_bucket_exists(self.s3_bucket):
-            raise RuntimeError(f"S3 bucket does not exist or is not accessible: {self.s3_bucket}")
+            raise RuntimeError(
+                f"S3 bucket does not exist or is not accessible: {self.s3_bucket}"
+            )
 
         s3_paths: Dict[str, str] = {}
         files_to_upload = list(local_dir.iterdir())
@@ -238,7 +276,12 @@ class FallbackIngestion:
                 s3_paths[local_file.name] = f"s3://{self.s3_bucket}/{s3_key}"
                 continue
 
-            if not s3_client.upload_file(local_path=local_file, bucket=self.s3_bucket, key=s3_key, show_progress=True):
+            if not s3_client.upload_file(
+                local_path=local_file,
+                bucket=self.s3_bucket,
+                key=s3_key,
+                show_progress=True,
+            ):
                 raise RuntimeError(f"Failed to upload {local_file.name} to S3")
 
             s3_paths[local_file.name] = f"s3://{self.s3_bucket}/{s3_key}"

@@ -52,7 +52,11 @@ class S3Client:
         try:
             sts = session.client("sts", config=boto_config)
             identity = sts.get_caller_identity()
-            logger.info("S3Client initialised: region=%s account=%s", region, identity["Account"])
+            logger.info(
+                "S3Client initialised: region=%s account=%s",
+                region,
+                identity["Account"],
+            )
         except (NoCredentialsError, ClientError) as exc:
             raise RuntimeError(
                 "AWS credentials not found. Configure via IAM role, "
@@ -92,12 +96,21 @@ class S3Client:
                 Callback=callback,
                 Config=self._transfer_config,
             )
-            logger.info("Uploaded %s → s3://%s/%s (%s bytes)", local_path.name, bucket, key, file_size)
+            logger.info(
+                "Uploaded %s → s3://%s/%s (%s bytes)",
+                local_path.name,
+                bucket,
+                key,
+                file_size,
+            )
             return True
         except ClientError as exc:
             logger.error(
                 "Upload failed [%s]: s3://%s/%s — %s",
-                exc.response["Error"]["Code"], bucket, key, exc.response["Error"]["Message"],
+                exc.response["Error"]["Code"],
+                bucket,
+                key,
+                exc.response["Error"]["Message"],
             )
             return False
 
@@ -116,51 +129,76 @@ class S3Client:
             head = self._client.head_object(Bucket=bucket, Key=key)
             remote_size = head["ContentLength"]
         except ClientError as exc:
-            logger.error("Cannot stat s3://%s/%s — %s", bucket, key, exc.response["Error"]["Code"])
+            logger.error(
+                "Cannot stat s3://%s/%s — %s",
+                bucket,
+                key,
+                exc.response["Error"]["Code"],
+            )
             return False
 
         callback = self._progress_callback(remote_size, key) if show_progress else None
 
         try:
             self._client.download_file(
-                Bucket=bucket, Key=key, Filename=str(local_path),
-                Callback=callback, Config=self._transfer_config,
+                Bucket=bucket,
+                Key=key,
+                Filename=str(local_path),
+                Callback=callback,
+                Config=self._transfer_config,
             )
         except ClientError as exc:
             logger.error(
                 "Download failed [%s]: s3://%s/%s — %s",
-                exc.response["Error"]["Code"], bucket, key, exc.response["Error"]["Message"],
+                exc.response["Error"]["Code"],
+                bucket,
+                key,
+                exc.response["Error"]["Message"],
             )
             return False
 
         local_size = local_path.stat().st_size
         if local_size != remote_size:
-            logger.warning("Size mismatch for %s: remote=%d local=%d", key, remote_size, local_size)
+            logger.warning(
+                "Size mismatch for %s: remote=%d local=%d", key, remote_size, local_size
+            )
             return False
 
-        logger.info("Downloaded s3://%s/%s → %s (%d bytes)", bucket, key, local_path, local_size)
+        logger.info(
+            "Downloaded s3://%s/%s → %s (%d bytes)", bucket, key, local_path, local_size
+        )
         return True
 
-    def list_objects(self, bucket: str, prefix: str = "", max_keys: int = 1000) -> List[Dict[str, Any]]:
+    def list_objects(
+        self, bucket: str, prefix: str = "", max_keys: int = 1000
+    ) -> List[Dict[str, Any]]:
         """List objects under a prefix with automatic pagination."""
         results: List[Dict[str, Any]] = []
         paginator = self._client.get_paginator("list_objects_v2")
 
         try:
             pages = paginator.paginate(
-                Bucket=bucket, Prefix=prefix,
+                Bucket=bucket,
+                Prefix=prefix,
                 PaginationConfig={"MaxItems": max_keys},
             )
             for page in pages:
                 for obj in page.get("Contents", []):
-                    results.append({
-                        "Key": obj["Key"],
-                        "Size": obj["Size"],
-                        "LastModified": obj["LastModified"].isoformat(),
-                        "ETag": obj["ETag"],
-                    })
+                    results.append(
+                        {
+                            "Key": obj["Key"],
+                            "Size": obj["Size"],
+                            "LastModified": obj["LastModified"].isoformat(),
+                            "ETag": obj["ETag"],
+                        }
+                    )
         except ClientError as exc:
-            logger.error("list_objects failed for s3://%s/%s — %s", bucket, prefix, exc.response["Error"]["Code"])
+            logger.error(
+                "list_objects failed for s3://%s/%s — %s",
+                bucket,
+                prefix,
+                exc.response["Error"]["Code"],
+            )
             return []
 
         logger.info("Listed %d objects in s3://%s/%s", len(results), bucket, prefix)
@@ -183,7 +221,12 @@ class S3Client:
                 deleted.extend(batch[: len(batch) - len(resp.get("Errors", []))])
             except ClientError as exc:
                 logger.error("delete_objects failed: %s", exc.response["Error"]["Code"])
-                errors.extend([{"Key": k, "Code": "ClientError", "Message": str(exc)} for k in batch])
+                errors.extend(
+                    [
+                        {"Key": k, "Code": "ClientError", "Message": str(exc)}
+                        for k in batch
+                    ]
+                )
 
         logger.info("Deleted %d objects, %d errors", len(deleted), len(errors))
         return {"deleted": deleted, "errors": errors}
@@ -209,7 +252,9 @@ class S3Client:
                 logger.error("head_bucket error %s for %s", code, bucket)
             return False
 
-    def generate_presigned_url(self, bucket: str, key: str, expiration: int = 3600) -> Optional[str]:
+    def generate_presigned_url(
+        self, bucket: str, key: str, expiration: int = 3600
+    ) -> Optional[str]:
         """Generate a presigned GET URL valid for `expiration` seconds."""
         try:
             url = self._client.generate_presigned_url(
@@ -217,7 +262,12 @@ class S3Client:
                 Params={"Bucket": bucket, "Key": key},
                 ExpiresIn=expiration,
             )
-            logger.info("Presigned URL generated for s3://%s/%s (expires in %ds)", bucket, key, expiration)
+            logger.info(
+                "Presigned URL generated for s3://%s/%s (expires in %ds)",
+                bucket,
+                key,
+                expiration,
+            )
             return url  # type: ignore[return-value]
         except ClientError as exc:
             logger.error("presigned_url failed: %s", exc.response["Error"]["Code"])
@@ -230,7 +280,10 @@ class S3Client:
         found = any(obj["Key"].endswith(data_extensions) for obj in objects)
         logger.info(
             "%s dataset in s3://%s/%s (%d objects checked)",
-            "Found" if found else "No", bucket, prefix, len(objects),
+            "Found" if found else "No",
+            bucket,
+            prefix,
+            len(objects),
         )
         return found
 

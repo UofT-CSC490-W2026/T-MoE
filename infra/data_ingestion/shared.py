@@ -25,23 +25,35 @@ def load_huggingface_dataset(
     last_error: Exception | None = None
     for attempt in range(1, max_retries + 1):
         try:
-            logger.info("Loading dataset %s (attempt %d/%d)", dataset_name, attempt, max_retries)
-            ds = load_dataset(dataset_name, dataset_config) if dataset_config else load_dataset(dataset_name)
+            logger.info(
+                "Loading dataset %s (attempt %d/%d)", dataset_name, attempt, max_retries
+            )
+            ds = (
+                load_dataset(dataset_name, dataset_config)
+                if dataset_config
+                else load_dataset(dataset_name)
+            )
             break
         except (ConnectionError, TimeoutError, OSError) as exc:
             last_error = exc
             wait = retry_delay * (2 ** (attempt - 1))
-            logger.warning("Attempt %d failed (%s). Retrying in %.1fs ...", attempt, exc, wait)
+            logger.warning(
+                "Attempt %d failed (%s). Retrying in %.1fs ...", attempt, exc, wait
+            )
             time.sleep(wait)
     else:
-        raise RuntimeError(f"Failed to load {dataset_name} after {max_retries} attempts: {last_error}")
+        raise RuntimeError(
+            f"Failed to load {dataset_name} after {max_retries} attempts: {last_error}"
+        )
 
     if ds is None or len(ds) == 0:  # type: ignore[arg-type]
         raise RuntimeError(f"Dataset {dataset_name} is empty or None")
 
     for name in ds:
         split = ds[name]
-        logger.info("  split %-12s — %7d rows, columns=%s", name, len(split), split.column_names)
+        logger.info(
+            "  split %-12s — %7d rows, columns=%s", name, len(split), split.column_names
+        )
 
     return dict(ds)  # type: ignore[arg-type]
 
@@ -55,13 +67,20 @@ def validate_split_data(split_name: str, split_data: Any) -> None:
 
     columns = split_data.column_names
     if "text" not in columns:
-        raise ValueError(f"Split '{split_name}' is missing 'text' column. Found: {columns}")
+        raise ValueError(
+            f"Split '{split_name}' is missing 'text' column. Found: {columns}"
+        )
 
     sample = split_data.select(range(min(5, len(split_data))))
     if not any(row.get("text") and row["text"].strip() for row in sample):
         raise ValueError(f"Split '{split_name}' first 5 rows are all empty/None")
 
-    logger.info("Validated split '%s': %d examples, columns=%s", split_name, len(split_data), columns)
+    logger.info(
+        "Validated split '%s': %d examples, columns=%s",
+        split_name,
+        len(split_data),
+        columns,
+    )
 
 
 def write_split_to_disk(
@@ -107,7 +126,10 @@ def write_split_to_disk(
     file_size = output_path.stat().st_size
     logger.info(
         "Written split '%s': %d records (%d empty skipped), %.2f MB",
-        split_name, total_records, empty_records, file_size / 1024 / 1024,
+        split_name,
+        total_records,
+        empty_records,
+        file_size / 1024 / 1024,
     )
 
     if file_size == 0:

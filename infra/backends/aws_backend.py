@@ -22,17 +22,25 @@ def run_aws_training(
     """
     from infra.dataset.ensure_dataset import ensure_dataset_in_s3
 
-    logger.info("AWS BATCH TRAINING — config=%s dry_run=%s", experiment_config_name, dry_run)
+    logger.info(
+        "AWS BATCH TRAINING — config=%s dry_run=%s", experiment_config_name, dry_run
+    )
 
     s3_path = ensure_dataset_in_s3(config)
     logger.info("Dataset ready at: %s", s3_path)
 
     if dry_run:
-        logger.info("DRY RUN — would submit Batch job for dataset=%s config=%s", s3_path, experiment_config_name)
+        logger.info(
+            "DRY RUN — would submit Batch job for dataset=%s config=%s",
+            s3_path,
+            experiment_config_name,
+        )
         return
 
     job_id = _submit_batch_job(config, experiment_config_name)
-    final_status = _wait_for_batch_job(job_id=job_id, aws_region=config.aws_region, poll_interval=30, stream_logs=True)
+    final_status = _wait_for_batch_job(
+        job_id=job_id, aws_region=config.aws_region, poll_interval=30, stream_logs=True
+    )
 
     if final_status == "SUCCEEDED":
         logger.info("AWS BATCH JOB SUCCEEDED — job_id=%s", job_id)
@@ -48,7 +56,9 @@ def _submit_batch_job(config: PipelineConfig, experiment_config_name: str) -> st
     batch_client = boto3.client("batch", region_name=config.aws_region)
     environment = config.environment
     job_queue = os.environ.get("BATCH_JOB_QUEUE", f"tmoe-{environment}-training")
-    job_definition = os.environ.get("BATCH_JOB_DEFINITION", f"tmoe-{environment}-training")
+    job_definition = os.environ.get(
+        "BATCH_JOB_DEFINITION", f"tmoe-{environment}-training"
+    )
     job_name = f"tmoe-training-{experiment_config_name}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
     command = ["--mode", "container", "--config", experiment_config_name]
@@ -68,7 +78,12 @@ def _submit_batch_job(config: PipelineConfig, experiment_config_name: str) -> st
     if hf_token := os.environ.get("HF_TOKEN"):
         environment_vars.append({"name": "HF_TOKEN", "value": hf_token})
 
-    logger.info("Submitting Batch job: name=%s queue=%s definition=%s", job_name, job_queue, job_definition)
+    logger.info(
+        "Submitting Batch job: name=%s queue=%s definition=%s",
+        job_name,
+        job_queue,
+        job_definition,
+    )
 
     response = batch_client.submit_job(
         jobName=job_name,
@@ -112,7 +127,9 @@ def _wait_for_batch_job(
         job = response["jobs"][0]
         status = job["status"]
         status_reason = job.get("statusReason", "")
-        logger.info("  Status: %s %s", status, f"({status_reason})" if status_reason else "")
+        logger.info(
+            "  Status: %s %s", status, f"({status_reason})" if status_reason else ""
+        )
 
         if stream_logs and logs_client and status in ("RUNNING", "SUCCEEDED", "FAILED"):
             last_log_token, log_stream_name = _stream_job_logs(
@@ -140,9 +157,15 @@ def _stream_job_logs(
                 return last_token, None
 
         environment = os.environ.get("ENVIRONMENT", "dev")
-        log_group = os.environ.get("BATCH_LOG_GROUP", f"/aws/batch/tmoe-{environment}/training")
+        log_group = os.environ.get(
+            "BATCH_LOG_GROUP", f"/aws/batch/tmoe-{environment}/training"
+        )
 
-        kwargs = {"logGroupName": log_group, "logStreamName": log_stream_name, "startFromHead": True}
+        kwargs = {
+            "logGroupName": log_group,
+            "logStreamName": log_stream_name,
+            "startFromHead": True,
+        }
         if last_token:
             kwargs["nextToken"] = last_token
 

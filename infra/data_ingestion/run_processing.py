@@ -65,7 +65,11 @@ def create_processor(config: Any) -> "HuggingFaceProcessor":
         max_runtime_in_seconds=config.max_runtime_seconds,
     )
 
-    logger.info("HuggingFaceProcessor created: instance=%s role=…%s", config.instance_type, role[-20:])
+    logger.info(
+        "HuggingFaceProcessor created: instance=%s role=…%s",
+        config.instance_type,
+        role[-20:],
+    )
     return processor
 
 
@@ -94,7 +98,13 @@ def run_processing_job(processor: "HuggingFaceProcessor", config: Any) -> str:
     script_path = str(Path(__file__).parent / "processing_script.py")
     source_dir = str(Path(__file__).parent)
 
-    logger.info("Launching SageMaker job: %s → %s (%s x %d)", job_name, s3_output, config.instance_type, config.instance_count)
+    logger.info(
+        "Launching SageMaker job: %s → %s (%s x %d)",
+        job_name,
+        s3_output,
+        config.instance_type,
+        config.instance_count,
+    )
 
     start = time.time()
     processor.run(
@@ -114,7 +124,9 @@ def run_processing_job(processor: "HuggingFaceProcessor", config: Any) -> str:
     except Exception:
         pass
 
-    logger.info("Job completed in %.1f s — ARN: %s — output: %s", elapsed, job_arn, s3_output)
+    logger.info(
+        "Job completed in %.1f s — ARN: %s — output: %s", elapsed, job_arn, s3_output
+    )
     return job_arn
 
 
@@ -124,7 +136,12 @@ def main() -> None:
     config = load_pipeline_config()
     processor = create_processor(config)
     job_arn = run_processing_job(processor, config)
-    logger.info("SUCCESS — job_arn=%s bucket=%s dataset=%s", job_arn, config.raw_data_bucket, config.dataset_name)
+    logger.info(
+        "SUCCESS — job_arn=%s bucket=%s dataset=%s",
+        job_arn,
+        config.raw_data_bucket,
+        config.dataset_name,
+    )
 
 
 if __name__ == "__main__":

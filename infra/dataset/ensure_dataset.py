@@ -38,7 +38,9 @@ def ensure_dataset_in_s3(config: PipelineConfig) -> str:
     _run_data_ingestion(config)
 
     if not s3_client.dataset_exists(bucket, prefix):
-        raise RuntimeError(f"Ingestion completed but dataset still not found: {s3_path}")
+        raise RuntimeError(
+            f"Ingestion completed but dataset still not found: {s3_path}"
+        )
 
     logger.info("Dataset ingestion complete: %s", s3_path)
     return s3_path
@@ -50,7 +52,10 @@ def _run_data_ingestion(config: PipelineConfig) -> None:
 
     logger.info(
         "Running data ingestion: dataset=%s bucket=%s prefix=%s region=%s",
-        config.dataset_name, config.raw_data_bucket, config.raw_data_prefix, config.aws_region,
+        config.dataset_name,
+        config.raw_data_bucket,
+        config.raw_data_prefix,
+        config.aws_region,
     )
 
     ingestion = FallbackIngestion(
@@ -67,7 +72,10 @@ def _run_data_ingestion(config: PipelineConfig) -> None:
 
     try:
         result = ingestion.run()
-        logger.info("Ingestion complete: %d records uploaded to S3", result.get("total_records", 0))
+        logger.info(
+            "Ingestion complete: %d records uploaded to S3",
+            result.get("total_records", 0),
+        )
     except Exception as exc:
         logger.error("Data ingestion failed: %s", exc, exc_info=True)
         raise RuntimeError(f"Failed to ingest dataset to S3: {exc}") from exc
@@ -81,5 +89,7 @@ def check_dataset_exists(config: PipelineConfig) -> bool:
     bucket = config.raw_data_bucket
     prefix = _dataset_s3_prefix(config)
     exists = s3_client.dataset_exists(bucket, prefix)
-    logger.info("Dataset %s in s3://%s/%s", "exists" if exists else "NOT found", bucket, prefix)
+    logger.info(
+        "Dataset %s in s3://%s/%s", "exists" if exists else "NOT found", bucket, prefix
+    )
     return exists
