@@ -119,4 +119,4 @@ Cloud credentials (Modal, AWS, WandB, HuggingFace): see [infra/README.md](infra/
 }
 ```
 
-![Coverage](https://img.shields.io/badge/coverage-93.31%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-93.63%25-brightgreen)
