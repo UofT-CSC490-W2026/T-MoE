@@ -117,6 +117,9 @@ def test_run_task_rejects_unimplemented_tasks(monkeypatch):
             "reference_checkpoint": None,
             "reference_config": None,
             "overrides": [],
+            "n_samples": None,
+            "max_length": None,
+            "top_n_tokens": None,
         },
     )()
     monkeypatch.setattr(
