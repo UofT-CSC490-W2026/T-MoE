@@ -1,1 +1,1 @@
-"""Command-line entrypoints for T-MoE workflows."""
+"""Command-line entrypoints for SPAR workflows."""

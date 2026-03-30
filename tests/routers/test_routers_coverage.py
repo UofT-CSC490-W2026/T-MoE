@@ -612,7 +612,8 @@ def test_stress_router_welford_no_active():
     x_norm = torch.zeros(2, 4, 64)
     topk_idx = torch.zeros(2, 4, 2, dtype=torch.long)
     W_norm = F.normalize(r.W, dim=-1)
-    r._update_welford(x_norm, topk_idx, W_norm)
+    cos_sim = x_norm @ W_norm.T  # [B, T, num_experts]
+    r._update_welford(cos_sim, topk_idx)
 
 
 def test_stress_router_sync_welford_not_distributed():
@@ -744,5 +745,6 @@ def test_stress_router_update_welford_no_active():
     x_norm = torch.randn(1, 1, 4)
     topk_idx = torch.zeros(1, 1, 1, dtype=torch.long)
     W_norm = torch.randn(2, 4)
-    router._update_welford(x_norm, topk_idx, W_norm)
+    cos_sim = x_norm @ W_norm.T  # [B, T, num_experts]
+    router._update_welford(cos_sim, topk_idx)
     assert router.welford_n[0].item() >= 0.0

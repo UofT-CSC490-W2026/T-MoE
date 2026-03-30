@@ -8,7 +8,7 @@ resource "aws_ecr_repository" "training" {
   }
 
   tags = {
-    Name        = "T-MoE Training Container"
+    Name        = "SPAR Training Container"
     Description = "Docker images for GPU training jobs"
   }
 }

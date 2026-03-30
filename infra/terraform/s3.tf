@@ -8,7 +8,7 @@ resource "aws_s3_bucket" "raw_data" {
   force_destroy = true
 
   tags = {
-    Name        = "T-MoE Raw Data Landing Zone"
+    Name        = "SPAR Raw Data Landing Zone"
     DataStage   = "raw"
     Description = "HuggingFace dataset ingestion landing zone"
   }

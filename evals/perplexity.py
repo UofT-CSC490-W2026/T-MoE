@@ -560,6 +560,7 @@ def _load_dataset_texts(
         dataset_spec.get("hf_name"),
         split=dataset_spec["split"],
         streaming=streaming,
+        token=os.environ.get("HF_TOKEN"),
     )
 
     text_column = dataset_spec.get("text_column", "text")
@@ -589,7 +590,9 @@ def _load_tokenizer_for_model(config: Any):
     from transformers import AutoTokenizer
 
     model_info = model_lookup(_cfg_select(config, "model.model_key", "gpt-neo-125m"))
-    tokenizer = AutoTokenizer.from_pretrained(model_info["hf_name"])
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_info["hf_name"], token=os.environ.get("HF_TOKEN")
+    )
     return tokenizer
 
 

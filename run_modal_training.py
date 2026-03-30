@@ -1,5 +1,5 @@
 """
-run_modal_training.py — Modal Cloud Orchestrator for T-MoE
+run_modal_training.py — Modal Cloud Orchestrator for SPAR
 
 To switch experiments: change CONFIG at the top of this file.
 GPU spec and count are read automatically from compute.modal.gpu in that YAML.
@@ -32,7 +32,7 @@ from omegaconf import OmegaConf
 # CONFIGURATION — change this one line to switch experiments
 # =============================================================================
 
-CONFIG = "experiments/qwen2_1.5b_stress_v1-fineweb.yaml"
+CONFIG = "experiments/qwen2_1.5b_stress_v3-fineweb.yaml"
 
 # GPU spec is read from compute.modal.gpu in the active config.
 # Must be resolved at import time for Modal's @app.function(gpu=...) decorator.
@@ -49,7 +49,7 @@ except Exception:  # noqa: BLE001
     _N_EVAL_GPUS = 4
 
 _N_GPUS = int(GPU.split(":")[1]) if ":" in GPU else 1
-SUPPORTED_EVAL_TASKS = ("perplexity", "lm_harness", "efficiency")
+SUPPORTED_EVAL_TASKS = ("perplexity", "lm_harness", "efficiency", "routing_analysis")
 
 # =============================================================================
 
@@ -102,6 +102,7 @@ image = (
 )
 
 app = App(name="tmoe", image=image, secrets=[Secret.from_name(SECRET_NAME)])
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -197,6 +198,14 @@ def _resolve_eval_checkpoint(cfg, checkpoint: str, all_checkpoints: bool) -> str
     return _resolve_runtime_path(checkpoint)
 
 
+def _hf_env(base_env: dict) -> dict:
+    """Return base_env with HF_TOKEN injected if available in os.environ."""
+    token = os.environ.get("HF_TOKEN")
+    if token:
+        return {**base_env, "HF_TOKEN": token}
+    return base_env
+
+
 # ---------------------------------------------------------------------------
 # Stage 1: Data Preparation (CPU — cheap, run once per dataset)
 # ---------------------------------------------------------------------------
@@ -247,7 +256,7 @@ def stage_data(config: str = CONFIG, force: bool = False):  # noqa: B008
         ],
         cwd="/app",
         check=True,
-        env={**os.environ, "HF_DATASETS_CACHE": hf_cache, "HF_HOME": hf_cache},
+        env=_hf_env({**os.environ, "HF_DATASETS_CACHE": hf_cache, "HF_HOME": hf_cache}),
     )
     volume.commit()
     print(f"[stage_data] Done → {out_dir}")
@@ -309,7 +318,9 @@ def stage_eval_data(config: str = CONFIG, force: bool = False):  # noqa: B008
             ],
             cwd="/app",
             check=True,
-            env={**os.environ, "HF_DATASETS_CACHE": hf_cache, "HF_HOME": hf_cache},
+            env=_hf_env(
+                {**os.environ, "HF_DATASETS_CACHE": hf_cache, "HF_HOME": hf_cache}
+            ),
         )
 
     volume.commit()
@@ -328,13 +339,14 @@ def stage_eval_data(config: str = CONFIG, force: bool = False):  # noqa: B008
     timeout=60 * 60 * 12,
     retries=0,
 )
-def stage_train(config: str = CONFIG, overrides: str = ""):  # noqa: B008
+def stage_train(config: str = CONFIG, overrides: str = "", resume: str = ""):  # noqa: B008
     """
-    Train T-MoE. GPU count is always _N_GPUS (derived from GPU at top of file).
+    Train SPAR. GPU count is always _N_GPUS (derived from GPU at top of file).
 
     Args:
         config:    Experiment YAML (defaults to CONFIG at top of file).
         overrides: Comma-separated OmegaConf overrides, e.g. "training.lr=3e-4".
+        resume:    Path to checkpoint to resume from, e.g. "outputs/exp/checkpoints/checkpoint_step_13000.pt".
     """
     cfg_path = _config_path(config)
     cfg = _load_cfg(cfg_path, overrides)
@@ -358,6 +370,8 @@ def stage_train(config: str = CONFIG, overrides: str = ""):  # noqa: B008
     print(f"[stage_train] Experiment : {cfg.experiment_name}")
     print(f"[stage_train] GPU        : {gpu_name} × {n_gpus}")
     print(f"[stage_train] Output     : {out_dir}")
+    if resume:
+        print(f"[stage_train] Resuming   : {_resolve_runtime_path(resume)}")
 
     cmd = (
         (
@@ -372,6 +386,7 @@ def stage_train(config: str = CONFIG, overrides: str = ""):  # noqa: B008
             else [sys.executable, "-m", "scripts.train"]
         )
         + ["--config", cfg_path, "--output-dir", out_dir]
+        + (["--resume", _resolve_runtime_path(resume)] if resume else [])
         + _override_list(overrides)
     )
 
@@ -389,8 +404,11 @@ def stage_train(config: str = CONFIG, overrides: str = ""):  # noqa: B008
                 for rank, msg in json.load(f).get("message", {}).items():
                     print(f"\n--- Rank {rank} ---\n{msg.get('message', '')}")
         raise
+    finally:
+        # Commit even on crash so checkpoints written before the failure are
+        # persisted to Modal storage and not lost when the container exits.
+        volume.commit()
 
-    volume.commit()
     print(f"[stage_train] Done → {out_dir}")
 
 
@@ -423,7 +441,7 @@ def stage_eval(
     the `overrides` arg, e.g. overrides="eval.stride=2048,eval.max_documents=null".
 
     Args:
-        task:                Comma-separated eval tasks, or 'all'. Options: perplexity, lm_harness, efficiency.
+        task:                Comma-separated eval tasks, or 'all'. Options: perplexity, lm_harness, efficiency, routing_analysis.
         config:              Experiment YAML (defaults to CONFIG at top of file).
         overrides:           Comma-separated OmegaConf overrides.
         checkpoint:          Optional checkpoint path, or 'latest'/'best'. Defaults to best_model.pt.
@@ -455,6 +473,9 @@ def stage_eval(
     seq_len = _ep("seq_len", 1024)
     warmup_iters = _ep("warmup_iters", 10)
     benchmark_iters = _ep("benchmark_iters", 100)
+    n_samples = _ep("n_samples", 200)
+    max_length = _ep("max_length", 512)
+    top_n_tokens = _ep("top_n_tokens", 50)
 
     print(f"[stage_eval] Experiment : {cfg.experiment_name}")
     print(f"[stage_eval] Tasks      : {', '.join(tasks)}")
@@ -492,11 +513,13 @@ def stage_eval(
                     ],
                     cwd="/app",
                     check=True,
-                    env={
-                        **os.environ,
-                        "HF_DATASETS_CACHE": hf_cache,
-                        "HF_HOME": hf_cache,
-                    },
+                    env=_hf_env(
+                        {
+                            **os.environ,
+                            "HF_DATASETS_CACHE": hf_cache,
+                            "HF_HOME": hf_cache,
+                        }
+                    ),
                 )
                 volume.commit()
                 print(f"[stage_eval] Eval shards ready: {out_dir}")
@@ -545,18 +568,22 @@ def stage_eval(
             cmd,
             cwd="/app",
             check=True,
-            env={
-                **os.environ,
-                "HF_DATASETS_CACHE": hf_cache,
-                "HF_HOME": hf_cache,
-                "SHARD_BASE_DIR": SHARDS_DIR,
-            },
+            env=_hf_env(
+                {
+                    **os.environ,
+                    "HF_DATASETS_CACHE": hf_cache,
+                    "HF_HOME": hf_cache,
+                    "SHARD_BASE_DIR": SHARDS_DIR,
+                }
+            ),
         )
 
     # ---------------------------------------------------------------------------
     # lm_harness + efficiency: in-process, model loaded once and shared
     # ---------------------------------------------------------------------------
-    inprocess_tasks = [t for t in tasks if t in ("lm_harness", "efficiency")]
+    inprocess_tasks = [
+        t for t in tasks if t in ("lm_harness", "efficiency", "routing_analysis")
+    ]
     if inprocess_tasks:
         import torch
         from pathlib import Path as _Path
@@ -644,6 +671,28 @@ def stage_eval(
                     benchmark_iters=benchmark_iters,
                     reference_checkpoint_path=ref_ckpt,
                     reference_config=ref_cfg,
+                )
+                log_results_to_wandb(payload, config=cfg)
+
+            if "routing_analysis" in inprocess_tasks:
+                print("[stage_eval] --- Running task: routing_analysis ---")
+                from evals.routing_analysis import run_routing_analysis
+
+                out_path = (
+                    output_base / "history" / ckpt.stem / "routing_analysis.json"
+                    if multiple
+                    else output_base / "routing_analysis.json"
+                )
+                payload = run_routing_analysis(
+                    config=cfg,
+                    checkpoint_path=ckpt,
+                    model=model,
+                    checkpoint_info=checkpoint_info,
+                    output_path=out_path,
+                    device=device,
+                    n_samples=n_samples,
+                    max_length=max_length,
+                    top_n_tokens=top_n_tokens,
                 )
                 log_results_to_wandb(payload, config=cfg)
 

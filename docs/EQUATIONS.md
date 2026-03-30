@@ -1,7 +1,9 @@
-# T-MoE: SPAR Router — Mathematical Reference
+# SPAR: SPAR Router — Mathematical Reference
+
+Last verified: 2026-03-30
 
 SPAR (Stress-Penalized Adaptive Routing) is the canonical router for this project.
-It replaces auxiliary load-balancing losses with a one-sided, data-calibrated penalty
+It replaces auxiliary load-balancing losses with a symmetric, data-calibrated penalty
 that is geometrically coherent with the cosine routing signal and zero at equilibrium.
 
 ---
@@ -12,22 +14,23 @@ that is geometrically coherent with the cosine routing signal and zero at equili
 
 The logit that determines *which* experts are selected for an input token $x$:
 
-$$z_i(x,t) = \cos(x,\, W_i) - \lambda \cdot \max\!\bigl(0,\; L_i(t) - \tfrac{1}{N}\bigr)$$
+$$z_i(x,t) = \cos(x,\, W_i) - \lambda \cdot \bigl(L_i(t) - \tfrac{k}{N}\bigr)$$
 
 - $\cos(x, W_i) = \hat{x}^\top \hat{W}_i \in [-1, 1]$: cosine similarity between the
   L2-normalized token $\hat{x}$ and the L2-normalized prototype direction $\hat{W}_i$.
   Scale-invariant; measures directional alignment only.
-- $L_i(t)$: EMA load of expert $i$ at step $t$ — the running fraction of token-expert
-  assignments routed to expert $i$. Defined below.
-- $\max(0,\; L_i - 1/N)$: one-sided penalty. Zero when expert $i$ carries its fair share
-  or less; positive only when $L_i$ exceeds the equilibrium value $1/N$.
+- $L_i(t)$: EMA load of expert $i$ at step $t$ — the running invocation probability of
+  expert $i$ (hard dispatch counts, defined below).
+- $(L_i - k/N)$: symmetric penalty. Positive (suppresses) when $L_i$ exceeds fair share
+  $k/N$; negative (boosts) when $L_i$ is below fair share. Zero at equilibrium.
 - $\lambda$: penalty scale, auto-calibrated once at step $\lambda_{\text{calib}}$. See Section 2.
-- $N$: number of experts.
+- $N$: number of experts; $k$: top-$k$ value.
 
 **Invariants:**
-- Penalty $= 0$ for all $i$ iff $L_i = 1/N$ for all $i$ (equilibrium).
-- $\sum_i L_i = 1$ always, so $\sum_i (L_i - 1/N) = 0$: the raw differential is zero-sum.
-  $\sum_i \max(0, L_i - 1/N) \ge 0$ concentrates penalty on overloaded experts only.
+- Penalty $= 0$ for all $i$ iff $L_i = k/N$ for all $i$ (equilibrium).
+- $\sum_i L_i = k$ always (each token selects $k$ experts), so $\sum_i (L_i - k/N) = 0$:
+  the penalty vector is zero-sum. Overloaded experts are suppressed by exactly the amount
+  underloaded experts are boosted.
 
 Top-$k$ selection: $\mathcal{S}(x,t) = \operatorname{top-k}_i\; z_i(x,t)$.
 
@@ -56,28 +59,36 @@ objectives: selection is load-aware; weighting is quality-aware.
 
 ### EMA Load Update
 
-Usage $U_i(t)$ is the fraction of token-expert assignments sent to expert $i$ in the
-current step:
+Usage $U_i(t)$ is the hard dispatch count for expert $i$ in the current step, normalized
+by the number of tokens:
 
-$$U_i(t) = \frac{\#\{\text{assignments to expert } i\}}{B \cdot S \cdot k}$$
+$$U_i(t) = \frac{\#\{\text{(token, expert } i\text{) selections}\}}{B \cdot S}$$
 
-where $B$ is batch size, $S$ sequence length, $k$ the top-$k$ value.
-This ensures $\sum_i U_i(t) = 1$ exactly.
+where $B$ is batch size and $S$ is sequence length.
+Each token selects $k$ experts, so $\sum_i U_i(t) = k$ exactly.
+Fair share per expert is $k/N$: if load is perfectly uniform, each expert is selected
+by exactly $k/N$ of all tokens.
 
 The load estimate is a first-order EMA:
 
 $$L_i(t) = (1 - \alpha) \cdot L_i(t-1) + \alpha \cdot U_i(t)$$
 
 - $\alpha = 0.01$: smoothing coefficient. Memory horizon $\approx 1/\alpha = 100$ steps.
-- Initialized to $L_i(0) = 1/N$ (fair share).
+- Initialized to $L_i(0) = k/N$ (fair share).
 - Updated once per optimizer step (after gradient accumulation completes), not per
-  forward pass.
-- Synchronized across DDP ranks via `all_reduce(AVG)` every step.
+  forward pass. During gradient accumulation, per-microbatch counts are summed into
+  `_pending_counts`, then averaged (divided by number of microbatches) before the
+  single EMA step in `step()`. This prevents $\alpha$ from compounding within
+  a grad-accum window.
+- Synchronized across DDP ranks via `all_reduce(SUM)` on pending counts before the
+  EMA update, ensuring all ranks apply the same globally-pooled load signal.
+  A secondary `all_reduce(AVG)` on `ema_load` is applied after `step()` as a safety net
+  after checkpoint resume.
 
 **Invariants:**
-- $\sum_i L_i(t) = 1$ for all $t$ (preserved by the linear EMA since $\sum_i U_i = 1$
-  and $\sum_i L_i(0) = 1$).
-- $L_i(t) \in (0, 1]$ for all $t > 0$.
+- $\sum_i L_i(t) = k$ for all $t$ (preserved by the linear EMA since $\sum_i U_i = k$
+  and $\sum_i L_i(0) = k$).
+- $L_i(t) \ge 0$ for all $t$.
 
 ---
 
@@ -86,20 +97,22 @@ $$L_i(t) = (1 - \alpha) \cdot L_i(t-1) + \alpha \cdot U_i(t)$$
 $\lambda$ is calibrated once at step $\lambda_{\text{calib}} = \text{warmup\_steps} + 200$
 (default: 600 when warmup=400) and held fixed thereafter:
 
-$$\lambda = \min\!\left(\frac{\sigma_{\cos}}{\bar{L}},\; 5.0\right)$$
-
-where $\sigma_{\cos}$ is the empirical standard deviation of $\cos(x, W_i)$ over all
-tokens and experts in the current batch, and $\bar{L} = \frac{1}{N}\sum_i L_i = 1/N$.
-
-**Simplification.** Since $\bar{L} = 1/N$ always:
-
 $$\lambda = \min\!\bigl(\sigma_{\cos} \cdot N,\; 5.0\bigr)$$
 
-**Geometric interpretation.** The penalty for a 1-sigma routing advantage
-($\Delta \cos = \sigma_{\cos}$) equals a 1-fair-share overload penalty
-($\Delta L = 1/N$). Concretely: $\lambda \cdot (1/N) = \sigma_{\cos}$, so an expert
-carrying twice its fair share ($L_i = 2/N$) is penalized by exactly $\sigma_{\cos}$
-— enough to overcome one standard deviation of cosine advantage and force rebalancing.
+where $\sigma_{\cos}$ is the empirical standard deviation of $\cos(x, W_i)$ over all
+tokens and experts in the current batch, computed as
+`cos_sim.std(dim=-1).mean()` (per-token inter-expert std, then averaged over tokens).
+
+**Geometric interpretation.** Fair share per expert is $k/N$.
+A one-unit raw load deviation is $\Delta L = 1$ (one extra token selecting this expert,
+out of $B \cdot S$ total tokens). The penalty for this deviation is
+$\lambda \cdot 1 = \sigma_{\cos} \cdot N$.
+Equivalently, an overload of one full fair-share unit ($\Delta L = k/N$) produces a
+penalty of $\lambda \cdot (k/N) = \sigma_{\cos} \cdot k$. For typical values
+($k=2$, $N=8$, $\sigma_{\cos} \approx 0.15$–$0.25$): $\lambda \approx 1.2$–$2.0$,
+and a one-fair-share overload is penalized by $\approx 0.30$–$0.50$ in cosine units —
+enough to overcome one to two standard deviations of cosine advantage and force
+redistribution.
 
 **The 5.0 ceiling.** Activates when cosine similarity is highly concentrated
 (low $\sigma_{\cos}$ relative to $N$, i.e., tokens strongly prefer a small number of
@@ -128,33 +141,35 @@ disable the load penalty with no recovery path.
 At a fixed point, $L_i^* = U_i^*$ for all $i$ (EMA has converged). Substituting into
 the selection logit:
 
-$$z_i^*(x) = \cos(x, W_i) - \lambda \cdot \max\!\bigl(0,\; L_i^* - 1/N\bigr)$$
+$$z_i^*(x) = \cos(x, W_i) - \lambda \cdot \bigl(L_i^* - k/N\bigr)$$
 
-The penalty is zero for all $i$ iff $L_i^* = 1/N$, i.e., perfectly uniform load.
+The penalty is zero for all $i$ iff $L_i^* = k/N$, i.e., perfectly uniform load.
 In this case routing reduces to pure cosine similarity and the penalty has no effect.
 
 ### Stability of equilibrium
 
-The equilibrium $L_i^* = 1/N$ is a **saddle**, not a global attractor.
+The equilibrium $L_i^* = k/N$ is a **saddle**, not a global attractor.
 
 A high-cosine token can always select a moderately overloaded expert if its cosine
-advantage exceeds the penalty:
+advantage exceeds the net penalty difference:
 
-$$\cos(x, W_i) - \cos(x, W_j) > \lambda \cdot (L_i - 1/N)$$
+$$\cos(x, W_i) - \cos(x, W_j) > \lambda \cdot \bigl[(L_i - k/N) - (L_j - k/N)\bigr]
+  = \lambda \cdot (L_i - L_j)$$
 
-for any competitor $W_j$ with $L_j \le 1/N$. This is desirable: the router does
+for any competitor $W_j$ with $L_j < L_i$. This is desirable: the router does
 not force uniform routing when cosine geometry strongly prefers a particular expert.
 The penalty suppresses systematic overloading (excess load accumulated over many steps)
 while leaving token-level variation intact.
 
-### Why one-sided vs. two-sided?
+### Why symmetric (two-sided)?
 
-A two-sided penalty $-\lambda \cdot (L_i - 1/N)$ would *boost* underloaded experts
-and *suppress* overloaded ones, but it imposes a nonzero adjustment even at equilibrium:
-each expert bears a constant penalty term of $-\lambda/N$. This constant floor wastes
-routing signal budget — it shifts all logits uniformly down by $\lambda/N$, serving no
-purpose once load is balanced. The one-sided form eliminates this waste: at equilibrium
-the penalty surface is identically flat and routing is governed purely by cosine similarity.
+The penalty $-\lambda \cdot (L_i - k/N)$ is symmetric: it suppresses overloaded experts
+and boosts underloaded experts by the same magnitude. At equilibrium ($L_i = k/N$ for
+all $i$), the penalty is identically zero and routing is governed purely by cosine
+similarity. The zero-sum property ($\sum_i (L_i - k/N) = 0$) means the penalty
+redistributes routing signal from congested to uncongested experts without shrinking
+the total logit budget — unlike an auxiliary loss, which imposes an external gradient
+pressure with no such conservation.
 
 ---
 
@@ -208,6 +223,23 @@ This is a stable attractor: the compounding suppression does not self-correct.
 Empirically confirmed at `mu_stress=0.5`: eff_E collapsed from 7.5 to 5.8 by step 2000
 and did not recover. At `mu_stress=0.1` the term had zero measurable effect and was
 removed. Stress is retained as a zero-cost diagnostic signal in WandB.
+
+### Numerical precision note
+
+`welford_n` is an fp32 scalar. Over a full 19 000-step run (batch=32, seq=1024, top_k=2,
+N=8 experts), each expert accumulates approximately
+$19000 \times 32 \times 1024 \times 2 / 8 \approx 1.6 \times 10^8$ assignment events.
+fp32 represents integers exactly only up to $2^{24} \approx 1.7 \times 10^7$; above that
+threshold, unit increments are rounded away and `welford_n` effectively freezes.
+At $n \approx 10^8$, the mean correction per update is $\Delta\mu \sim 10^{-8}$ for
+$\mu \sim 0.5$ — below fp32 precision.
+
+**Impact:** metrics-only. Routing is unaffected. However, logged `welford_mu_mean` and
+`welford_var_mean` become unreliable (frozen at their values near $n \approx 10^7$).
+
+**Fix:** `reset_welford()` exists on `StressCorrectedRouter`. Call it at each evaluation
+interval (every ~1000 steps) to bound $n$ at $\sim 3.3 \times 10^6$ per window, safely
+within fp32 integer precision.
 
 ### LoRA Approximation Error Identity
 
@@ -277,6 +309,42 @@ are standard engineering defaults.
 
 ---
 
+## Code Reference: Variable Catalog and Shape Trace
+
+### Variable catalog
+
+| Symbol | Code variable | Shape | Semantics |
+|---|---|---|---|
+| $x$ | `x` | `[B, S, D]` | Token hidden states (input) |
+| $\hat{x}$ | `x_norm` | `[B, S, D]` | L2-normalized tokens |
+| $\hat{W}_i$ | `W_norm` | `[N, D]` | L2-normalized prototype directions |
+| $\cos(x, W_i)$ | `cos_sim` | `[B, S, N]` | Cosine similarity matrix |
+| $L_i(t)$ | `ema_load` | `[N]` | EMA load per expert |
+| $\lambda$ | `lambda_val` | scalar | Penalty scale (auto-calibrated) |
+| $\tau_t$ | `_tau` | scalar | Current temperature (annealed) |
+| $z_i$ | `logits` | `[B, S, N]` | Selection logits |
+| $w_i$ | `output_weights` | `[B, S, k]` | Softmax output weights over selected set |
+| $U_i(t)$ | `counts` / `avg_counts` | `[N]` | Instantaneous usage fraction |
+| $\alpha$ | `ema_alpha` | scalar | EMA smoothing coefficient |
+| $\sigma_{\cos}$ | `sigma_cos` | scalar | Std of cosine similarities (used at calibration) |
+
+### Shape trace through `forward()`
+
+```
+x:              [B, S, D]    input
+x_norm:         [B, S, D]    F.normalize(x, dim=-1)
+W_norm:         [N, D]       F.normalize(self.W, dim=-1)
+cos_sim:        [B, S, N]    x_norm @ W_norm.T
+ema_load:       [N]          broadcast to [1, 1, N] in logits expression
+logits:         [B, S, N]    cos_sim - λ·(ema_load - k/N) + noise
+topk_vals:      [B, S, k]    logits.topk(k, dim=-1)
+topk_idx:       [B, S, k]    logits.topk(k, dim=-1)
+topk_cos:       [B, S, k]    cos_sim.gather(-1, topk_idx)
+output_weights: [B, S, k]    softmax(topk_cos / τ, dim=-1)
+```
+
+---
+
 ## 7. Historical Design Decisions
 
 The following components appeared in earlier router versions and were removed. This table
@@ -285,7 +353,8 @@ records the decision and the empirical or mathematical reason.
 | Component | Router version | Replaced by | Reason for removal |
 |---|---|---|---|
 | Fatigue accumulator $F_i = (1-\gamma)F_i + \beta\max(0, U_i - \tau/N)$ | MetabolicRouter | EMA load $L_i$ | 5 hyperparameters ($\lambda, \gamma, \beta, \tau, F_s$); non-stationary signal accumulates historical excess rather than tracking current load; harder to calibrate and interpret |
-| $\text{tanh}(F_i / F_s)$ penalty function | MetabolicRouter | $\max(0, L_i - 1/N)$ | Bounded ceiling: if cosine advantage $> \lambda$, tanh penalty is permanently saturated and overloaded expert keeps winning. Confirmed at $\lambda=0.5$: fineweb gini drifted 0.026→0.207 by step 1225 |
+| $\text{tanh}(F_i / F_s)$ penalty function | MetabolicRouter | Symmetric EMA penalty $(L_i - k/N)$ | Bounded ceiling: if cosine advantage $> \lambda$, tanh penalty is permanently saturated and overloaded expert keeps winning. Confirmed at $\lambda=0.5$: fineweb gini drifted 0.026→0.207 by step 1225 |
+| One-sided penalty $\max(0, L_i - 1/N)$, fair share $1/N$ | SPAR v1 (stress_v1) | Symmetric penalty $(L_i - k/N)$, fair share $k/N$ | (1) $U_i$ counts hard dispatches normalized by $B \cdot S$ so $\sum_i U_i = k$, making fair share $k/N$ not $1/N$. (2) One-sided form provides no logit boost to underloaded experts, leaving the pressure asymmetric. (3) v1 showed load balance problems at fineweb scale. Current symmetric form is zero-sum and correctly centered. |
 | $\lambda_{\text{eff}}(t) = \lambda \cdot \min(1, t/T_{\text{warmup}})$ ramp | MetabolicRouter | λ auto-calibration at step 200 | Manual λ required sweep (v3→v4→v5 were essentially a λ search). Auto-calibration eliminates the free parameter |
 | Learnable $g_i$ magnitude scale | MetabolicRouter (early) | Removed | Optimizer inflated $g_i$ to dwarf the penalty, defeating load balancing entirely |
 | Output weights from potential (fatigue-inclusive) | MetabolicRouter | Factored weights: softmax(cos/τ) | Load signal in $w_i$ systematically depressed weights for overloaded experts, distorting the aggregated representation and hurting PPL |
@@ -400,13 +469,3 @@ specialization with frozen backbone, adapter-only training* — is invalidated.
 
 **The correct capacity lever is rank=32** (doubles adapter expressivity, clean ablation,
 preserves all paper claims).
-
-### Planned runs (after v6 and v7 complete)
-
-| Experiment | Config change | Purpose |
-|---|---|---|
-| `gptneo_125m_standard_v3_r32` | standard_v3 YAML, lora.rank=32 | Cell B |
-| `gptneo_125m_stress_v6_r32` | v6 fineweb YAML, lora.rank=32 | Cell D |
-
-Run B and D only after A (standard_v3, done) and C (v6-fineweb, in progress) have final
-numbers. The comparison requires identical step counts, datasets, and seeds.

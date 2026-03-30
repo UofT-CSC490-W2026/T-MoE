@@ -4,7 +4,7 @@ resource "aws_cloudwatch_log_group" "sagemaker_processing" {
 
   tags = {
     Name        = "SageMaker Processing Job Logs"
-    Description = "Log retention for T-MoE data ingestion processing jobs"
+    Description = "Log retention for SPAR data ingestion processing jobs"
   }
 }
 
@@ -27,7 +27,7 @@ resource "aws_iam_role" "sagemaker_execution" {
 
   tags = {
     Name        = "SageMaker Execution Role"
-    Description = "Execution role for T-MoE SageMaker data ingestion processing jobs"
+    Description = "Execution role for SPAR SageMaker data ingestion processing jobs"
   }
 }
 

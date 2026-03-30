@@ -1,5 +1,5 @@
 """
-T-MoE Unified Training Pipeline — AWS Batch Integration.
+SPAR Unified Training Pipeline — AWS Batch Integration.
 
 Orchestrates the full training workflow with three execution modes:
 
@@ -323,11 +323,17 @@ def upload_outputs_to_s3(pipeline_config, output_dir: str) -> None:
 # =====================================================================
 
 
-def run_training(experiment_config, cache_dir: str) -> tuple:
+def run_training(
+    experiment_config, cache_dir: str, config_name: str | None = None
+) -> tuple:
     """
     Run model training using the shared training workflow.
 
-    This is a thin wrapper around execute_training_workflow for backwards compatibility.
+    Args:
+        experiment_config: Loaded OmegaConf config.
+        cache_dir: Local directory for shards and outputs.
+        config_name: YAML stem used to load the config (e.g. "qwen2_1.5b_stress_v3-fineweb").
+            Passed through to execute_training_workflow to avoid experiment_name/filename mismatch.
     """
     from src.utils.training_workflow import execute_training_workflow
 
@@ -335,7 +341,9 @@ def run_training(experiment_config, cache_dir: str) -> tuple:
     logger.info("STEP: Running model training")
     logger.info("=" * 70)
 
-    return execute_training_workflow(experiment_config, cache_dir)
+    return execute_training_workflow(
+        experiment_config, cache_dir, config_name=config_name
+    )
 
 
 # =====================================================================
@@ -389,6 +397,9 @@ def submit_batch_job(
         environment.append({"name": "WANDB_API_KEY", "value": wandb_api_key})
     else:
         environment.append({"name": "WANDB_MODE", "value": "disabled"})
+
+    if hf_token := os.environ.get("HF_TOKEN"):
+        environment.append({"name": "HF_TOKEN", "value": hf_token})
     logger.info("Submitting Batch job:")
     logger.info("  Job Name       : %s", job_name)
     logger.info("  Job Queue      : %s", job_queue)
@@ -539,7 +550,9 @@ def run_local_mode(args, pipeline_config, experiment_config) -> None:
     )
     download_dataset_from_s3(pipeline_config, cache_dir)
 
-    output_dir, final_metrics = run_training(experiment_config, cache_dir)
+    output_dir, final_metrics = run_training(
+        experiment_config, cache_dir, config_name=args.config
+    )
 
     if not args.skip_upload:
         upload_outputs_to_s3(pipeline_config, output_dir)
@@ -583,6 +596,136 @@ def run_batch_mode(args, pipeline_config, experiment_config) -> None:
         sys.exit(1)
 
 
+def run_post_training_evals(
+    experiment_config,
+    output_dir: str,
+    cache_dir: str | None = None,
+) -> None:
+    """
+    Run perplexity and lm_harness evals in-process after training completes.
+    Results are written into <output_dir>/eval/ so they get uploaded to S3
+    alongside the checkpoints.
+
+    Args:
+        experiment_config: Loaded OmegaConf config.
+        output_dir: Training output directory (contains checkpoints/).
+        cache_dir: Local data cache directory (contains shards/). When provided,
+            SHARD_BASE_DIR is set so perplexity eval finds eval shards under
+            <cache_dir>/shards/ instead of the default data/shards/ path.
+    """
+    from pathlib import Path as _Path
+    from omegaconf import OmegaConf as _OC
+    import torch
+
+    output_path = _Path(output_dir)
+    checkpoints_dir = output_path / "checkpoints"
+    eval_output_dir = output_path / "eval"
+    eval_output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Find the best checkpoint (best_model.pt preferred, else latest step checkpoint).
+    best_ckpt = checkpoints_dir / "best_model.pt"
+    if not best_ckpt.exists():
+        step_ckpts = sorted(
+            checkpoints_dir.glob("checkpoint_step_*.pt"),
+            key=lambda p: (
+                int(p.stem.rsplit("_", 1)[-1])
+                if p.stem.rsplit("_", 1)[-1].isdigit()
+                else 0
+            ),
+        )
+        if not step_ckpts:
+            logger.warning(
+                "No checkpoints found in %s — skipping post-training eval.",
+                checkpoints_dir,
+            )
+            return
+        best_ckpt = step_ckpts[-1]
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    autocast_dtype = torch.bfloat16 if device.startswith("cuda") else None
+
+    # Read eval hyperparams from config (same keys as Modal's stage_eval).
+    def _ep(key, default):
+        return _OC.select(experiment_config, f"eval.{key}", default=default)
+
+    stride = _ep("stride", 512)
+    max_documents = _ep("max_documents", None)
+    max_eval_length = _ep("max_eval_length", 2048)
+    ppl_batch_size = int(_ep("batch_size", 32))
+    lm_batch_size = _ep("lm_harness_batch_size", 1)
+    limit = _ep("limit", None)
+
+    logger.info("=" * 70)
+    logger.info("STEP: Post-training evaluation")
+    logger.info("  Checkpoint : %s", best_ckpt)
+    logger.info("  Output     : %s", eval_output_dir)
+    logger.info("=" * 70)
+
+    # Point perplexity eval at the correct shard base directory.
+    # evals/perplexity.py reads SHARD_BASE_DIR at module import time, so we must
+    # set the env var BEFORE the first import of evals.perplexity. Use direct
+    # assignment (not setdefault) to override any stale value from the container env.
+    if cache_dir is not None:
+        shard_base = str(_Path(cache_dir) / "shards")
+        os.environ["SHARD_BASE_DIR"] = shard_base
+
+    try:
+        from evals.loading import load_model_for_eval
+
+        model, checkpoint_info = load_model_for_eval(
+            config=experiment_config,
+            checkpoint_path=best_ckpt,
+            device=device,
+            dtype=autocast_dtype,
+        )
+    except Exception as exc:
+        logger.error("Failed to load model for eval: %s", exc)
+        return
+
+    # Perplexity eval (wikitext-103 + pile-val shards).
+    try:
+        from evals.perplexity import run_perplexity_eval
+        from evals.results_schema import log_results_to_wandb
+
+        ppl_payload = run_perplexity_eval(
+            config=experiment_config,
+            checkpoint_path=best_ckpt,
+            model=model,
+            checkpoint_info=checkpoint_info,
+            output_path=eval_output_dir / "perplexity.json",
+            device=device,
+            stride=stride,
+            max_documents=max_documents,
+            autocast_dtype=autocast_dtype,
+            batch_size=ppl_batch_size,
+            max_eval_length=max_eval_length,
+        )
+        log_results_to_wandb(ppl_payload, config=experiment_config)
+        logger.info("Perplexity eval complete.")
+    except Exception as exc:
+        logger.error("Perplexity eval failed (non-fatal): %s", exc, exc_info=True)
+
+    # LM harness eval.
+    try:
+        from evals.lm_harness_runner import run_lm_harness_eval
+        from evals.results_schema import log_results_to_wandb
+
+        lm_payload = run_lm_harness_eval(
+            config=experiment_config,
+            checkpoint_path=best_ckpt,
+            model=model,
+            checkpoint_info=checkpoint_info,
+            output_path=eval_output_dir / "lm_harness.json",
+            device=device,
+            batch_size=lm_batch_size,
+            limit=limit,
+        )
+        log_results_to_wandb(lm_payload, config=experiment_config)
+        logger.info("LM harness eval complete.")
+    except Exception as exc:
+        logger.error("LM harness eval failed (non-fatal): %s", exc, exc_info=True)
+
+
 def run_container_mode(args, pipeline_config, experiment_config) -> None:
     """
     CONTAINER mode: runs inside Docker on Batch GPU instance.
@@ -601,7 +744,12 @@ def run_container_mode(args, pipeline_config, experiment_config) -> None:
     output_dir = None
     final_metrics = {"loss": float("inf"), "best_loss": float("inf")}
     try:
-        output_dir, final_metrics = run_training(experiment_config, cache_dir)
+        output_dir, final_metrics = run_training(
+            experiment_config, cache_dir, config_name=args.config
+        )
+        # Run evals in-process — results land in <output_dir>/eval/ and are
+        # uploaded to S3 with the checkpoints in the finally block below.
+        run_post_training_evals(experiment_config, output_dir, cache_dir=cache_dir)
     finally:
         # Always attempt S3 upload — partial checkpoints are better than none.
         if output_dir:
@@ -663,7 +811,7 @@ def main() -> None:
     Exit codes: 0=success, 1=failure/config error, 2=runtime error, 130=interrupt
     """
     parser = argparse.ArgumentParser(
-        description="T-MoE Training Pipeline — Local or AWS Batch",
+        description="SPAR Training Pipeline — Local or AWS Batch",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -705,7 +853,7 @@ Examples:
     pipeline_start = time.time()
 
     logger.info("=" * 70)
-    logger.info("T-MoE Training Pipeline")
+    logger.info("SPAR Training Pipeline")
     logger.info("  Mode    : %s", args.mode)
     logger.info("  Config  : %s", args.config)
     logger.info("  Dry Run : %s", args.dry_run)

@@ -1,5 +1,5 @@
 """
-Centralized configuration for T-MoE data ingestion pipeline.
+Centralized configuration for SPAR data ingestion pipeline.
 
 Loads and validates configuration from three sources (in priority order):
   1. Environment variables (highest priority)

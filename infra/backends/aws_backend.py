@@ -123,6 +123,9 @@ def _submit_batch_job(config: PipelineConfig, experiment_config_name: str) -> st
     else:
         environment_vars.append({"name": "WANDB_MODE", "value": "disabled"})
 
+    if hf_token := os.environ.get("HF_TOKEN"):
+        environment_vars.append({"name": "HF_TOKEN", "value": hf_token})
+
     logger.info("Submitting AWS Batch job:")
     logger.info("  Job Name       : %s", job_name)
     logger.info("  Job Queue      : %s", job_queue)

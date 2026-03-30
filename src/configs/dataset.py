@@ -22,14 +22,10 @@ DATASET_REGISTRY: Dict[str, Dict[str, Any]] = {
         "hf_path": "wikitext",
         "hf_name": "wikitext-103-raw-v1",
         "text_column": "text",
-        # HF "test" split is the standard PPL eval split; "val" shard → val_shard_*.bin
         "splits": {"train": "train", "val": "test"},
         "streaming": False,
     },
     # Eval-only: full Pile validation split (~214k docs).
-    # No train split — only val shards needed for perplexity eval.
-    # Tokenized once into val_shard_*.bin; shard-based eval reads token windows
-    # directly so document count doesn't affect eval speed.
     "pile-val": {
         "hf_path": "monology/pile-test-val",
         "hf_name": None,
@@ -37,10 +33,6 @@ DATASET_REGISTRY: Dict[str, Dict[str, Any]] = {
         "splits": {"train": None, "val": "validation"},
         "streaming": False,
     },
-    # ~100 shards x 200MB = ~20GB. Recommended for 125M-1.3B runs.
-    # streaming=False: HF downloads parquet files to cache, then parallel tokenization
-    # with num_proc workers fires (~35 min on Modal vs ~25h sequential streaming).
-    # Set HF_DATASETS_CACHE to the Modal Volume so the download persists.
     "fineweb-edu": {
         "hf_path": "HuggingFaceFW/fineweb-edu",
         "hf_name": "sample-10BT",

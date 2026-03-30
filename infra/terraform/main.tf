@@ -25,7 +25,7 @@ provider "aws" {
       Project     = var.project_name
       Environment = var.environment
       ManagedBy   = "Terraform"
-      Component   = "T-MoE-DataIngestion"
+      Component   = "SPAR-DataIngestion"
     }
   }
 }

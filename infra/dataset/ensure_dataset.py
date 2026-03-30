@@ -1,5 +1,5 @@
 """
-Unified dataset resolution utility for T-MoE training.
+Unified dataset resolution utility for SPAR training.
 
 Ensures datasets exist in S3 before training begins, providing a consistent
 dataset handling strategy across all backends (AWS Batch, Modal).

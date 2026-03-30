@@ -9,43 +9,62 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install pytest pytest-cov
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
       - name: Run tests with coverage
         run: |
           pytest --cov=. --cov-report=term --cov-report=xml --junitxml=pytest.xml | tee coverage.txt
+
       - name: Extract coverage percentage
         run: |
           COVERAGE=$(grep '^TOTAL' coverage.txt | awk '{print $NF}')
           echo "COVERAGE=$COVERAGE" >> "$GITHUB_ENV"
+
       - name: Update README.md with coverage badge
         run: |
           NUM=$(echo "$COVERAGE" | tr -d '%')
+
           if [ "$(echo "$NUM >= 80" | bc)" -eq 1 ]; then COLOR="brightgreen"
           elif [ "$(echo "$NUM >= 60" | bc)" -eq 1 ]; then COLOR="yellow"
           else COLOR="red"; fi
-          sed -i "s|!\[Coverage\](https://img.shields.io/badge/coverage-.*)|![Coverage](https://img.shields.io/badge/coverage-${COVERAGE}25-${COLOR})|" README.md
+
+          ENCODED=$(echo "$COVERAGE" | sed 's/%/%25/')
+
+          sed -i "s|!\[Coverage\](https://img.shields.io/badge/coverage-.*)|![Coverage](https://img.shields.io/badge/coverage-${ENCODED}-${COLOR})|" README.md
+
       - name: Post coverage comment on PR
         if: github.event_name == 'pull_request'
-        
         uses: MishaKav/pytest-coverage-comment@main
         with:
           pytest-coverage-path: coverage.txt
           junitxml-path: pytest.xml
+
       - name: Commit and push if changed
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH=${GITHUB_REF#refs/heads/}
+
           git diff --quiet README.md || {
             git add README.md
             git commit -m "Update coverage to $COVERAGE"
-            git push
+            git push origin HEAD:$BRANCH
           }

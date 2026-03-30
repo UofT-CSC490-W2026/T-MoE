@@ -8,11 +8,12 @@ from typing import Any, Sequence
 from evals.efficiency import run_efficiency_eval
 from evals.lm_harness_runner import run_lm_harness_eval
 from evals.perplexity import run_perplexity_eval
+from evals.routing_analysis import run_routing_analysis
 from evals.results_schema import infer_checkpoint_step
 from evals.results_schema import log_results_to_wandb
 
 
-SUPPORTED_TASKS = ("perplexity", "lm_harness", "efficiency")
+SUPPORTED_TASKS = ("perplexity", "lm_harness", "efficiency", "routing_analysis")
 
 # Defaults used when neither CLI nor YAML provides a value
 _EVAL_DEFAULTS = {
@@ -25,6 +26,9 @@ _EVAL_DEFAULTS = {
     "seq_len": 1024,
     "warmup_iters": 10,
     "benchmark_iters": 100,
+    "n_samples": 200,
+    "max_length": 512,
+    "top_n_tokens": 50,
 }
 
 
@@ -53,7 +57,7 @@ def _get_eval_param(config: Any, key: str, cli_value: Any, sentinel: Any = None)
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run post-training evaluation on a saved T-MoE checkpoint."
+        description="Run post-training evaluation on a saved SPAR checkpoint."
     )
     parser.add_argument("--task", required=True, choices=SUPPORTED_TASKS)
     parser.add_argument("--checkpoint", required=True)
@@ -73,6 +77,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--benchmark-iters", type=int, default=None)
     parser.add_argument("--reference-checkpoint", default=None)
     parser.add_argument("--reference-config", default=None)
+    parser.add_argument("--n-samples", type=int, default=None)
+    parser.add_argument("--max-length", type=int, default=None)
+    parser.add_argument("--top-n-tokens", type=int, default=None)
     parser.add_argument("overrides", nargs="*")
     return parser
 
@@ -178,6 +185,9 @@ def run_task(args: argparse.Namespace):
     seq_len = _get_eval_param(config, "seq_len", args.seq_len)
     warmup_iters = _get_eval_param(config, "warmup_iters", args.warmup_iters)
     benchmark_iters = _get_eval_param(config, "benchmark_iters", args.benchmark_iters)
+    n_samples = _get_eval_param(config, "n_samples", args.n_samples)
+    max_length = _get_eval_param(config, "max_length", args.max_length)
+    top_n_tokens = _get_eval_param(config, "top_n_tokens", args.top_n_tokens)
 
     reference_config = None
     if args.task == "efficiency" and args.reference_config:
@@ -243,6 +253,18 @@ def run_task(args: argparse.Namespace):
                 benchmark_iters=benchmark_iters,
                 reference_checkpoint_path=args.reference_checkpoint,
                 reference_config=reference_config,
+            )
+        elif args.task == "routing_analysis":
+            payload = run_routing_analysis(
+                config=config,
+                checkpoint_path=checkpoint_path,
+                model=model,
+                checkpoint_info=checkpoint_info,
+                output_path=output_path,
+                device=device,
+                n_samples=n_samples,
+                max_length=max_length,
+                top_n_tokens=top_n_tokens,
             )
         else:
             raise NotImplementedError(f"Task '{args.task}' is not implemented yet.")

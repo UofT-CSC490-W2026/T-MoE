@@ -1,5 +1,5 @@
 """
-T-MoE Data Ingestion Pipeline — Consolidated Entry Point.
+SPAR Data Ingestion Pipeline — Consolidated Entry Point.
 
 Routes execution to either SageMaker-based or fallback ingestion based on
 configuration. Single command to run data ingestion regardless of mode.
@@ -173,7 +173,7 @@ def main() -> None:
         130: Keyboard interrupt
     """
     logger.info("=" * 70)
-    logger.info("T-MoE Data Ingestion Pipeline")
+    logger.info("SPAR Data Ingestion Pipeline")
     logger.info("  Project Root : %s", PROJECT_ROOT)
     logger.info("=" * 70)
 

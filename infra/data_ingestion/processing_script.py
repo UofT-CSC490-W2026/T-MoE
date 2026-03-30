@@ -347,7 +347,7 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         logger.info("=" * 70)
-        logger.info("T-MoE SageMaker Processing Job")
+        logger.info("SPAR SageMaker Processing Job")
         logger.info("  Dataset : %s", DATASET_NAME)
         logger.info("  Output  : %s", OUTPUT_BASE_DIR)
         logger.info("  Format  : %s", OUTPUT_FORMAT)

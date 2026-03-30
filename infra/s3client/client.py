@@ -1,5 +1,5 @@
 """
-Production-grade S3 client for T-MoE data operations.
+Production-grade S3 client for SPAR data operations.
 
 Provides upload, download, list, delete, and presigned URL operations
 with retry logic, progress tracking, and structured error handling.

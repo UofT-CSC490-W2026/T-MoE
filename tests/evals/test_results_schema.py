@@ -213,7 +213,7 @@ def test_log_results_to_wandb_uses_wandb_env_defaults(monkeypatch):
             return _FakeRun()
 
     fake_wandb = _FakeWandb()
-    monkeypatch.setenv("WANDB_PROJECT", "T-MoE")
+    monkeypatch.setenv("WANDB_PROJECT", "SPAR")
     monkeypatch.setenv("WANDB_ENTITY", "uoft")
     monkeypatch.setattr("evals.results_schema.WANDB_AVAILABLE", True)
     monkeypatch.setattr("evals.results_schema.wandb", fake_wandb)
@@ -228,7 +228,7 @@ def test_log_results_to_wandb_uses_wandb_env_defaults(monkeypatch):
         config={"experiment_name": "demo"},
     )
     assert logged is True
-    assert fake_wandb.init_kwargs["project"] == "T-MoE"
+    assert fake_wandb.init_kwargs["project"] == "SPAR"
     assert fake_wandb.init_kwargs["entity"] == "uoft"
     assert fake_wandb.init_kwargs["mode"] == "online"
 

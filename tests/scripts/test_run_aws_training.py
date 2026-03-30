@@ -199,15 +199,13 @@ def test_upload_outputs_to_s3():
     mock_config.raw_data_bucket = "bucket"
     mock_config.aws_region = "us-east-1"
     mock_config.max_retries = 1
-    with patch(
-        "infra.s3client.s3_sync.upload_experiment_dir", create=True
-    ) as mock_upload:
-        mock_upload.return_value = {"uploaded": ["f1", "f2"], "failed": []}
-        with patch.dict(
-            "sys.modules",
-            {"infra.s3client.s3_sync": MagicMock(upload_experiment_dir=mock_upload)},
-        ):
-            upload_outputs_to_s3(mock_config, "/tmp/outputs/exp1")
+    mock_upload = MagicMock(return_value={"uploaded": ["f1", "f2"], "failed": []})
+    mock_s3sync = MagicMock(upload_experiment_dir=mock_upload)
+    with patch.dict(
+        "sys.modules",
+        {"infra.s3client.s3_sync": mock_s3sync},
+    ):
+        upload_outputs_to_s3(mock_config, "/tmp/outputs/exp1")
 
 
 def test_upload_outputs_to_s3_with_failures():
@@ -388,7 +386,9 @@ def test_run_batch_mode_dry_run():
 def test_run_local_mode_full():
     from run_aws_training import run_local_mode
 
-    args = argparse.Namespace(dry_run=False, mode="local", skip_upload=False)
+    args = argparse.Namespace(
+        dry_run=False, mode="local", skip_upload=False, config="test"
+    )
     mock_pc = MagicMock()
     mock_ec = MagicMock()
     mock_oc = MagicMock()
@@ -409,7 +409,9 @@ def test_run_local_mode_full():
 def test_run_local_mode_skip_upload():
     from run_aws_training import run_local_mode
 
-    args = argparse.Namespace(dry_run=False, mode="local", skip_upload=True)
+    args = argparse.Namespace(
+        dry_run=False, mode="local", skip_upload=True, config="test"
+    )
     mock_pc = MagicMock()
     mock_ec = MagicMock()
     mock_oc = MagicMock()
@@ -429,7 +431,9 @@ def test_run_local_mode_skip_upload():
 def test_run_local_mode_ingest_needed():
     from run_aws_training import run_local_mode
 
-    args = argparse.Namespace(dry_run=False, mode="local", skip_upload=True)
+    args = argparse.Namespace(
+        dry_run=False, mode="local", skip_upload=True, config="test"
+    )
     mock_pc = MagicMock()
     mock_ec = MagicMock()
     mock_oc = MagicMock()
@@ -480,7 +484,7 @@ def test_run_batch_mode_failed():
 def test_run_container_mode():
     from run_aws_training import run_container_mode
 
-    args = argparse.Namespace(mode="container")
+    args = argparse.Namespace(mode="container", config="test_config")
     mock_pc = MagicMock()
     mock_ec = MagicMock()
     mock_oc = MagicMock()
@@ -491,14 +495,15 @@ def test_run_container_mode():
                 "run_aws_training.run_training",
                 return_value=("/tmp/out", {"loss": 0.5, "best_loss": 0.4}),
             ):
-                with patch("run_aws_training.upload_outputs_to_s3"):
-                    run_container_mode(args, mock_pc, mock_ec)
+                with patch("run_aws_training.run_post_training_evals"):
+                    with patch("run_aws_training.upload_outputs_to_s3"):
+                        run_container_mode(args, mock_pc, mock_ec)
 
 
 def test_run_container_mode_training_fails():
     from run_aws_training import run_container_mode
 
-    args = argparse.Namespace(mode="container")
+    args = argparse.Namespace(mode="container", config="test_config")
     mock_pc = MagicMock()
     mock_ec = MagicMock()
     mock_oc = MagicMock()
@@ -625,3 +630,179 @@ def test_run_batch_mode_ingest_needed():
                         run_batch_mode(args, mock_pc, mock_ec)
                     assert exc_info.value.code == 0
                     mock_ingest.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: HF_TOKEN forwarded in submit_batch_job
+# ---------------------------------------------------------------------------
+
+
+def test_submit_batch_job_forwards_hf_token():
+    """HF_TOKEN present in env must be forwarded to the container environment."""
+    import os
+    from run_aws_training import submit_batch_job
+
+    mock_config = MagicMock()
+    mock_config.aws_region = "us-east-1"
+    mock_config.raw_data_bucket = "bucket"
+    mock_config.dataset_name = "fineweb-edu"
+    mock_boto3 = MagicMock()
+    mock_client = MagicMock()
+    mock_client.submit_job.return_value = {"jobId": "job-hf-123"}
+    mock_boto3.client.return_value = mock_client
+
+    with patch.dict(os.environ, {"HF_TOKEN": "hf_test_token"}, clear=False):
+        with patch.dict("sys.modules", {"boto3": mock_boto3}):
+            job_id = submit_batch_job("test_config", mock_config, [])
+
+    call_kwargs = mock_client.submit_job.call_args[1]
+    env_vars = call_kwargs["containerOverrides"]["environment"]
+    env_map = {e["name"]: e["value"] for e in env_vars}
+    assert "HF_TOKEN" in env_map, "HF_TOKEN must be forwarded to container env"
+    assert env_map["HF_TOKEN"] == "hf_test_token"
+    assert job_id == "job-hf-123"
+
+
+def test_submit_batch_job_no_hf_token():
+    """When HF_TOKEN is absent, it must NOT appear in the container environment."""
+    import os
+    from run_aws_training import submit_batch_job
+
+    mock_config = MagicMock()
+    mock_config.aws_region = "us-east-1"
+    mock_config.raw_data_bucket = "bucket"
+    mock_config.dataset_name = "fineweb-edu"
+    mock_boto3 = MagicMock()
+    mock_client = MagicMock()
+    mock_client.submit_job.return_value = {"jobId": "job-nohf-456"}
+    mock_boto3.client.return_value = mock_client
+
+    env_without_token = {k: v for k, v in os.environ.items() if k != "HF_TOKEN"}
+    with patch.dict(os.environ, env_without_token, clear=True):
+        with patch.dict("sys.modules", {"boto3": mock_boto3}):
+            job_id = submit_batch_job("test_config", mock_config, [])
+
+    call_kwargs = mock_client.submit_job.call_args[1]
+    env_vars = call_kwargs["containerOverrides"]["environment"]
+    env_names = [e["name"] for e in env_vars]
+    assert "HF_TOKEN" not in env_names
+    assert job_id == "job-nohf-456"
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: post-training eval runs in container mode
+# ---------------------------------------------------------------------------
+
+
+def test_run_container_mode_calls_evals():
+    """run_container_mode must call run_post_training_evals after training."""
+    from run_aws_training import run_container_mode
+
+    args = argparse.Namespace(mode="container", config="test_config")
+    mock_pc = MagicMock()
+    mock_ec = MagicMock()
+    mock_oc = MagicMock()
+    mock_oc.select.return_value = "/tmp/cache"
+    with patch.dict("sys.modules", {"omegaconf": MagicMock(OmegaConf=mock_oc)}):
+        with patch("run_aws_training.download_dataset_from_s3"):
+            with patch(
+                "run_aws_training.run_training",
+                return_value=("/tmp/out", {"loss": 0.3, "best_loss": 0.3}),
+            ):
+                with patch("run_aws_training.run_post_training_evals") as mock_evals:
+                    with patch("run_aws_training.upload_outputs_to_s3"):
+                        run_container_mode(args, mock_pc, mock_ec)
+                        mock_evals.assert_called_once()
+                        call_kwargs = mock_evals.call_args
+                        assert call_kwargs[0][1] == "/tmp/out"
+
+
+def test_run_container_mode_eval_failure_still_uploads():
+    """If eval raises, container mode must still upload checkpoints to S3."""
+    from run_aws_training import run_container_mode
+
+    args = argparse.Namespace(mode="container", config="test_config")
+    mock_pc = MagicMock()
+    mock_ec = MagicMock()
+    mock_oc = MagicMock()
+    mock_oc.select.return_value = "/tmp/cache"
+    with patch.dict("sys.modules", {"omegaconf": MagicMock(OmegaConf=mock_oc)}):
+        with patch("run_aws_training.download_dataset_from_s3"):
+            with patch(
+                "run_aws_training.run_training",
+                return_value=("/tmp/out", {"loss": 0.3, "best_loss": 0.3}),
+            ):
+                with patch(
+                    "run_aws_training.run_post_training_evals",
+                    side_effect=RuntimeError("eval died"),
+                ):
+                    with patch("run_aws_training.upload_outputs_to_s3") as mock_upload:
+                        with pytest.raises(RuntimeError):
+                            run_container_mode(args, mock_pc, mock_ec)
+                        mock_upload.assert_called_once_with(mock_pc, "/tmp/out")
+
+
+def test_run_post_training_evals_no_checkpoints(tmp_path):
+    """run_post_training_evals must log a warning and return when no checkpoints exist."""
+    from run_aws_training import run_post_training_evals
+
+    mock_ec = MagicMock()
+    # No checkpoints directory — should not raise
+    run_post_training_evals(mock_ec, str(tmp_path))
+
+
+def test_run_post_training_evals_with_checkpoint(tmp_path):
+    """run_post_training_evals runs perplexity + lm_harness when checkpoint is found."""
+    from run_aws_training import run_post_training_evals
+
+    ckpt_dir = tmp_path / "checkpoints"
+    ckpt_dir.mkdir()
+    # Create a dummy checkpoint file so the function proceeds past the guard
+    (ckpt_dir / "checkpoint_step_19000.pt").write_bytes(b"")
+
+    mock_ec = MagicMock()
+
+    # Mock OmegaConf.select so _ep() returns sensible defaults
+    mock_oc = MagicMock()
+    mock_oc.select.side_effect = lambda cfg, key, default=None: default
+
+    mock_torch = MagicMock()
+    mock_torch.cuda.is_available.return_value = False
+    mock_torch.bfloat16 = "bfloat16"
+
+    with patch("run_aws_training.os"):
+        with patch.dict("sys.modules", {"omegaconf": MagicMock(OmegaConf=mock_oc)}):
+            with patch(
+                "evals.loading.load_model_for_eval", return_value=(MagicMock(), {})
+            ):
+                with patch(
+                    "evals.perplexity.run_perplexity_eval", return_value={}
+                ) as mock_ppl:
+                    with patch(
+                        "evals.lm_harness_runner.run_lm_harness_eval", return_value={}
+                    ) as mock_lm:
+                        run_post_training_evals(mock_ec, str(tmp_path))
+                        mock_ppl.assert_called_once()
+                        mock_lm.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Fix 4: training_workflow config_name propagation
+# ---------------------------------------------------------------------------
+
+
+def test_run_training_passes_config_name():
+    """run_training must forward config_name to execute_training_workflow."""
+    from run_aws_training import run_training
+
+    mock_ec = MagicMock()
+    mock_wf = MagicMock()
+    mock_wf.execute_training_workflow.return_value = ("/tmp/out", {"loss": 0.5})
+    with patch.dict("sys.modules", {"src.utils.training_workflow": mock_wf}):
+        output_dir, metrics = run_training(
+            mock_ec, "/tmp/cache", config_name="qwen2_1.5b_stress_v3-fineweb"
+        )
+        mock_wf.execute_training_workflow.assert_called_once_with(
+            mock_ec, "/tmp/cache", config_name="qwen2_1.5b_stress_v3-fineweb"
+        )
+        assert output_dir == "/tmp/out"

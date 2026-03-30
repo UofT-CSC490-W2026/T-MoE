@@ -1,10 +1,10 @@
-# T-MoE Experiment Guide
+# SPAR Experiment Guide
 
 ## Running on Modal
 
 Set the active config in `run_modal_training.py`:
 ```python
-CONFIG = "experiments/gptneo_125m_metabolic_v4.yaml"
+CONFIG = "experiments/qwen2_1.5b_stress_v3-fineweb.yaml"
 ```
 GPU type and count are read automatically from `compute.modal.gpu` in that YAML.
 
@@ -19,10 +19,10 @@ modal run run_modal_training.py::stage_train \
 ## Running Locally
 
 ```bash
-python -m scripts.prepare_data --config experiments/gptneo_125m_metabolic_v4.yaml
-python -m scripts.train --config experiments/gptneo_125m_metabolic_v4.yaml
+python -m scripts.prepare_data --config experiments/qwen2_1.5b_stress_v3-fineweb.yaml
+python -m scripts.train --config experiments/qwen2_1.5b_stress_v3-fineweb.yaml
 torchrun --standalone --nproc_per_node=4 \
-    -m scripts.train --config experiments/gptneo_125m_metabolic_v4.yaml
+    -m scripts.train --config experiments/qwen2_1.5b_stress_v3-fineweb.yaml
 ```
 
 ## Datasets
@@ -40,6 +40,7 @@ To add a dataset: add one entry to `DATASET_REGISTRY` in `src/configs/dataset.py
 
 | model_key | Parameters |
 |---|---|
+| `qwen2-1.5b` | 1.5B |
 | `gpt-neo-125m` | 125M |
 | `gpt-neo-1.3b` | 1.3B |
 | `gpt-neo-2.7b` | 2.7B |
@@ -50,8 +51,10 @@ To add a model: create `src/models/<name>.py` with a `VARIANTS` dict and `@Model
 
 | `router.type` | Description |
 |---|---|
-| `metabolic` | Fatigue-based load balancing, no aux loss |
+| `stress_corrected` | SPAR — cosine routing with EMA load penalty, no aux loss (current default) |
+| `deepseek` | DeepSeek V3 bias correction (baseline) |
 | `standard` | Top-K with aux loss (baseline) |
+| `expert_choice` | Expert-choice routing (capacity-constrained) |
 | `topk` | Top-K, no load balancing |
 | `switch` | Top-1 |
 

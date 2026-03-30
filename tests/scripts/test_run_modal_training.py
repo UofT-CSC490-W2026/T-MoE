@@ -91,6 +91,7 @@ def test_resolve_eval_tasks():
         "perplexity",
         "lm_harness",
         "efficiency",
+        "routing_analysis",
     ]
     assert run_modal_training._resolve_eval_tasks("perplexity") == ["perplexity"]
     assert run_modal_training._resolve_eval_tasks("perplexity,lm_harness") == [

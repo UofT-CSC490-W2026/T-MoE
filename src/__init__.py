@@ -1,1 +1,0 @@
-"""T-MoE source package."""

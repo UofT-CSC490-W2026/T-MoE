@@ -1,5 +1,5 @@
 # ==============================================================================
-# T-MoE Training — Docker Image
+# SPAR Training — Docker Image
 # ==============================================================================
 # CUDA 12.1 runtime with Python 3.11 for GPU training on AWS Batch.
 # Contains all project dependencies and source code.

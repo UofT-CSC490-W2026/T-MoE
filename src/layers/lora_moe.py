@@ -166,16 +166,13 @@ class LoRAMoELayer(BaseMoELayer):
         x_flat = x.view(-1, hidden).contiguous()
         combined = torch.zeros_like(x_flat)
 
-        # Unified Dispatcher: mask-based expert accumulation over dense (N, E) weights
+        # Sparse dispatcher: gather only active tokens per expert.
         for expert_idx in range(self.expert_pool.num_experts):
             expert = self.expert_pool[expert_idx]
-
             expert_w_col = weights[:, expert_idx]
             mask = expert_w_col > 0
-
             if not mask.any():
                 continue
-
             token_ids = mask.nonzero().squeeze(-1)
             expert_in = x_flat[token_ids]
             expert_out = expert(expert_in)

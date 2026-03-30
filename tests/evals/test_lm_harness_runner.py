@@ -54,6 +54,8 @@ def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_
                 "winogrande": {"acc,none": 0.58},
                 "arc_easy": {"acc_norm,none": 0.71},
                 "arc_challenge": {"acc_norm,none": 0.39},
+                "boolq": {"acc,none": 0.65},
+                "openbookqa": {"acc_norm,none": 0.44},
             }
         }
 
@@ -75,6 +77,8 @@ def test_run_lm_harness_eval_merges_zero_and_five_shot_results(monkeypatch, tmp_
         "winogrande": 0.58,
         "arc_easy": 0.71,
         "arc_challenge": 0.39,
+        "boolq": 0.65,
+        "openbookqa": 0.44,
         "mmlu": 0.55,
     }
     assert payload["metadata"]["mmlu_subjects"] == {

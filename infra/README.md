@@ -1,6 +1,6 @@
 ## Infrastructure Setup
 
-This document covers the one-time setup of the cloud infrastructure required to run T-MoE.
+This document covers the one-time setup of the cloud infrastructure required to run SPAR.
 
 ## Prerequisites
 
