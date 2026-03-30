@@ -1,16 +1,16 @@
 """
 scripts/train.py — Stage 2: Model Training
 
-Trainer for T-MoE. Reads pre-packed binary shards, builds the model via
+Trainer for SPAR. Reads pre-packed binary shards, builds the model via
 the ModelRegistry, and trains with WandB logging. Model-agnostic: adding
 a new backbone requires no changes here.
 
 Usage:
     # Local
-    python -m scripts.train --config experiments/gptneo_125m_stress_v6-wikitext.yaml
+    python -m scripts.train --config experiments/qwen2_1.5b_stress_v3.yaml
 
     # With CLI overrides
-    python -m scripts.train --config experiments/gptneo_125m_stress_v6-wikitext.yaml \\
+    python -m scripts.train --config experiments/qwen2_1.5b_stress_v3.yaml \\
         training.lr=1e-4 training.batch_size=8
 
     # Via Modal (set CONFIG = "experiments/..." in run_modal_training.py, then):
@@ -52,11 +52,7 @@ class ShardDataset(Dataset):
 
     Each .bin file is: 8-byte header (uint64 token_count) + optional 2-byte dtype_flag + tokens (uint16 or uint32).
     Legacy shards omit the dtype_flag and always use uint16 (GPT-Neo). Versioned shards (Qwen2) use uint32.
-    Sequences are sliced out of the continuous token stream — no padding.
-
-    Memory-efficient: only shard headers are read at init time. Token data
-    is accessed via np.memmap on demand, so arbitrarily large datasets
-    (C4, The Pile) work without OOM.
+    Sequences are sliced out of the continuous token stream — no padding. Token data accessed via np.memmap.
     """
 
     def __init__(self, shard_dir: Path, split: str, seq_len: int):
@@ -99,7 +95,6 @@ class ShardDataset(Dataset):
             self.shard_sizes.append(token_count)
             self.shard_meta.append((dtype, offset))
 
-        # Cumulative token offsets for O(log N) shard resolution in __getitem__.
         self.cumulative = [0]
         for s in self.shard_sizes:
             self.cumulative.append(self.cumulative[-1] + s)
@@ -107,9 +102,7 @@ class ShardDataset(Dataset):
         total_tokens = self.cumulative[-1]
         self.n_seqs = (total_tokens - 1) // seq_len
 
-        # Cache one memmap per shard at init time — avoids re-opening file
-        # descriptors and recreating OS memory mappings on every __getitem__ call.
-        # Each mmap covers the full token payload of the shard (after the header).
+        # Cache one memmap per shard at init time — avoids re-opening file descriptors on every __getitem__.
         self.mmaps: list[np.memmap] = [
             np.memmap(path, dtype=dtype, mode="r", offset=offset, shape=(size,))
             for path, (dtype, offset), size in zip(
@@ -151,12 +144,7 @@ class ShardDataset(Dataset):
 
 
 def load_config(config_path: str, overrides: list[str]) -> DictConfig:
-    """
-    Load experiment YAML config and merge CLI overrides.
-
-    Example override: "training.lr=1e-4 training.batch_size=8"
-    Identical semantics to Hydra, without Hydra's initialization complexity.
-    """
+    """Load experiment YAML config and merge CLI overrides (Hydra-compatible dotlist syntax)."""
     cfg = OmegaConf.load(config_path)
     if overrides:
         override_cfg = OmegaConf.from_dotlist(overrides)
@@ -165,12 +153,12 @@ def load_config(config_path: str, overrides: list[str]) -> DictConfig:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="T-MoE Trainer")
+    parser = argparse.ArgumentParser(description="SPAR Trainer")
     parser.add_argument(
         "--config",
         type=str,
         required=True,
-        help="Path to experiment YAML (e.g. experiments/gptneo_125m_stress_v6-wikitext.yaml)",
+        help="Path to experiment YAML (e.g. experiments/qwen2_1.5b_stress_v3.yaml)",
     )
     parser.add_argument(
         "--resume",
@@ -203,13 +191,12 @@ def build_model(cfg) -> torch.nn.Module:
     from src.project_types import ExpertType
     from src.routers import create_router
 
-    # Side-effect: triggers @ModelRegistry.register decorators
     import src.models  # noqa: F401
 
-    model_key = cfg.model.model_key  # e.g. "gpt-neo-125m"
+    model_key = cfg.model.model_key
     model_info = model_lookup(model_key)
-    model_type = model_info["model_type"]  # e.g. "gpt_neo"
-    variant = model_info["variant"]  # e.g. "125m"
+    model_type = model_info["model_type"]
+    variant = model_info["variant"]
 
     model_cls = ModelRegistry.get(model_type)
     model = model_cls(
@@ -219,7 +206,6 @@ def build_model(cfg) -> torch.nn.Module:
         device="cpu",  # FSDP handles GPU placement; single-GPU does model.to(device) later
     )
 
-    # Build and inject MoE layers
     moe_layers = {}
     for layer_idx in cfg.model.moe_layer_indices:
         actual_idx = layer_idx if layer_idx >= 0 else model.num_layers + layer_idx
@@ -298,12 +284,8 @@ def _initialize_router_prototypes(
     n_warmup_batches: int = 2,
 ) -> None:
     """
-    Collect layer activations from n_warmup_batches and initialize each
-    StressCorrectedRouter's W from k-means centroids.
-
-    DDP strategy: rank 0 runs k-means and broadcasts W to all ranks.
-    All ranks register hooks and collect activations (needed for the broadcast
-    target device), but only rank 0 computes centroids.
+    Initialize each StressCorrectedRouter's W from k-means centroids of layer activations.
+    DDP: rank 0 computes centroids, broadcasts W to all ranks.
     """
     from src.layers.lora_moe import LoRAMoELayer
     from src.routers.stress_corrected import StressCorrectedRouter
@@ -344,10 +326,8 @@ def _initialize_router_prototypes(
         h.remove()
     base_model.train()
 
-    # Clear Dynamo's compilation cache. The eval-mode no_grad forward above traces
-    # all tensors with requires_grad=False. Without this reset, Dynamo would hit a
-    # requires_grad mismatch on the first training forward and recompile up to 8
-    # times before falling back to eager.
+    # Reset Dynamo: eval-mode forward traces requires_grad=False; without this,
+    # Dynamo hits a grad mismatch on the first training forward and recompiles repeatedly.
     torch._dynamo.reset()
 
     if not is_distributed:
@@ -375,12 +355,10 @@ def build_optimizer(model: torch.nn.Module, cfg) -> torch.optim.Optimizer:
     betas = tuple(cfg.training.get("betas", [0.9, 0.95]))
     eps = cfg.training.get("eps", 1e-8)
     wd = cfg.training.get("weight_decay", 0.1)
-    # Partition parameters: optional base weights (trainable shared MLP), rest.
     _BASE_PARAM_NAMES = {"shared_fc_weight", "shared_proj_weight"}
 
     base_param_ids: set[int] = set()
 
-    # Collect optional base params (trainable shared MLP weights).
     base_params = []
     if lr_base is not None:
         for name, p in model.named_parameters():
@@ -390,22 +368,16 @@ def build_optimizer(model: torch.nn.Module, cfg) -> torch.optim.Optimizer:
                 base_params.append(p)
                 base_param_ids.add(id(p))
 
-    # Single param group — preserves fused=True AdamW kernel (splitting groups with
-    # different weight_decay disables the CUDA fused path in PyTorch 2.10, causing
-    # ~3x throughput regression). Weight decay on router.W is neutralized post-step
-    # via renormalization in the training loop (router.W is L2-normalized in forward
-    # anyway, so the unit-sphere constraint eliminates the weight decay effect).
+    # Single param group: splitting groups with different weight_decay disables the CUDA fused path.
     other_params = [
         p for p in model.parameters() if p.requires_grad and id(p) not in base_param_ids
     ]
 
-    # Build param groups.
     param_groups: list = [{"params": other_params, "lr": lr}]
     if lr_base is not None and base_params:
         param_groups.append({"params": base_params, "lr": lr_base})
 
-    # fused=True fuses per-param updates into a single CUDA kernel (5-15% faster on H100/A100).
-    # Requires all params on CUDA — always true during training.
+    # fused=True: single CUDA kernel, 5-15% faster. Requires CUDA.
     _use_fused = torch.cuda.is_available()
 
     if opt_name == "adamw":
@@ -517,24 +489,19 @@ def main():
     args, overrides = parse_args()
     cfg = load_config(args.config, overrides)
 
-    # Enable TF32 on Ampere/Hopper GPUs — uses tensor cores for float32 matmuls
-    # with no precision loss for typical training workloads.
     torch.set_float32_matmul_precision("high")
 
-    # Reproducibility seeds — set BEFORE distributed init so all processes start from the same base state.
     seed = cfg.get("seed", 42)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-    # Distributed init (no-op when not launched with torchrun)
     is_distributed, rank, local_rank, world_size = init_distributed()
 
     # Per-rank seed offset — ensures DDP ranks don't see identical batches.
     torch.manual_seed(seed + rank)
 
-    # Device
     gpu_name = ""
     if is_distributed:
         device = f"cuda:{local_rank}"
@@ -563,7 +530,6 @@ def main():
         print("=" * 80)
 
     try:
-        # Data
         dataset_key = cfg.dataset.dataset_key
         shard_dir = (
             Path(args.shard_dir)
@@ -575,10 +541,7 @@ def main():
 
         train_ds = ShardDataset(shard_dir, "train", seq_len)
 
-        # Use DistributedSampler so each rank sees a different subset
-        # In distributed mode, 4 ranks × 4 workers = 16 processes memmapping the
-        # same shard file simultaneously can exhaust /dev/shm on cloud containers.
-        # Default to 2 for DDP, 4 for single-GPU. Override via training.num_workers.
+        # Default 2 workers for DDP (avoid /dev/shm exhaustion), 4 for single-GPU.
         default_workers = 2 if is_distributed else 4
         num_workers = (
             cfg.training.get("num_workers", default_workers)
@@ -627,7 +590,6 @@ def main():
         except FileNotFoundError:
             print("No validation shards found. Skipping validation.")
 
-        # Model
         if is_main_process():
             print("Building model...")
         model = build_model(cfg)
@@ -640,10 +602,7 @@ def main():
         # DDP correctly preserves requires_grad for frozen backbone + trainable LoRA.
         model = model.to(device)
 
-        # Consolidate shared frozen weights across experts: model.to(device) creates
-        # N independent GPU copies of each SharedLoRALayer.shared_weight. This call
-        # makes experts 1..N-1 alias expert 0's buffers — (N-1)/N GPU memory saved.
-        # Must happen AFTER .to(device) and BEFORE DDP/FSDP wrapping.
+        # Alias shared frozen weights across experts — (N-1)/N GPU memory saved. Must be before DDP wrap.
         _pre_wrap_moe_layers = getattr(model, "moe_layers", {})
         _trainable_base = cfg.expert.lora.get("trainable_base", False)
         for _ml in _pre_wrap_moe_layers.values():
@@ -657,7 +616,6 @@ def main():
                 model, cfg, local_rank, torch.device(device)
             )
 
-        # Post-wrapping attribution: get clean references to MoE layers for metric tracking.
         _moe_layers_ref = getattr(get_model_for_attr_access(model), "moe_layers", {})
         _layer_name_to_layer = {f"layer_{k}": v for k, v in _moe_layers_ref.items()}
 
@@ -675,10 +633,8 @@ def main():
             print(f"Parameters: {trainable:,} trainable / {total:,} total")
             print("=" * 80)
 
-        # Optimizer
         optimizer = build_optimizer(model, cfg)
 
-        # LR Scheduler — warmup then cosine decay to 10% of peak LR
         from torch.optim.lr_scheduler import LambdaLR
 
         warmup_steps = cfg.training.get("warmup_steps", 0)
@@ -692,11 +648,8 @@ def main():
 
         scheduler = LambdaLR(optimizer, _lr_lambda)
 
-        # Compile backbone only — MoE expert loops and router forward have dynamic
-        # control flow (Python for-loop, requires_grad changes between train/eval)
-        # that causes torch._dynamo to hit the recompile limit and fall back to
-        # eager. Compiling only the backbone gets the speedup where it matters
-        # (attention + frozen MLP matmuls) without fighting dynamo on the MoE path.
+        # Compile backbone only — MoE expert loops have dynamic control flow that hits the
+        # dynamo recompile limit. Backbone compile covers attention + frozen MLP matmuls.
         if cfg.get("compile", False):
             print("Compiling model with torch.compile...")
             # layer_idx is an integer attr on Qwen2/GPT-Neo attention layers.
@@ -709,7 +662,6 @@ def main():
             else:
                 model = torch.compile(model)
 
-        # Resume
         start_step = 0
         best_val_loss = float("inf")
         early_stopping_patience = cfg.training.get("early_stopping_patience", None)
@@ -740,18 +692,36 @@ def main():
             )
             start_step = ckpt_info["step"]
             best_val_loss = ckpt_info["metrics"].get("val_loss", float("inf"))
-            # Advance scheduler to the correct step
-            for _ in range(start_step):
-                scheduler.step()
-            print(f"Resumed from step {start_step}, best val_loss={best_val_loss:.4f}")
+            # Sync SPAR router Python attrs (_tau, _lambda_init_done) with loaded buffers — not in state_dict.
+            from src.routers.stress_corrected import StressCorrectedRouter
 
-        # WandB
+            _base_for_resume = get_model_for_attr_access(model)
+            _resume_lr = (
+                scheduler.get_last_lr()[0]
+                if hasattr(scheduler, "get_last_lr")
+                else None
+            )
+            print(
+                f"[resume] step={start_step}  best_val_loss={best_val_loss:.4f}  lr={_resume_lr:.3e}"
+            )
+            for _i, _m in enumerate(_base_for_resume.modules()):
+                if isinstance(_m, StressCorrectedRouter):
+                    _m._tau = _m._current_tau()
+                    _m._lambda_init_done = _m.lambda_initialized.item()
+                    print(
+                        f"[resume] router[{_i}]  num_steps={_m.num_steps.item()}"
+                        f"  tau={_m._tau:.4f}  lambda={_m.lambda_val.item():.4f}"
+                        f"  lambda_init_done={_m._lambda_init_done}"
+                        f"  ema_load_mean={_m.ema_load.mean().item():.4f}"
+                    )
+
         init_wandb(cfg)
 
-        # Data-driven prototype initialization (SPAR only, opt-in via router.init_from_data: true)
+        # Data-driven prototype initialization (SPAR only, skipped on resume).
         if (
             cfg.router.get("init_from_data", False)
             and cfg.router.type == "stress_corrected"
+            and not args.resume
         ):
             if is_main_process():
                 print("Initializing SPAR router prototypes from data (k-means)...")
@@ -759,16 +729,13 @@ def main():
             if is_main_process():
                 print("Prototype initialization complete.")
 
-        # Training config
         grad_accum = cfg.training.get("gradient_accumulation_steps", 1)
         log_interval = cfg.training.get("log_interval", 10)
         eval_interval = cfg.training.get("eval_interval", 100)
         save_interval = cfg.training.get("save_interval", 500)
         clip_norm = cfg.training.get("clip_grad_norm", 1.0)
 
-        # Chinchilla-optimal steps — computed on all ranks so max_steps is consistent.
-        # Uses N_trainable (LoRA + router prototypes only; frozen backbone excluded).
-        # If training.steps is set in the YAML it overrides; otherwise Chinchilla is used.
+        # Chinchilla-optimal: 20*N_trainable tokens (LoRA + router only). Overrideable via training.steps.
         _global_batch = batch_size * grad_accum * world_size
         _tokens_per_step = _global_batch * cfg.dataset.max_seq_len
         from src.configs.model import model_lookup as _ml
@@ -779,7 +746,6 @@ def main():
         _rank = cfg.expert.lora.rank
         _n_exp = cfg.router.num_experts
         _n_moe = len(cfg.model.moe_layer_indices)
-        # GPT-Neo: 2 projections (c_fc, c_proj); Qwen2 SwiGLU: 3 (gate, up, down)
         _n_proj = 3 if cfg.expert.type == "qwen2_lora" else 2
         _lora_per_expert = _n_proj * (_rank * _hidden + _rank * _inter)
         trainable_params = (
@@ -792,7 +758,6 @@ def main():
         _steps_cfg = cfg.training.get("steps", None)
         max_steps = _steps_cfg if _steps_cfg is not None else chinchilla_optimal_steps
 
-        # Precision — bf16 autocast on sm>=8 (H100/A100), fp16 + GradScaler otherwise
         from src.training.precision import (
             COMPUTE_DTYPE,
             needs_grad_scaler,
@@ -810,7 +775,6 @@ def main():
         train_iter = iter(train_loader)
         current_epoch = 0
 
-        # State Initialization (Pre-loop)
         ema_beta = 0.9
         smooth_train_loss = 0.0
         total_training_time = 0.0
@@ -925,16 +889,11 @@ def main():
                     is_best=False,
                 )
 
-            # Reset step timer HERE — after eval/checkpoint, before training.
-            # This ensures dt measures only the training step, not eval overhead.
             t0 = time.time()
 
-            # Gradient accumulation loop
             accum_loss = 0.0
 
             for i in range(grad_accum):
-                # Optimization: only sync gradients on the last accumulation step.
-                # This significantly reduces NCCL overhead and prevents timeouts.
                 last_accum_step = i == grad_accum - 1
 
                 context = (
@@ -958,8 +917,6 @@ def main():
                         y.to(device, non_blocking=True),
                     )
 
-                    # Only compute metrics on the last accumulation step at log intervals.
-                    # spec_trackers only needs indices (included in metrics), not full stats.
                     do_metrics = (step % log_interval == 0) and last_accum_step
                     with _autocast_ctx:
                         _, loss, moe_metrics = model(
@@ -977,7 +934,6 @@ def main():
                         loss.backward()
                     accum_loss += loss_float / grad_accum
 
-                    # Update specialization trackers with token→expert routing
                     if spec_trackers and moe_metrics:
                         for layer_name, layer_m in moe_metrics.items():
                             if layer_name in spec_trackers and "indices" in layer_m:
@@ -986,7 +942,6 @@ def main():
                                     expert_indices=layer_m["indices"].detach(),
                                 )
 
-            # All-reduce training loss across ranks so rank 0 logs the global mean.
             if is_distributed:
                 import torch.distributed as dist
 
@@ -994,22 +949,18 @@ def main():
                 dist.all_reduce(_loss_t, op=dist.ReduceOp.AVG)
                 accum_loss = _loss_t.item()
 
-            # Gradient clip + optimizer step
             if clip_norm > 0:
                 if scaler is not None:
                     scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), clip_norm)
 
-            # Diagnostic A: per-expert gradient norms, logged at log_interval.
-            # Run AFTER clip (norms reflect what enters the update) and BEFORE optimizer.step() (grads still live).
+            # Per-expert grad norms after clip, before optimizer step.
             _diag_a_metrics = {}
             if step % log_interval == 0 and is_main_process() and _moe_layers_ref:
                 _base_m_diag = get_model_for_attr_access(model)
                 for _layer_idx, _moe_layer in getattr(
                     _base_m_diag, "moe_layers", {}
                 ).items():
-                    # LoRA expert gradient norms — flatten all grads per expert into one
-                    # tensor and call norm once; one .item() per expert total.
                     _pool = getattr(_moe_layer, "expert_pool", None)
                     if _pool is not None:
                         for _expert_idx, _expert in enumerate(_pool.experts):
@@ -1026,8 +977,7 @@ def main():
                                 f"grad_norm/layer{_layer_idx}/expert{_expert_idx}"
                             ] = _norm_val
 
-                    # Router prototype gradient norm (W for StressCorrectedRouter,
-                    # gate for MetabolicRouter). Critical for diagnosing prototype collapse.
+                    # Router prototype grad norm — critical for diagnosing prototype collapse.
                     _router_diag = getattr(_moe_layer, "router", None)
                     if _router_diag is not None:
                         _grads = [
@@ -1052,10 +1002,7 @@ def main():
             scheduler.step()
             optimizer.zero_grad(set_to_none=True)
 
-            # Release aux-loss tensors (_last_probs, _last_weights, _last_indices) held
-            # by StandardRouter / DynMoERouter. These are stale after optimizer.step()
-            # and would otherwise persist until the next forward pass overwrites them.
-            # MetabolicRouter's clear_aux_state() is a inherited no-op, so safe for all.
+            # Release stale aux-loss tensors held by StandardRouter/DynMoERouter post-step.
             if _moe_layers_ref:
                 for moe_layer in _moe_layers_ref.values():
                     if hasattr(moe_layer, "router"):
@@ -1067,12 +1014,7 @@ def main():
                     if hasattr(moe_layer, "step"):
                         moe_layer.step()
 
-                    # DDP SYNC: MetabolicRouter fatigue — AVG-reduce is correct here
-                    # because fatigue is a fractional EMA (not a count/sum).
-                    # StressCorrectedRouter handles its own sync inside router.step():
-                    #   - ema_load: AVG via _sync_ema_load_distributed()
-                    #   - welford_n/mu/M2: parallel Welford via _sync_welford_distributed()
-                    #     (simple AVG is mathematically wrong for Welford statistics)
+                    # fatigue is an EMA fraction → AVG-reduce. SPAR syncs ema_load/welford inside router.step().
                     if is_distributed and hasattr(moe_layer, "router"):
                         import torch.distributed as dist
 
@@ -1080,22 +1022,17 @@ def main():
                         if hasattr(router, "fatigue"):
                             dist.all_reduce(router.fatigue, op=dist.ReduceOp.AVG)
 
-            # Compute timing — t0 was set right before training forward pass above
             dt = time.time() - t0
 
-            # Smooth the training loss
             smooth_train_loss = (
                 ema_beta * smooth_train_loss + (1 - ema_beta) * accum_loss
             )
             steps_active = step - start_step + 1
             debiased_loss = smooth_train_loss / (1 - ema_beta**steps_active)
 
-            # Throughput — global across all GPUs
             tok_per_step = batch_size * grad_accum * seq_len * world_size
             tokens_per_sec = tok_per_step / dt
 
-            # Training Time / ETA
-            # Start accumulating time after the first step for more accurate averages
             if steps_active > 1:
                 total_training_time += dt
                 avg_dt = total_training_time / (steps_active - 1)
@@ -1105,9 +1042,7 @@ def main():
             else:
                 eta_str = ""
 
-            # Sync specialization trackers across all DDP ranks.
-            # dist.all_reduce is a collective — must be called by ALL ranks before
-            # entering the rank-0-only logging block below.
+            # Must be called by ALL ranks before the rank-0-only logging block below.
             _synced_spec: dict = {}
             if spec_trackers and step % log_interval == 0:
                 for _tname, _tracker in spec_trackers.items():
@@ -1115,17 +1050,13 @@ def main():
                         device, is_distributed
                     )
 
-            # Logging
             if (
                 step % log_interval == 0 or step % eval_interval == 0
             ) and is_main_process():
                 lr = scheduler.get_last_lr()[0]
                 pct_done = 100 * (step + 1) / max_steps
 
-                # Perplexity = exp(loss). Clamp to prevent inf for early unstable steps.
                 train_ppl = math.exp(min(debiased_loss, 20.0))
-                # BPB (bits per byte) ≈ loss / ln(2). Treats tokens ≈ bytes; consistent
-                # across runs so comparisons are valid. log2(e) = 1/ln(2) ≈ 1.4427.
                 train_bpb = debiased_loss / math.log(2)
 
                 metrics = {
@@ -1138,11 +1069,9 @@ def main():
                     "train/tok_per_sec": tokens_per_sec,
                 }
 
-                # Diagnostic A: merge per-expert gradient norms (collected before optimizer step)
                 metrics.update(_diag_a_metrics)
 
-                # Diagnostic B: lambda trajectory logged every log_interval (dense).
-                # Captures the calibration jump at lambda_calib_step — critical for paper figures.
+                # Lambda trajectory — dense logging captures the calibration jump at lambda_calib_step.
                 if step % log_interval == 0 and _moe_layers_ref:
                     _base_m_diag_b = get_model_for_attr_access(model)
                     for _layer_idx_b, _moe_layer_b in getattr(
@@ -1154,7 +1083,6 @@ def main():
                                 _router_b.lambda_val.item()
                             )
 
-                # Add specific metabolic metrics securely
                 _ROUTER_SCALAR_KEYS = (
                     "load_balance",
                     "fatigue_mean",
@@ -1197,7 +1125,6 @@ def main():
                             if key in layer_m:
                                 metrics[f"router/{layer_name}/{key}"] = layer_m[key]
 
-                        # Log v6 router state diagnostics (lambda_eff, fairshare, etc.)
                         _moe_layer = _layer_name_to_layer.get(layer_name)
                         if _moe_layer is not None:
                             _router = getattr(_moe_layer, "router", None)
@@ -1238,7 +1165,7 @@ def main():
                                     f"lora/{layer_name}/expert_{expert_i}_delta_norm"
                                 ] = float(norm_val)
 
-                # Global specialization metrics — already all-reduced above
+                # Global specialization metrics — already all-reduced above.
                 for tracker_name, spec_metrics in _synced_spec.items():
                     for k, v in spec_metrics.items():
                         if isinstance(v, (int, float)):
@@ -1251,7 +1178,6 @@ def main():
                     f"time: {total_training_time / 60:.2f}m {eta_str}"
                 )
 
-                # Append key router health metrics from the first MoE layer
                 if moe_metrics:
                     first_layer = next(iter(moe_metrics.values()), {})
                     eff_e = first_layer.get("effective_experts")
@@ -1268,14 +1194,12 @@ def main():
                     if f_std is not None:
                         router_parts.append(f"F_σ: {f_std:.3f}")
 
-                    # Adaptive k logic
                     mean_k = first_layer.get("mean_k")
                     stress_mean = first_layer.get("stress_mean")
                     if mean_k is not None:
                         router_parts.append(f"mean_k: {mean_k:.2f}")
                     if stress_mean is not None:
                         router_parts.append(f"stress: {stress_mean:.3f}")
-                    # v6 diagnostics: show warmup ramp + penalty activity
                     _first_router = None
                     _first_moe = next(iter(_layer_name_to_layer.values()), None)
                     if _first_moe is not None:
@@ -1293,7 +1217,6 @@ def main():
                     if router_parts:
                         log_str += f" | {' | '.join(router_parts)}"
 
-                # Diagnostic C: 100-step print for lambda/stress baseline
                 if step < 100 and is_main_process():
                     _diag_c_parts = []
                     for _layer_idx_diag, _moe_layer_diag in _moe_layers_ref.items():
@@ -1315,23 +1238,14 @@ def main():
                 print(log_str)
                 log_wandb(metrics)
 
-            # Re-synchronize all ranks after rank-0 logging.
-            # Without this, rank-0 (busy with WandB/print) falls behind ranks 1-N
-            # who immediately start the next training step. Over multiple log intervals
-            # the DDP gradient all-reduce sequence numbers diverge → NCCL timeout.
-            # The metabolic router avoids this via its per-step fatigue all-reduce
-            # (an implicit barrier). Routers without per-step collectives (standard,
-            # topk, dynmoe) need this explicit barrier.
+            # Barrier prevents rank-0 (busy with logging) from falling behind on NCCL sequence numbers.
             if is_distributed and step % log_interval == 0:
                 import torch.distributed as dist
 
                 if dist.is_initialized():
                     dist.barrier()
 
-        # Final save — always runs regardless of val_loader availability.
-        # Without this, runs without val shards only save at save_interval
-        # boundaries, so the last checkpoint is max_steps - (max_steps % save_interval)
-        # instead of max_steps (e.g. step 18000 instead of 19000).
+        # Final save — ensures last checkpoint is at max_steps even without val shards.
         print("\nTraining complete.")
         if val_loader is not None:
             base_model = get_model_for_attr_access(model)

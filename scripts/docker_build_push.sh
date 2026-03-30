@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# T-MoE — Build and Push Training Docker Image to ECR
+# SPAR — Build and Push Training Docker Image to ECR
 # ==============================================================================
 #
 # Usage:
@@ -66,7 +66,7 @@ ECR_REGISTRY="${ECR_REPOSITORY_URL%%/*}"
 GIT_SHA=$(git -C "${PROJECT_ROOT}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 echo "========================================"
-echo "T-MoE Training — Docker Build & Push"
+echo "SPAR Training — Docker Build & Push"
 echo "========================================"
 echo "  Project Root : ${PROJECT_ROOT}"
 echo "  ECR URL      : ${ECR_REPOSITORY_URL}"

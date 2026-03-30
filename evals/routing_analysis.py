@@ -137,6 +137,98 @@ def compute_specialization_score(stats: Dict) -> float:
     return round(1.0 - ttr, 4)
 
 
+def _load_texts(dataset_key: str, n_samples: int) -> List[str]:
+    from datasets import load_dataset
+    from src.configs.dataset import get_dataset_info
+
+    ds_info = get_dataset_info(dataset_key)
+    hf_path = ds_info["hf_path"]
+    hf_name = ds_info.get("hf_name")
+    text_col = ds_info.get("text_column", "text")
+    split = ds_info.get("splits", {}).get("train", "train")
+
+    print(f"[routing_analysis] Loading dataset: {dataset_key} ({hf_path})")
+    load_kwargs: Dict[str, Any] = dict(split=split, streaming=True)
+    if hf_name:
+        load_kwargs["name"] = hf_name
+    ds = load_dataset(hf_path, **load_kwargs)
+    texts: List[str] = []
+    for row in ds:
+        t = row.get(text_col, "").strip()
+        if len(t) > 100:
+            texts.append(t)
+        if len(texts) >= n_samples:
+            break
+    return texts
+
+
+def _run_forward_pass(model, tokenizer, texts, device, autocast_dtype, max_length):
+    hook_state = _RoutingHookState()
+    input_ids_ref: list = [None]
+    _attach_routing_hooks(model, hook_state, input_ids_ref)
+    model.eval()
+    use_cuda = device.startswith("cuda")
+    processed = 0
+    with torch.no_grad():
+        for text in texts:
+            if not text.strip():
+                continue
+            enc = tokenizer(
+                text,
+                return_tensors="pt",
+                truncation=True,
+                max_length=max_length,
+                add_special_tokens=False,
+            )
+            input_ids = enc["input_ids"].to(device)
+            if input_ids.size(1) < 2:
+                continue
+            input_ids_ref[0] = input_ids
+            ctx = (
+                torch.autocast(device_type="cuda", dtype=autocast_dtype)
+                if use_cuda
+                else nullcontext()
+            )
+            with ctx:
+                model(input_ids=input_ids)
+            processed += 1
+    hook_state.remove_hooks()
+    input_ids_ref[0] = None
+    return hook_state.token_log, processed
+
+
+def _build_and_print_summary(analysis, top_n_tokens, dataset_key):
+    summary_rows = []
+    for layer_idx, expert_map in sorted(analysis.items()):
+        for expert_idx, stats in sorted(expert_map.items()):
+            summary_rows.append(
+                {
+                    "layer": layer_idx,
+                    "expert": expert_idx,
+                    "total_tokens": stats["total_tokens"],
+                    "unique_tokens": stats["unique_tokens"],
+                    "type_token_ratio": stats["type_token_ratio"],
+                    "specialization_score": compute_specialization_score(stats),
+                    "top_5_tokens": [t["token"] for t in stats["top_tokens"][:5]],
+                }
+            )
+    print(f"\n── Expert Token Distribution Summary [{dataset_key}] {'─' * 40}")
+    print(
+        f"{'Layer':>6} {'Expert':>7} {'Tokens':>8} {'Unique':>8} "
+        f"{'TTR':>6} {'Spec.':>6}  Top-5 tokens"
+    )
+    print("─" * 80)
+    for row in summary_rows:
+        top5 = ", ".join(repr(t) for t in row["top_5_tokens"])
+        print(
+            f"{row['layer']:>6} {row['expert']:>7} {row['total_tokens']:>8} "
+            f"{row['unique_tokens']:>8} {row['type_token_ratio']:>6.3f} "
+            f"{row['specialization_score']:>6.3f}  {top5}"
+        )
+    print("────────────────────────────────────────────────────────────────────\n")
+    return summary_rows
+
+
 def run_routing_analysis(
     config: Any,
     checkpoint_path: str | Path,
@@ -172,139 +264,83 @@ def run_routing_analysis(
         token=os.environ.get("HF_TOKEN"),
     )
 
-    if texts is None:
-        try:
-            from datasets import load_dataset
-
-            ds = load_dataset(
-                "wikitext",
-                "wikitext-103-raw-v1",
-                split="validation",
-                streaming=True,
-            )
-            texts = []
-            for row in ds:
-                t = row.get("text", "").strip()
-                if len(t) > 100:
-                    texts.append(t)
-                if len(texts) >= n_samples:
-                    break
-        except Exception:
-            texts = [
-                "The transformer architecture has become the dominant approach "
-                "in natural language processing tasks.",
-            ] * min(n_samples, 10)
-
-    hook_state = _RoutingHookState()
-    input_ids_ref: list = [None]
-    _attach_routing_hooks(model, hook_state, input_ids_ref)
-
-    model.eval()
-
-    use_cuda = device.startswith("cuda")
-
-    processed = 0
-    with torch.no_grad():
-        for text in texts:
-            if not text.strip():
-                continue
-            enc = tokenizer(
-                text,
-                return_tensors="pt",
-                truncation=True,
-                max_length=max_length,
-                add_special_tokens=False,
-            )
-            input_ids = enc["input_ids"].to(device)
-            if input_ids.size(1) < 2:
-                continue
-
-            input_ids_ref[0] = input_ids
-
-            ctx = (
-                torch.autocast(device_type="cuda", dtype=autocast_dtype)
-                if use_cuda
-                else nullcontext()
-            )
-            with ctx:
-                model(input_ids=input_ids)
-
-            processed += 1
-
-    hook_state.remove_hooks()
-    input_ids_ref[0] = None
-
-    print(f"\nRouting analysis: processed {processed} samples.")
-
-    analysis = analyze_expert_token_distributions(
-        hook_state.token_log,
-        tokenizer,
-        top_n=top_n_tokens,
+    config_dataset_key = (
+        config.get("dataset", {}).get("dataset_key", "wikitext-103")
+        if isinstance(config, dict)
+        else getattr(getattr(config, "dataset", None), "dataset_key", "wikitext-103")
     )
 
-    summary_rows = []
-    for layer_idx, expert_map in sorted(analysis.items()):
-        for expert_idx, stats in sorted(expert_map.items()):
-            summary_rows.append(
-                {
-                    "layer": layer_idx,
-                    "expert": expert_idx,
-                    "total_tokens": stats["total_tokens"],
-                    "unique_tokens": stats["unique_tokens"],
-                    "type_token_ratio": stats["type_token_ratio"],
-                    "specialization_score": compute_specialization_score(stats),
-                    "top_5_tokens": [t["token"] for t in stats["top_tokens"][:5]],
-                }
-            )
+    # Always run on both the training dataset and wikitext-103 for comparison.
+    # If texts are provided explicitly, run only on those (no dataset loop).
+    if texts is not None:
+        dataset_runs: List[tuple] = [(config_dataset_key, texts)]
+    else:
+        seen: set = set()
+        keys: List[str] = []
+        for k in [config_dataset_key, "wikitext-103"]:
+            if k not in seen:
+                seen.add(k)
+                keys.append(k)
+        dataset_runs = []
+        for k in keys:
+            try:
+                dataset_runs.append((k, _load_texts(k, n_samples)))
+            except Exception as e:
+                print(f"[routing_analysis] Skipping {k}: {e}")
 
-    print("\n── Expert Token Distribution Summary ───────────────────────────────")
-    print(
-        f"{'Layer':>6} {'Expert':>7} {'Tokens':>8} {'Unique':>8} "
-        f"{'TTR':>6} {'Spec.':>6}  Top-5 tokens"
-    )
-    print("─" * 80)
-    for row in summary_rows:
-        top5 = ", ".join(repr(t) for t in row["top_5_tokens"])
-        print(
-            f"{row['layer']:>6} {row['expert']:>7} {row['total_tokens']:>8} "
-            f"{row['unique_tokens']:>8} {row['type_token_ratio']:>6.3f} "
-            f"{row['specialization_score']:>6.3f}  {top5}"
+    last_payload: Dict[str, Any] = {}
+    for dataset_key, dataset_texts in dataset_runs:
+        token_log, processed = _run_forward_pass(
+            model, tokenizer, dataset_texts, device, autocast_dtype, max_length
         )
-    print("────────────────────────────────────────────────────────────────────\n")
+        print(f"\nRouting analysis [{dataset_key}]: processed {processed} samples.")
 
-    payload = build_results_payload(
-        task="routing_analysis",
-        checkpoint_path=checkpoint_path,
-        checkpoint_info=checkpoint_info,
-        config=config,
-        results={
-            "samples_processed": float(processed),
-            "layers_analysed": float(len(analysis)),
-        },
-        metadata={
-            "n_samples": n_samples,
-            "max_length": max_length,
-            "top_n_tokens": top_n_tokens,
-            "device": device,
-            "summary": summary_rows,
-            "full_analysis": {
-                str(layer): {
-                    str(expert): {
-                        "total_tokens": s["total_tokens"],
-                        "unique_tokens": s["unique_tokens"],
-                        "type_token_ratio": s["type_token_ratio"],
-                        "specialization_score": compute_specialization_score(s),
-                        "top_tokens": s["top_tokens"],
-                    }
-                    for expert, s in expert_map.items()
-                }
-                for layer, expert_map in analysis.items()
+        analysis = analyze_expert_token_distributions(
+            token_log, tokenizer, top_n=top_n_tokens
+        )
+        summary_rows = _build_and_print_summary(analysis, top_n_tokens, dataset_key)
+
+        ds_output = None
+        if output_path is not None:
+            p = Path(output_path)
+            ds_output = p.parent / f"routing_analysis_{dataset_key}.json"
+
+        payload = build_results_payload(
+            task="routing_analysis",
+            checkpoint_path=checkpoint_path,
+            checkpoint_info=checkpoint_info,
+            config=config,
+            results={
+                "samples_processed": float(processed),
+                "layers_analysed": float(len(analysis)),
             },
-        },
-    )
+            metadata={
+                "dataset_key": dataset_key,
+                "n_samples": n_samples,
+                "max_length": max_length,
+                "top_n_tokens": top_n_tokens,
+                "device": device,
+                "summary": summary_rows,
+                "full_analysis": {
+                    str(layer): {
+                        str(expert): {
+                            "total_tokens": s["total_tokens"],
+                            "unique_tokens": s["unique_tokens"],
+                            "type_token_ratio": s["type_token_ratio"],
+                            "specialization_score": compute_specialization_score(s),
+                            "top_tokens": s["top_tokens"],
+                        }
+                        for expert, s in expert_map.items()
+                    }
+                    for layer, expert_map in analysis.items()
+                },
+            },
+        )
 
-    if output_path is not None:
-        write_results_json(payload, output_path)
-        print(f"Results written to {output_path}")
+        if ds_output is not None:
+            write_results_json(payload, ds_output)
+            print(f"Results written to {ds_output}")
 
-    return payload
+        last_payload = payload
+
+    return last_payload

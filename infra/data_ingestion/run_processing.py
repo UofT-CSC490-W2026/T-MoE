@@ -188,7 +188,7 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         logger.info("=" * 70)
-        logger.info("T-MoE SageMaker Data Ingestion Pipeline")
+        logger.info("SPAR SageMaker Data Ingestion Pipeline")
         logger.info("  Project Root : %s", PROJECT_ROOT)
         logger.info("  Timestamp    : %s", datetime.now().isoformat())
         logger.info("=" * 70)

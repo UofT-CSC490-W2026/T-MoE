@@ -40,7 +40,7 @@ router:
   tau_anneal_steps: 14000   # 73.7% of 19000 steps — same proportion as v7
   noise_std: 0.0            # No exploration noise: σ_cos≈0.025 at D=1536 < noise at 0.05
   eps: 1.0e-3               # Numerical floor; kept for config compatibility
-  ema_alpha: 0.01           # Slow EMA (~100-step window); prevents load oscillation on large corpus
+  ema_alpha: 0.02           # Slow EMA (~100-step window); prevents load oscillation on large corpus
   lambda_calib_step: 1000   # warmup_steps(800) + 200; ensures EMA has stabilized before λ is frozen
   lambda_init: 0.1          # pre-calibration λ; auto-corrected at step 1000
   init_from_data: true      # K-means prototype init from layer activations before training begins

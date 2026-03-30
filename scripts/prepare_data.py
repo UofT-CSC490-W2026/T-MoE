@@ -51,7 +51,7 @@ SHARD_SIZE = int(1e8)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="T-MoE Data Preparation")
+    parser = argparse.ArgumentParser(description="SPAR Data Preparation")
     parser.add_argument(
         "--config",
         type=str,

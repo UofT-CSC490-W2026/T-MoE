@@ -1,4 +1,4 @@
-# T-MoE Data Ingestion - Python Dependencies
+# SPAR Data Ingestion - Python Dependencies
 # Used by both local environment and SageMaker container
 
 sagemaker>=2.150.0

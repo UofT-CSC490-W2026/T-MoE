@@ -15,7 +15,7 @@ def execute_training_workflow(
     cache_dir: str,
     config_name: str | None = None,
 ) -> Tuple[str, dict]:
-    """Run T-MoE training from within an AWS Batch container. Returns (output_dir, metrics).
+    """Run SPAR training from within an AWS Batch container. Returns (output_dir, metrics).
 
     Args:
         experiment_config: Loaded OmegaConf config.

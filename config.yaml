@@ -1,5 +1,5 @@
 # ============================================================================
-# T-MoE Experiment Configuration — Baseline Defaults
+# SPAR Experiment Configuration — Baseline Defaults
 # ============================================================================
 # This file serves as the baseline fallback for all experiment configs.
 # Experiment YAMLs in experiments/ inherit these defaults and override as needed.

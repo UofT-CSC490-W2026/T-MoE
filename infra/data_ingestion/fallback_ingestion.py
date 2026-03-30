@@ -90,7 +90,7 @@ class FallbackIngestion:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
         logger.info("=" * 70)
-        logger.info("T-MoE Fallback Data Ingestion")
+        logger.info("SPAR Fallback Data Ingestion")
         logger.info("  Dataset    : %s", self.dataset_name)
         logger.info("  Config     : %s", self.dataset_config or "default")
         logger.info("  S3 bucket  : %s", self.s3_bucket)

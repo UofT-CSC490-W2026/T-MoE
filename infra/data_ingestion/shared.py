@@ -1,5 +1,5 @@
 """
-Shared data serialization utilities for T-MoE ingestion.
+Shared data serialization utilities for SPAR ingestion.
 """
 
 from __future__ import annotations

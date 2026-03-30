@@ -1,4 +1,4 @@
-# T-MoE
+# SPAR
 
 Mixture-of-Experts fine-tuning of GPT-Neo using LoRA adapters and the SPAR router.
 The system supports fast iteration via Modal and large-scale training via AWS Batch.
@@ -6,7 +6,7 @@ The system supports fast iteration via Modal and large-scale training via AWS Ba
 ## Architecture
 
 ```
-T-MoE/
+SPAR/
 ├── scripts/
 │   ├── prepare_data.py   # Stage 1: Tokenize + pack dataset into binary shards
 │   ├── train.py          # Stage 2: Train model (reads shards, no Hydra, DDP-ready)

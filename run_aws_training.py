@@ -1,5 +1,5 @@
 """
-T-MoE Unified Training Pipeline — AWS Batch Integration.
+SPAR Unified Training Pipeline — AWS Batch Integration.
 
 Orchestrates the full training workflow with three execution modes:
 
@@ -811,7 +811,7 @@ def main() -> None:
     Exit codes: 0=success, 1=failure/config error, 2=runtime error, 130=interrupt
     """
     parser = argparse.ArgumentParser(
-        description="T-MoE Training Pipeline — Local or AWS Batch",
+        description="SPAR Training Pipeline — Local or AWS Batch",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -853,7 +853,7 @@ Examples:
     pipeline_start = time.time()
 
     logger.info("=" * 70)
-    logger.info("T-MoE Training Pipeline")
+    logger.info("SPAR Training Pipeline")
     logger.info("  Mode    : %s", args.mode)
     logger.info("  Config  : %s", args.config)
     logger.info("  Dry Run : %s", args.dry_run)

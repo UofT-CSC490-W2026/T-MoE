@@ -158,7 +158,7 @@ def _build_moe_layers(model, config: Any) -> Dict[int, LoRAMoELayer]:
 
 def build_model_from_config(config: Any, device: str = "cpu"):
     """
-    Rebuild a T-MoE model from an experiment config without loading checkpoint weights.
+    Rebuild a SPAR model from an experiment config without loading checkpoint weights.
 
     This reconstructs the pretrained backbone plus injected MoE layers so a saved
     checkpoint can be loaded cleanly for offline evaluation.
@@ -187,7 +187,7 @@ def load_model_for_eval(
     dtype: torch.dtype | None = None,
 ):
     """
-    Rebuild a T-MoE model from config and load a saved checkpoint for offline eval.
+    Rebuild a SPAR model from config and load a saved checkpoint for offline eval.
 
     Returns:
         (model, checkpoint_info)

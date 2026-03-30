@@ -27,7 +27,7 @@
 # [Finding 2] LoRA LR = 10× FullFT LR. FullFT LR for GPT-Neo-125M ≈ 3e-5,
 #   so LoRA LR ≈ 3e-4 — already correct. No change.
 #
-# [Finding 4] MLP-only LoRA is optimal. Already correct in T-MoE. No change.
+# [Finding 4] MLP-only LoRA is optimal. Already correct in SPAR. No change.
 #
 # [b_init_scale fix] b_init_scale: 0.01 → 0.0. Zero-init B is the standard LoRA
 #   guarantee (adapter contributes zero delta at init). Non-zero breaks MoE expert

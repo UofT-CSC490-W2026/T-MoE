@@ -27,6 +27,55 @@ def _log_state_dict_result(result, label: str) -> None:
         )
 
 
+def _align_orig_mod(state_dict: dict, target: nn.Module) -> dict:
+    """
+    Normalize _orig_mod presence in checkpoint keys to match the live model.
+
+    torch.compile wraps a submodule (backbone) with OptimizedModule, inserting
+    '._orig_mod.' into its state_dict keys.  A checkpoint saved from a compiled
+    run has those keys; one saved from a non-compiled run does not.  Either way
+    we want a clean load with no spurious missing/unexpected keys.
+
+    Strategy: detect the mismatch by comparing a sample key from each side, then
+    rewrite the checkpoint keys in one pass.
+    """
+    ckpt_keys = list(state_dict.keys())
+    if not ckpt_keys:
+        return state_dict
+
+    target_keys = set(target.state_dict().keys())
+    if not target_keys:
+        return state_dict
+
+    ckpt_has_orig = any("._orig_mod." in k for k in ckpt_keys)
+    model_has_orig = any("._orig_mod." in k for k in target_keys)
+
+    if ckpt_has_orig == model_has_orig:
+        return state_dict
+
+    if model_has_orig and not ckpt_has_orig:
+        prefix_map: dict[str, str] = {}
+        for k in target_keys:
+            idx = k.find("._orig_mod.")
+            if idx != -1:
+                before = k[:idx]
+                after = k[idx + len("._orig_mod.") :]
+                prefix_map[before] = after
+        insertion_prefixes = sorted(prefix_map.keys(), key=len, reverse=True)
+
+        def _add(k: str) -> str:
+            for pfx in insertion_prefixes:
+                dot_pfx = pfx + "."
+                if k.startswith(dot_pfx):
+                    return pfx + "._orig_mod." + k[len(dot_pfx) :]
+            return k
+
+        return {_add(k): v for k, v in state_dict.items()}
+
+    else:
+        return {k.replace("._orig_mod.", "."): v for k, v in state_dict.items()}
+
+
 def _remap_legacy_moe_key(key: str) -> str | None:
     """
     Translate older MoE checkpoint keys into the current injected-backbone layout.
@@ -99,17 +148,9 @@ def _remap_legacy_moe_key(key: str) -> str | None:
 
 
 def _remap_legacy_moe_state_dict(state_dict: dict) -> tuple[dict, bool]:
-    # Strip _orig_mod. prefix injected by torch.compile before any other remapping.
-    stripped: dict = {}
+    remapped = {}
     changed = False
     for key, value in state_dict.items():
-        new_key = key.replace("._orig_mod.", ".")
-        if new_key != key:
-            changed = True
-        stripped[new_key] = value
-
-    remapped = {}
-    for key, value in stripped.items():
         mapped_key = _remap_legacy_moe_key(key)
         if mapped_key is None:
             changed = True
@@ -124,15 +165,10 @@ def _remap_legacy_moe_state_dict(state_dict: dict) -> tuple[dict, bool]:
 # Transient accumulators (_pending_*) are excluded — they're zero after step().
 _ROUTER_STATE_BUFFERS = frozenset(
     {
-        # MetabolicRouter
-        "fatigue",
-        # Shared
-        "num_steps",
-        # StressCorrectedRouter (SPAR) — ema_load and lambda_val define routing
-        # behaviour at resume time; losing them resets load tracking and disables
-        # the calibrated penalty for the remainder of training.
-        "ema_load",
-        "lambda_val",
+        "fatigue",  # MetabolicRouter
+        "num_steps",  # shared
+        "ema_load",  # SPAR: losing these resets load tracking and disables
+        "lambda_val",  # the calibrated penalty for the remainder of training
         "lambda_initialized",
         "welford_n",
         "welford_mu",
@@ -142,14 +178,7 @@ _ROUTER_STATE_BUFFERS = frozenset(
 
 
 def _get_state_dict(model: nn.Module) -> dict:
-    """
-    Return state dict for DDP, FSDP, or plain model.
-
-    DDP   — model.module holds full params on every rank → rank 0 saves directly.
-    FSDP  — ALL ranks must call this (collective all-gather). Uses the modern
-            torch.distributed.checkpoint.state_dict API (PyTorch 2.3+).
-    Plain — model.state_dict() as normal.
-    """
+    """Return state dict for DDP (rank-0 direct), FSDP (collective all-gather), or plain model."""
     from torch.nn.parallel import DistributedDataParallel as DDP
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
@@ -185,9 +214,40 @@ class CheckpointManager:
         self.save_best = save_best
         self.trainable_only = trainable_only
 
-        self.checkpoints = []  # List of (step, path, metric) tuples
+        self.checkpoints = []
         self.best_metric = float("inf")
         self.best_checkpoint_path = None
+
+    def _write_checkpoint_files(
+        self, checkpoint: dict, step: int, metrics: dict, metadata: dict
+    ) -> Path:
+        checkpoint_path = self.checkpoint_dir / f"checkpoint_step_{step}.pt"
+        temp_path = checkpoint_path.with_suffix(".pt.tmp")
+        torch.save(checkpoint, temp_path)
+        temp_path.rename(checkpoint_path)
+
+        with open(self.checkpoint_dir / f"checkpoint_step_{step}.json", "w") as f:
+            json.dump(
+                {
+                    "step": step,
+                    "metrics": _serialize_metrics(metrics),
+                    "metadata": metadata,
+                },
+                f,
+                indent=2,
+            )
+
+        return checkpoint_path
+
+    def _write_best_model(self, checkpoint: dict, step: int, metrics: dict) -> None:
+        best_path = self.checkpoint_dir / "best_model.pt"
+        torch.save(checkpoint, best_path)
+        self.best_checkpoint_path = best_path
+        self.best_metric = metrics.get("loss", float("inf"))
+        with open(self.checkpoint_dir / "best_model.json", "w") as f:
+            json.dump(
+                {"step": step, "metrics": _serialize_metrics(metrics)}, f, indent=2
+            )
 
     def save_checkpoint(
         self,
@@ -200,21 +260,16 @@ class CheckpointManager:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Path:
         metrics = metrics or {}
-
-        # FSDP: ALL ranks must participate in state dict gathering (all-gather op).
-        # DDP/plain: only rank 0 needs to do anything.
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
         is_fsdp = isinstance(model, FSDP)
 
         if is_fsdp:
-            # FSDP: ALL ranks must call _get_state_dict (collective all-gather).
+            # All ranks must call _get_state_dict (collective all-gather).
             model_state_dict = _get_state_dict(model)
             if not is_main_process():
-                # Non-rank-0: skip save, but MUST hit the barrier below so rank 0
-                # doesn't deadlock waiting. Previous code returned here, causing a
-                # barrier mismatch (non-rank-0 hit barrier#1 and left; rank-0 hit
-                # barrier#2 alone → deadlock).
+                # Non-rank-0 must hit this barrier — returning early before it
+                # caused a barrier mismatch that deadlocked rank 0.
                 import torch.distributed as dist
 
                 if dist.is_initialized():
@@ -222,7 +277,6 @@ class CheckpointManager:
                 return Path("/dev/null")
         else:
             if not is_main_process():
-                # DDP: non-rank-0 waits for rank 0 to finish saving.
                 import torch.distributed as dist
 
                 if dist.is_initialized():
@@ -230,7 +284,6 @@ class CheckpointManager:
                 return Path("/dev/null")
             model_state_dict = _get_state_dict(model)
 
-        # Only rank 0 reaches here.
         if self.trainable_only:
             base_model = get_model_for_attr_access(model)
             trainable_keys = {
@@ -242,47 +295,28 @@ class CheckpointManager:
                 if k in trainable_keys or any(buf in k for buf in _ROUTER_STATE_BUFFERS)
             }
 
+        metadata = metadata or {}
         checkpoint = {
             "step": step,
             "model_state_dict": model_state_dict,
             "optimizer_state_dict": optimizer.state_dict(),
             "metrics": metrics,
-            "metadata": metadata or {},
+            "metadata": metadata,
         }
-
         if scheduler is not None:
             checkpoint["scheduler_state_dict"] = scheduler.state_dict()
 
-        # Atomic write
-        checkpoint_path = self.checkpoint_dir / f"checkpoint_step_{step}.pt"
-        temp_path = checkpoint_path.with_suffix(".pt.tmp")
-        torch.save(checkpoint, temp_path)
-        temp_path.rename(checkpoint_path)
-
-        meta_payload = {
-            "step": step,
-            "metrics": _serialize_metrics(metrics),
-            "metadata": metadata or {},
-        }
-        with open(self.checkpoint_dir / f"checkpoint_step_{step}.json", "w") as f:
-            json.dump(meta_payload, f, indent=2)
-
+        checkpoint_path = self._write_checkpoint_files(
+            checkpoint, step, metrics, metadata
+        )
         current_metric = metrics.get("loss", float("inf"))
         self.checkpoints.append((step, checkpoint_path, current_metric))
 
         if is_best and self.save_best:
-            best_path = self.checkpoint_dir / "best_model.pt"
-            torch.save(checkpoint, best_path)
-            self.best_checkpoint_path = best_path
-            self.best_metric = current_metric
-            with open(self.checkpoint_dir / "best_model.json", "w") as f:
-                json.dump(
-                    {"step": step, "metrics": _serialize_metrics(metrics)}, f, indent=2
-                )
+            self._write_best_model(checkpoint, step, metrics)
 
         self._cleanup_old_checkpoints()
 
-        # Rank 0 signals completion — releases non-rank-0 processes waiting above.
         import torch.distributed as dist
 
         if dist.is_initialized():
@@ -319,13 +353,12 @@ class CheckpointManager:
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
         if isinstance(model, DDP):
-            # Load into underlying module — DDP holds full params on every rank
+            aligned = _align_orig_mod(model_state_dict, model.module)
             _log_state_dict_result(
-                model.module.load_state_dict(model_state_dict, strict=False),
+                model.module.load_state_dict(aligned, strict=False),
                 "DDP",
             )
         elif isinstance(model, FSDP):
-            # All ranks must participate in FSDP load
             from torch.distributed.checkpoint.state_dict import (
                 set_model_state_dict,
                 StateDictOptions,
@@ -339,8 +372,9 @@ class CheckpointManager:
                 ),
             )
         else:
+            aligned = _align_orig_mod(model_state_dict, model)
             _log_state_dict_result(
-                model.load_state_dict(model_state_dict, strict=False),
+                model.load_state_dict(aligned, strict=False),
                 "plain",
             )
 
@@ -358,7 +392,6 @@ class CheckpointManager:
 
     def _get_latest_checkpoint(self) -> Optional[Path]:
         if not self.checkpoints:
-            # Try to find checkpoints in directory
             checkpoints = sorted(
                 self.checkpoint_dir.glob("checkpoint_step_*.pt"),
                 key=lambda p: int(p.stem.split("_")[-1]),

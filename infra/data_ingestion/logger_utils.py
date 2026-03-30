@@ -1,5 +1,5 @@
 """
-Structured logging utility for T-MoE data ingestion pipeline.
+Structured logging utility for SPAR data ingestion pipeline.
 
 Provides JSON-structured logging compatible with CloudWatch Logs Insights
 and a human-readable fallback for local development.

@@ -88,7 +88,7 @@ resource "aws_cloudwatch_log_group" "batch_training" {
 
   tags = {
     Name        = "Batch Training Logs"
-    Description = "Log retention for T-MoE AWS Batch training jobs"
+    Description = "Log retention for SPAR AWS Batch training jobs"
   }
 }
 
