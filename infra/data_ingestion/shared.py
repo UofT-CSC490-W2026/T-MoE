@@ -1,6 +1,4 @@
-"""
-Shared data serialization utilities for SPAR ingestion.
-"""
+"""Shared data serialization utilities for SPAR ingestion."""
 
 from __future__ import annotations
 
@@ -30,10 +28,11 @@ def load_huggingface_dataset(
             logger.info(
                 "Loading dataset %s (attempt %d/%d)", dataset_name, attempt, max_retries
             )
-            if dataset_config:
-                ds = load_dataset(dataset_name, dataset_config)
-            else:
-                ds = load_dataset(dataset_name)
+            ds = (
+                load_dataset(dataset_name, dataset_config)
+                if dataset_config
+                else load_dataset(dataset_name)
+            )
             break
         except (ConnectionError, TimeoutError, OSError) as exc:
             last_error = exc
@@ -53,17 +52,14 @@ def load_huggingface_dataset(
     for name in ds:
         split = ds[name]
         logger.info(
-            "  split %-12s — %7d rows, columns=%s",
-            name,
-            len(split),
-            split.column_names,
+            "  split %-12s — %7d rows, columns=%s", name, len(split), split.column_names
         )
 
     return dict(ds)  # type: ignore[arg-type]
 
 
 def validate_split_data(split_name: str, split_data: Any) -> None:
-    """Assert a single split has the expected shape."""
+    """Assert a split is non-empty, has a 'text' column, and contains non-blank rows."""
     if split_data is None:
         raise ValueError(f"Split '{split_name}' is None")
     if len(split_data) == 0:
@@ -76,8 +72,7 @@ def validate_split_data(split_name: str, split_data: Any) -> None:
         )
 
     sample = split_data.select(range(min(5, len(split_data))))
-    non_empty = sum(1 for row in sample if row.get("text") and row["text"].strip())
-    if non_empty == 0:
+    if not any(row.get("text") and row["text"].strip() for row in sample):
         raise ValueError(f"Split '{split_name}' first 5 rows are all empty/None")
 
     logger.info(
@@ -94,7 +89,7 @@ def write_split_to_disk(
     output_dir: Path,
     output_format: str = "jsonl",
 ) -> Path:
-    """Write one split to disk in the requested format."""
+    """Write one split to disk in the requested format. Returns the output path."""
     if output_format not in _EXT_MAP:
         raise ValueError(f"Unsupported format {output_format!r}")
 
@@ -130,12 +125,11 @@ def write_split_to_disk(
 
     file_size = output_path.stat().st_size
     logger.info(
-        "Written split '%s': %d records (%d empty skipped), %.2f MB → %s",
+        "Written split '%s': %d records (%d empty skipped), %.2f MB",
         split_name,
         total_records,
         empty_records,
         file_size / 1024 / 1024,
-        output_path.name,
     )
 
     if file_size == 0:

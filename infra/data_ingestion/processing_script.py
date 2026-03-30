@@ -1,18 +1,9 @@
-"""
-SageMaker Processing Script — runs inside the HuggingFace container.
+"""SageMaker Processing Script — runs inside the HuggingFace container.
 
-Executed by ``HuggingFaceProcessor`` on a managed ML instance.
-Downloads a HuggingFace dataset, validates every split, writes raw data
-to ``/opt/ml/processing/output``, and emits ``metadata.json``.
-SageMaker automatically syncs that directory to S3 when the job finishes.
+Downloads a HuggingFace dataset, validates splits, writes to /opt/ml/processing/output,
+and emits metadata.json. SageMaker syncs that directory to S3 on completion.
 
-Environment variables consumed:
-    DATASET_NAME — HuggingFace dataset identifier (default: EleutherAI/wikitext-2)
-    OUTPUT_BASE_DIR — local output directory (default: /opt/ml/processing/output)
-    OUTPUT_FORMAT — jsonl | parquet | text (default: jsonl)
-    LOG_LEVEL — DEBUG | INFO | WARNING | … (default: INFO)
-    MAX_RETRIES — download retry count (default: 3)
-    RETRY_DELAY — base retry delay in seconds (default: 5.0)
+Env vars: DATASET_NAME, OUTPUT_BASE_DIR, OUTPUT_FORMAT, LOG_LEVEL, MAX_RETRIES, RETRY_DELAY
 """
 
 from __future__ import annotations
@@ -29,19 +20,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
-# ---------------------------------------------------------------------------
-# Configuration (all driven by environment variables)
-# ---------------------------------------------------------------------------
 DATASET_NAME: str = os.environ.get("DATASET_NAME", "EleutherAI/wikitext-2")
 OUTPUT_BASE_DIR: str = os.environ.get("OUTPUT_BASE_DIR", "/opt/ml/processing/output")
 OUTPUT_FORMAT: str = os.environ.get("OUTPUT_FORMAT", "jsonl")
 LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO")
 MAX_RETRIES: int = int(os.environ.get("MAX_RETRIES", "3"))
 RETRY_DELAY: float = float(os.environ.get("RETRY_DELAY", "5.0"))
-
-# ---------------------------------------------------------------------------
-# Logging — plain format (CloudWatch auto-captures stdout/stderr)
-# ---------------------------------------------------------------------------
 
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL.upper(), logging.INFO),
@@ -51,22 +35,13 @@ logging.basicConfig(
 logger = logging.getLogger("tmoe.processing")
 
 
-# ============================================================================
-# 1. Environment Validation
-# ============================================================================
 def validate_environment() -> None:
-    """Ensure the runtime environment is sane before heavy work begins.
-
-    Raises:
-        EnvironmentError: on any validation failure.
-    """
+    """Validate output dir writability, disk space, dataset name, format, and network."""
     logger.info("Validating environment …")
 
-    # Output directory
     output_dir = Path(OUTPUT_BASE_DIR)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write test
     probe = output_dir / ".write_test"
     try:
         probe.write_text("ok")
@@ -76,24 +51,19 @@ def validate_environment() -> None:
             f"Output dir {output_dir} is not writable: {exc}"
         ) from exc
 
-    # Disk space (warn if < 1 GB)
-    usage = shutil.disk_usage(str(output_dir))
-    free_gb = usage.free / (1024**3)
+    free_gb = shutil.disk_usage(str(output_dir)).free / (1024**3)
     logger.info("Disk free: %.1f GB", free_gb)
     if free_gb < 1.0:
         raise EnvironmentError(f"Insufficient disk space: {free_gb:.1f} GB free")
 
-    # Dataset name
     if not DATASET_NAME.strip():
         raise EnvironmentError("DATASET_NAME is empty")
 
-    # Output format
     if OUTPUT_FORMAT not in ("jsonl", "parquet", "text"):
         raise EnvironmentError(
             f"OUTPUT_FORMAT must be jsonl/parquet/text — got {OUTPUT_FORMAT!r}"
         )
 
-    # Network connectivity (best-effort)
     try:
         urllib.request.urlopen("https://huggingface.co", timeout=10)
         logger.info("Network: huggingface.co reachable")
@@ -104,18 +74,8 @@ def validate_environment() -> None:
     logger.info("Environment validation passed")
 
 
-# ============================================================================
-# 2. Dataset Loading
-# ============================================================================
 def load_huggingface_dataset(dataset_name: str) -> Dict[str, Any]:
-    """Download a dataset from HuggingFace Hub with exponential-backoff retry.
-
-    Returns:
-        Mapping of split name → HuggingFace ``Dataset`` object.
-
-    Raises:
-        RuntimeError: after exhausting all retries.
-    """
+    """Download dataset from HuggingFace Hub with exponential-backoff retry."""
     from datasets import load_dataset  # type: ignore[import-untyped]
 
     last_error: Exception | None = None
@@ -130,10 +90,7 @@ def load_huggingface_dataset(dataset_name: str) -> Dict[str, Any]:
             last_error = exc
             wait = RETRY_DELAY * (2 ** (attempt - 1))
             logger.warning(
-                "Attempt %d failed (%s). Retrying in %.1fs …",
-                attempt,
-                exc,
-                wait,
+                "Attempt %d failed (%s). Retrying in %.1fs …", attempt, exc, wait
             )
             time.sleep(wait)
     else:
@@ -147,24 +104,14 @@ def load_huggingface_dataset(dataset_name: str) -> Dict[str, Any]:
     for name in ds:
         split = ds[name]
         logger.info(
-            "  split %-12s — %7d rows, columns=%s",
-            name,
-            len(split),
-            split.column_names,
+            "  split %-12s — %7d rows, columns=%s", name, len(split), split.column_names
         )
 
     return dict(ds)  # type: ignore[arg-type]
 
 
-# ============================================================================
-# 3. Split Validation
-# ============================================================================
 def validate_split_data(split_name: str, split_data: Any) -> None:
-    """Assert a single split has the expected shape.
-
-    Raises:
-        ValueError: if the split is missing, empty, or lacks a ``text`` column.
-    """
+    """Assert a split is non-empty, has a 'text' column, and contains non-blank rows."""
     if split_data is None:
         raise ValueError(f"Split '{split_name}' is None")
     if len(split_data) == 0:
@@ -176,10 +123,8 @@ def validate_split_data(split_name: str, split_data: Any) -> None:
             f"Split '{split_name}' is missing 'text' column. Found: {columns}"
         )
 
-    # Quick sanity: first 5 rows should contain at least one non-empty string
     sample = split_data.select(range(min(5, len(split_data))))
-    non_empty = sum(1 for row in sample if row.get("text") and row["text"].strip())
-    if non_empty == 0:
+    if not any(row.get("text") and row["text"].strip() for row in sample):
         raise ValueError(f"Split '{split_name}' first 5 rows are all empty/None")
 
     logger.info(
@@ -190,26 +135,13 @@ def validate_split_data(split_name: str, split_data: Any) -> None:
     )
 
 
-# ============================================================================
-# 4. Data Writing
-# ============================================================================
 _EXT_MAP = {"jsonl": ".jsonl", "parquet": ".parquet", "text": ".txt"}
 
 
 def write_split_to_disk(
-    split_name: str,
-    split_data: Any,
-    output_format: str = "jsonl",
+    split_name: str, split_data: Any, output_format: str = "jsonl"
 ) -> Path:
-    """Write one split to disk in the requested format.
-
-    Returns:
-        ``Path`` to the written file.
-
-    Raises:
-        ValueError: for unsupported format.
-        IOError: on write errors.
-    """
+    """Write one split to disk in the requested format. Returns the output path."""
     if output_format not in _EXT_MAP:
         raise ValueError(f"Unsupported format {output_format!r}")
 
@@ -259,16 +191,13 @@ def write_split_to_disk(
     return output_path
 
 
-# ============================================================================
-# 5. Metadata
-# ============================================================================
 def write_metadata(
     dataset_name: str,
     splits_info: Dict[str, Dict[str, Any]],
     output_dir: Path,
     processing_time_seconds: float,
 ) -> Path:
-    """Write ``metadata.json`` with provenance and statistics."""
+    """Write metadata.json with provenance and statistics."""
     metadata = {
         "dataset_name": dataset_name,
         "processing_timestamp": datetime.now(timezone.utc).isoformat(),
@@ -290,22 +219,16 @@ def write_metadata(
     return meta_path
 
 
-# ============================================================================
-# 6. Main
-# ============================================================================
 def main() -> None:
     """Orchestrate the full processing pipeline."""
     start = time.time()
     output_dir = Path(OUTPUT_BASE_DIR)
 
-    # 1 — environment
     validate_environment()
 
-    # 2 — load
     dataset = load_huggingface_dataset(DATASET_NAME)
     logger.info("Loaded %d splits", len(dataset))
 
-    # 3+4 — validate & write each split
     splits_info: Dict[str, Dict[str, Any]] = {}
     for split_name, split_data in dataset.items():
         logger.info("Processing split: %s", split_name)
@@ -317,11 +240,9 @@ def main() -> None:
             "file_size": out_path.stat().st_size,
         }
 
-    # 5 — metadata
     elapsed = time.time() - start
     write_metadata(DATASET_NAME, splits_info, output_dir, elapsed)
 
-    # 6 — final validation
     files = list(output_dir.iterdir())
     total_size = sum(f.stat().st_size for f in files if f.is_file())
     logger.info(
@@ -329,34 +250,32 @@ def main() -> None:
         len(files),
         total_size / 1024 / 1024,
     )
+    logger.info(
+        "COMPLETION: %s",
+        json.dumps(
+            {
+                "status": "SUCCESS",
+                "dataset": DATASET_NAME,
+                "splits": list(splits_info.keys()),
+                "total_records": sum(s["num_examples"] for s in splits_info.values()),
+                "total_bytes": total_size,
+                "elapsed_seconds": round(elapsed, 2),
+            }
+        ),
+    )
 
-    completion = {
-        "status": "SUCCESS",
-        "dataset": DATASET_NAME,
-        "splits": list(splits_info.keys()),
-        "total_records": sum(s["num_examples"] for s in splits_info.values()),
-        "total_bytes": total_size,
-        "elapsed_seconds": round(elapsed, 2),
-    }
-    logger.info("COMPLETION: %s", json.dumps(completion))
 
-
-# ============================================================================
-# Entry point
-# ============================================================================
 if __name__ == "__main__":
     try:
-        logger.info("=" * 70)
-        logger.info("SPAR SageMaker Processing Job")
-        logger.info("  Dataset : %s", DATASET_NAME)
-        logger.info("  Output  : %s", OUTPUT_BASE_DIR)
-        logger.info("  Format  : %s", OUTPUT_FORMAT)
-        logger.info("=" * 70)
+        logger.info(
+            "SPAR SageMaker Processing Job — dataset=%s format=%s",
+            DATASET_NAME,
+            OUTPUT_FORMAT,
+        )
         main()
         logger.info("Processing job completed successfully")
     except Exception as exc:
         logger.error("Processing job FAILED: %s", exc, exc_info=True)
-        # Write error metadata so downstream can detect failure
         try:
             error_meta = Path(OUTPUT_BASE_DIR) / "metadata.json"
             error_meta.parent.mkdir(parents=True, exist_ok=True)
