@@ -1,13 +1,7 @@
-"""
-Launch a SageMaker HuggingFace Processing Job.
+"""Submit a SageMaker HuggingFace Processing Job for dataset ingestion.
 
-Runs locally (or in CI/CD) to submit ``processing_script.py`` to a
-managed SageMaker HuggingFace container.  Configuration is resolved
-via ``infra.config.config.load_pipeline_config()`` which merges
-env vars > config.yaml > defaults.
-
-Usage:
-    python infra/data_ingestion/run_processing.py
+Runs locally or in CI/CD. Configuration is resolved via load_pipeline_config()
+which merges env vars > config.yaml > defaults.
 """
 
 from __future__ import annotations
@@ -19,15 +13,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-# ---------------------------------------------------------------------------
-# Project path
-# ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# ---------------------------------------------------------------------------
-# Logging
-# ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -35,10 +23,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("tmoe.run_processing")
 
-# ---------------------------------------------------------------------------
-# Late import — keeps the top-level import fast and gives a clear error
-# when ``sagemaker`` is missing.
-# ---------------------------------------------------------------------------
 SAGEMAKER_AVAILABLE = True
 try:
     import boto3
@@ -49,18 +33,12 @@ except ImportError:
     SAGEMAKER_AVAILABLE = False
 
 
-# ============================================================================
-
-
-# ============================================================================
-# Processor factory
-# ============================================================================
 def create_processor(config: Any) -> "HuggingFaceProcessor":
-    """Build a ``HuggingFaceProcessor`` from a ``PipelineConfig``.
+    """Build a HuggingFaceProcessor from a PipelineConfig.
 
     Raises:
-        ImportError:  if ``sagemaker`` is not installed.
-        ValueError:   if the role ARN looks malformed.
+        ImportError: if sagemaker is not installed.
+        ValueError: if the role ARN looks malformed.
     """
     if not SAGEMAKER_AVAILABLE:
         raise ImportError(
@@ -87,22 +65,14 @@ def create_processor(config: Any) -> "HuggingFaceProcessor":
         max_runtime_in_seconds=config.max_runtime_seconds,
     )
 
-    logger.info(
-        "HuggingFaceProcessor created: instance=%s role=…%s",
-        config.instance_type,
-        role[-20:],
-    )
+    logger.info("HuggingFaceProcessor created: instance=%s role=…%s", config.instance_type, role[-20:])
     return processor
 
 
-# ============================================================================
-# Job execution
-# ============================================================================
 def run_processing_job(processor: "HuggingFaceProcessor", config: Any) -> str:
-    """Submit and monitor the processing job.  Returns the job ARN."""
+    """Submit and wait for the processing job. Returns the job ARN."""
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     job_name = f"tmoe-ingestion-{timestamp}"
-
     s3_output = (
         f"s3://{config.raw_data_bucket}/{config.raw_data_prefix}"
         f"{config.dataset_name.replace('/', '_')}/{timestamp}/"
@@ -124,14 +94,9 @@ def run_processing_job(processor: "HuggingFaceProcessor", config: Any) -> str:
     script_path = str(Path(__file__).parent / "processing_script.py")
     source_dir = str(Path(__file__).parent)
 
-    logger.info("Launching SageMaker processing job")
-    logger.info("  Job name   : %s", job_name)
-    logger.info("  S3 output  : %s", s3_output)
-    logger.info("  Dataset    : %s", config.dataset_name)
-    logger.info("  Instance   : %s x %d", config.instance_type, config.instance_count)
+    logger.info("Launching SageMaker job: %s → %s (%s x %d)", job_name, s3_output, config.instance_type, config.instance_count)
 
     start = time.time()
-
     processor.run(
         code=script_path,
         source_dir=source_dir,
@@ -141,7 +106,6 @@ def run_processing_job(processor: "HuggingFaceProcessor", config: Any) -> str:
         logs=True,
         environment=env_vars,
     )
-
     elapsed = time.time() - start
 
     job_arn = ""
@@ -150,57 +114,28 @@ def run_processing_job(processor: "HuggingFaceProcessor", config: Any) -> str:
     except Exception:
         pass
 
-    logger.info("Job completed in %.1f s", elapsed)
-    logger.info("  S3 output : %s", s3_output)
-    logger.info("  Job ARN   : %s", job_arn)
+    logger.info("Job completed in %.1f s — ARN: %s — output: %s", elapsed, job_arn, s3_output)
     return job_arn
 
 
-# ============================================================================
-# Main
-# ============================================================================
 def main() -> None:
-    """End-to-end orchestration: config → processor → job → report."""
-
-    # 1. Load validated config (env > yaml > defaults)
     from infra.config.config import load_pipeline_config
 
     config = load_pipeline_config()
-
-    # 2. Create processor
     processor = create_processor(config)
-
-    # 3. Run
     job_arn = run_processing_job(processor, config)
-
-    # 4. Summary
-    logger.info("=" * 70)
-    logger.info("SUCCESS")
-    logger.info("  Job ARN   : %s", job_arn)
-    logger.info("  S3 bucket : %s", config.raw_data_bucket)
-    logger.info("  Dataset   : %s", config.dataset_name)
-    logger.info("=" * 70)
+    logger.info("SUCCESS — job_arn=%s bucket=%s dataset=%s", job_arn, config.raw_data_bucket, config.dataset_name)
 
 
-# ============================================================================
-# Entry
-# ============================================================================
 if __name__ == "__main__":
     try:
-        logger.info("=" * 70)
-        logger.info("SPAR SageMaker Data Ingestion Pipeline")
-        logger.info("  Project Root : %s", PROJECT_ROOT)
-        logger.info("  Timestamp    : %s", datetime.now().isoformat())
-        logger.info("=" * 70)
+        logger.info("SPAR SageMaker Data Ingestion Pipeline — root=%s", PROJECT_ROOT)
         main()
     except KeyboardInterrupt:
         logger.warning("Cancelled by user")
         sys.exit(130)
     except ImportError as exc:
-        logger.error(
-            "%s\n  Install dependencies:\n  pip install -r infra/data_ingestion/requirements.txt",
-            exc,
-        )
+        logger.error("%s\n  pip install -r infra/data_ingestion/requirements.txt", exc)
         sys.exit(1)
     except ValueError as exc:
         logger.error("Configuration error: %s", exc)
